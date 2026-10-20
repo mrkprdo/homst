@@ -163,7 +163,7 @@ The sidecar is the only container with access to the Docker socket. It does not 
 To keep the profile enabled for later Docker Compose commands, uncomment `COMPOSE_PROFILES=updates` in `.env`. You can also run `make prod-updates`.
 
 - The updater installs only official stable releases. You cannot install dev builds, nightly builds, or pinned images from the Software update screen. Use the manual commands in the update card.
-- Update checks operate by default when the updater is available. The default interval is 5 minutes. You can change the interval in Settings. When a new stable release is available, connected display clients show a **New version available** message with Yes and No options.
+- Update checks operate by default when the updater is available. The default interval is 5 minutes. You can change the interval in Settings. A stable release is offered one day after it is published, which leaves time to publish a hotfix first. When a new stable release is available, connected display clients show a **New version available** message with Yes and No options.
 - If you select Yes, HOMST installs the release immediately. If you select No, HOMST hides the message for that version. The update stays visible in **Settings > Software update**. A later release shows a new message. HOMST does not install an update without your agreement.
 - If an update fails, HOMST automatically rolls back. HOMST holds the failed version and does not offer it again. A later stable release starts the prompts again.
 - HOMST keeps the previous stable image. It does not delete the image automatically. If you need disk space, delete unused images with `docker image prune`. Do this when you do not need a rollback.

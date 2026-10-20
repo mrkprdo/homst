@@ -1,8 +1,10 @@
 """Stable release discovery via GitHub Releases, cached in Redis.
 
-Only official, non-prerelease releases are returned.  The cache is shared by
-all gunicorn workers when Redis is available and falls back to process memory
-otherwise (useful for tests and dev).
+Only official, non-prerelease releases are returned.  A release must also have
+been published for at least ``RELEASE_GRACE`` before it is offered, so an early
+hotfix can ship without every install picking the release up immediately.  The
+cache is shared by all gunicorn workers when Redis is available and falls back
+to process memory otherwise (useful for tests and dev).
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -19,10 +22,11 @@ from packaging.version import InvalidVersion, Version
 from app.redis_client import get_redis
 from app.version import VERSION
 
-CACHE_KEY = "homst:system:releases:v1"
+CACHE_KEY = "homst:system:releases:v2"
 CACHE_TTL = 900  # 15 minutes
 CACHE_MAX_AGE = 86400
 FORCE_MIN_INTERVAL = 60
+RELEASE_GRACE = timedelta(days=1)
 RELEASES_URL = "https://api.github.com/repos/mrkprdo/homst/releases"
 
 _MEM_CACHE: dict[str, Any] | None = None
@@ -74,9 +78,38 @@ def parse_releases(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return releases
 
 
+def _published_at(release: dict[str, Any]) -> datetime | None:
+    value = release.get("published_at")
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def mature_releases(
+    releases: list[dict[str, Any]], now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """Drop releases that are still inside their post-publication soak period."""
+
+    now = now or datetime.now(timezone.utc)
+    return [
+        release
+        for release in releases
+        if (published := _published_at(release)) is None
+        or now - published >= RELEASE_GRACE
+    ]
+
+
 def _feed_from_cache(cached: dict[str, Any]) -> ReleaseFeed:
+    # Filter on read, not on write: GitHub can answer 304 and hand back the
+    # same cached list, so a release has to mature while it sits in the cache.
     return ReleaseFeed(
-        releases=list(cached.get("releases") or []),
+        releases=mature_releases(list(cached.get("releases") or [])),
         checked_at=float(cached.get("checked_at") or 0.0),
     )
 
