@@ -100,6 +100,12 @@ function timeLabel(a: Announcement): string {
   -webkit-backdrop-filter: blur(1.5px);
 }
 
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .announcement-backdrop {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
+
 .announcement-blur-enter-active,
 .announcement-blur-leave-active {
   transition: opacity var(--duration-base) ease;

@@ -95,6 +95,12 @@ function whenLabel(n: HudNotification): string {
   -webkit-backdrop-filter: blur(1.5px);
 }
 
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .hud-backdrop {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
+
 .hud-blur-enter-active,
 .hud-blur-leave-active {
   transition: opacity var(--duration-base) ease;
