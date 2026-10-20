@@ -301,7 +301,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="update-card">
+  <div class="update-card settings-card">
     <div class="update-head">
       <div>
         <h3 class="update-title">Software update</h3>
@@ -326,9 +326,8 @@ onUnmounted(() => {
         </div>
         <p class="card-desc">{{ selfUpdate.reason }}</p>
         <p v-if="latest" class="card-desc">
-          Latest stable release: <strong>HOMST {{ latest.version }}</strong>.
+          Latest stable: <strong>HOMST {{ latest.version }}</strong>
         </p>
-        <p class="card-desc">Update manually on the host:</p>
         <pre class="command">{{ status?.manual?.current }}</pre>
         <div class="note-actions">
           <UiButton size="sm" variant="ghost" @click="copy(status?.manual?.current ?? '')">Copy command</UiButton>
@@ -337,13 +336,10 @@ onUnmounted(() => {
             {{ checking ? "Checking…" : "Check again" }}
           </UiButton>
         </div>
-        <p v-if="current.channel === 'nightly' || current.channel === 'pinned'" class="card-desc">
-          To return to the managed stable channel:
-        </p>
-        <pre v-if="current.channel === 'nightly' || current.channel === 'pinned'" class="command">{{ status?.manual?.stable }}</pre>
-        <p v-if="current.channel === 'nightly' || current.channel === 'pinned'" class="card-desc">
-          If you edited <code>x-image</code>, change it back to <code>${HOMST_VERSION:-latest}</code> first.
-        </p>
+        <template v-if="current.channel === 'nightly' || current.channel === 'pinned'">
+          <p class="card-desc">Stable channel:</p>
+          <pre class="command">{{ status?.manual?.stable }}</pre>
+        </template>
       </div>
 
       <template v-else>
@@ -364,18 +360,14 @@ onUnmounted(() => {
           <span>You're on the latest stable release.</span>
         </div>
 
-        <p v-if="status?.stale" class="card-desc update-stale">
-          Using cached release information. {{ status.error }}
-        </p>
-        <p v-else-if="status?.error" class="card-desc update-stale">{{ status.error }}</p>
+        <p v-if="status?.error" class="card-desc update-stale">{{ status.error }}</p>
 
         <div v-if="held.version" class="update-note update-note--warning">
           <div class="note-heading">
             <PhWarningCircle :size="17" />
-            <strong>HOMST {{ held.version }} was held after a failed install.</strong>
+            <strong>HOMST {{ held.version }} was rolled back.</strong>
           </div>
-          <p class="card-desc">{{ held.reason }}</p>
-          <p class="card-desc">Automatic updates will resume with a newer stable release, or you can retry explicitly below.</p>
+          <p class="card-desc">It is skipped until a newer release or an explicit retry.</p>
         </div>
 
         <div class="update-actions">
@@ -424,7 +416,7 @@ onUnmounted(() => {
           <div class="auto-row">
             <div>
               <p class="row-title">Automatic updates</p>
-              <p class="card-desc">Install official stable releases during the maintenance window.</p>
+              <p class="card-desc">Install stable releases automatically in the household-time window.</p>
             </div>
             <UiToggle
               :model-value="auto.enabled"
@@ -447,7 +439,6 @@ onUnmounted(() => {
             </label>
           </div>
           <p v-if="autoMessage" class="card-desc auto-message">{{ autoMessage }}</p>
-          <p class="card-desc auto-message">Times use the household timezone.</p>
         </div>
       </template>
 
@@ -459,10 +450,10 @@ onUnmounted(() => {
             HOMST {{ pendingRelease.version }}?
           </p>
           <p class="card-desc">
-            HOMST will restart. Open dashboards reconnect automatically; your data stays on disk.
+            HOMST will restart and reconnect automatically.
           </p>
           <p v-if="pendingRelease.major" class="card-desc major-warning">
-            This is a major version update. Review the release notes and back up your data first.
+            Major update — review the release notes and back up first.
           </p>
         </div>
         <div class="confirm-actions">
@@ -531,16 +522,21 @@ onUnmounted(() => {
   margin-top: var(--space-1);
 }
 
+.card-desc {
+  font-size: var(--text-label-size);
+  color: var(--color-textMuted);
+  margin-top: var(--space-1);
+}
+
 .channel-badge {
-  font-size: var(--text-micro-size);
+  font-size: var(--text-label-size);
   font-weight: var(--font-weight-medium);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 3px var(--space-2);
+  padding: 2px var(--space-2);
   border-radius: var(--radius-full);
   background: var(--color-accent-lighter);
   color: var(--color-primary);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .channel-badge--nightly { background: var(--color-bgSubtle); color: var(--color-textMuted); }
