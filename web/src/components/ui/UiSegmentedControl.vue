@@ -14,32 +14,36 @@ const settings = useSettings()
 const groupEl = ref<HTMLElement | null>(null)
 const indicatorEl = ref<HTMLElement | null>(null)
 
-function positionIndicator(value: T) {
-  if (!groupEl.value || !indicatorEl.value) return
+function getIndicatorMetrics(value: T) {
+  if (!groupEl.value) return null
   const activeBtn = groupEl.value.querySelector(`[data-value="${value}"]`) as HTMLElement | null
-  if (!activeBtn) return
+  if (!activeBtn) return null
 
-  const btnRect = activeBtn.getBoundingClientRect()
-  const groupRect = groupEl.value.getBoundingClientRect()
-  indicatorEl.value.style.transform = `translateX(${btnRect.left - groupRect.left}px)`
-  indicatorEl.value.style.width = `${btnRect.width}px`
+  // offsetLeft/offsetWidth are layout metrics: they stay stable while an
+  // ancestor (e.g. the panel enter transition) is scaled, unlike
+  // getBoundingClientRect. offsetLeft is also relative to the group's padding
+  // box — the same origin the absolutely-positioned indicator uses.
+  return { left: activeBtn.offsetLeft, width: activeBtn.offsetWidth }
+}
+
+function positionIndicator(value: T) {
+  const metrics = getIndicatorMetrics(value)
+  if (!metrics || !indicatorEl.value) return
+
+  indicatorEl.value.style.transform = `translateX(${metrics.left}px)`
+  indicatorEl.value.style.width = `${metrics.width}px`
   indicatorEl.value.style.opacity = "1"
 }
 
 function animateIndicator(value: T) {
-  if (!groupEl.value || !indicatorEl.value) return
-  const activeBtn = groupEl.value.querySelector(`[data-value="${value}"]`) as HTMLElement | null
-  if (!activeBtn) return
+  const metrics = getIndicatorMetrics(value)
+  if (!metrics || !indicatorEl.value) return
 
-  const btnRect = activeBtn.getBoundingClientRect()
-  const groupRect = groupEl.value.getBoundingClientRect()
-  const left = btnRect.left - groupRect.left
-  const width = btnRect.width
-
-  // Apply width instantly; only translate is animated to avoid layout thrashing
-  indicatorEl.value.style.width = `${width}px`
+  // Apply width instantly; only translate is animated to avoid layout thrashing.
+  indicatorEl.value.style.width = `${metrics.width}px`
+  indicatorEl.value.style.opacity = "1"
   animate(indicatorEl.value, {
-    translateX: [parseFloat(indicatorEl.value.style.transform?.match(/-?\d+/)?.[0] ?? String(left)) ?? left, left],
+    translateX: metrics.left,
     ease: springs.toggle,
   })
 }
@@ -91,6 +95,7 @@ function select(value: T) {
   position: absolute;
   top: 0.15em;
   bottom: 0.15em;
+  left: 0;
   border-radius: var(--radius-full);
   background: var(--color-bgElevated);
   box-shadow: 0 1px 0 0 var(--shadow-lip), 0 2px 8px -2px var(--shadow-drop);

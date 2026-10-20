@@ -134,6 +134,28 @@ const transformProps = new Set([
   'skewX', 'skewY',
 ])
 
+// Anime.js treats bare numbers as px (translate) or deg (rotate/skew), but CSS
+// needs an explicit unit. Without these, a numeric transform such as
+// translateX(109.14) is rejected by the browser and the element never moves.
+const transformUnits: Record<string, string> = {
+  translateX: 'px', translateY: 'px', translateZ: 'px',
+  rotate: 'deg', rotateX: 'deg', rotateY: 'deg', rotateZ: 'deg',
+  skewX: 'deg', skewY: 'deg',
+}
+
+function formatTransformValue(key: string, value: unknown): string {
+  const unit = transformUnits[key]
+  if (unit) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return `${value}${unit}`
+    }
+    if (typeof value === 'string' && /^-?(?:\d+\.?\d*|\.\d+)$/.test(value.trim())) {
+      return `${value.trim()}${unit}`
+    }
+  }
+  return String(value)
+}
+
 const reservedProps = new Set([
   'duration', 'delay', 'ease', 'onComplete', 'onBegin',
   'onUpdate', 'onLoop', 'onPause', 'autoplay', 'loop',
@@ -169,7 +191,7 @@ function applyFinalState(target: unknown, params: any): void {
     const finalValue = getFinalValue(params[key])
     if (finalValue === undefined || finalValue === null) continue
     if (transformProps.has(key)) {
-      transforms.push(`${key}(${finalValue})`)
+      transforms.push(`${key}(${formatTransformValue(key, finalValue)})`)
     } else {
       otherStyles[key] = String(finalValue)
     }

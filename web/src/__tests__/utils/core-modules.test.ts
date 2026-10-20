@@ -220,7 +220,9 @@ describe("lib/motion", () => {
     let completed = false
     const stub = animate([el1, el2], {
       opacity: [0, 1],
-      translateX: [10, "20px"],
+      translateX: [10, 20],
+      translateY: "-5px",
+      rotate: 45,
       scale: 2,
       duration: 100,
       undefProp: undefined,
@@ -231,6 +233,8 @@ describe("lib/motion", () => {
 
     expect(el1.style.opacity).toBe("1")
     expect(el1.style.transform).toContain("translateX(20px)")
+    expect(el1.style.transform).toContain("translateY(-5px)")
+    expect(el1.style.transform).toContain("rotate(45deg)")
     expect(el1.style.transform).toContain("scale(2)")
 
     // Selector & NodeList & single Element & null targets
