@@ -1,0 +1,107 @@
+name: homst-dev
+
+services:
+  # ── PostgreSQL (dev) ──
+  postgres-dev:
+    image: postgres:16-alpine
+    container_name: postgres-dev
+    environment:
+      POSTGRES_DB: homst
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d homst"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (dev) ──
+  redis-dev:
+    image: redis:7-alpine
+    container_name: redis-dev
+    ports:
+      - "6379:6379"
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+
+  # ── nginx reverse proxy (HTTPS on 8999) ──
+  nginx-dev:
+    image: nginx:alpine
+    container_name: nginx-dev
+    ports:
+      - "8999:8443"
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/ssl/homst:ro
+    depends_on:
+      redis-dev:
+        condition: service_started
+      web-dev:
+        condition: service_started
+
+  # ── Vue 3 Dev Server ──
+  web-dev:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: web-dev
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_PROXY_TARGET=http://api-dev:8000
+
+  # ── FastAPI (dev) ──
+  api-dev:
+    restart: unless-stopped
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: api-dev
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    volumes:
+      - ./api:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:dev@postgres-dev:5432/homst
+      - REDIS_URL=redis://redis-dev:6379
+      - DEBUG=true
+      - CORS_ALLOW_ALL=true
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
+    depends_on:
+      nginx-dev:
+        condition: service_started
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_started
+
+  # ── ARQ Worker (dev) ──
+  worker-dev:
+    restart: unless-stopped
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: worker-dev
+    command: python -m arq app.workers.settings.WorkerSettings
+    volumes:
+      - ./api:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:dev@postgres-dev:5432/homst
+      - REDIS_URL=redis://redis-dev:6379
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_started
+
+volumes:
+  pg_data_dev:

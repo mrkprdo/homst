@@ -1,0 +1,143 @@
+# Manual release: Actions → Release → Run workflow.
+#
+# Pick the branch to release (usually `dev`) and enter a version. The
+# workflow runs the test suite, builds + pushes the versioned image to GHCR,
+# tags the commit `v<version>`, and opens the GitHub Release with the compose
+# file and env template attached. Prereleases (0.2.0-rc.1) are marked as
+# such and don't move `:latest`.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.2.0 (leading v optional)"
+        required: true
+        type: string
+      latest:
+        description: "Move the :latest tag"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+      tags: ${{ steps.resolve.outputs.tags }}
+    steps:
+      - name: Validate input & compute tags
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          MOVE_LATEST: ${{ inputs.latest }}
+        run: |
+          set -eu
+          v="${INPUT_VERSION#v}"
+          if ! printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+            echo "::error::version must look like 0.2.0 or 0.2.0-rc.1 (got '${INPUT_VERSION}')"
+            exit 1
+          fi
+
+          major_minor="$(printf '%s' "$v" | cut -d. -f1,2)"
+          prerelease=false
+          case "$v" in *-*) prerelease=true ;; esac
+
+          latest=false
+          if [ "$prerelease" = false ] && [ "$MOVE_LATEST" = true ]; then latest=true; fi
+
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags<<EOF"
+            echo "type=raw,value=$v"
+            echo "type=raw,value=$major_minor"
+            [ "$latest" = true ] && echo "type=raw,value=latest"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Releasing $v — tags: $v, $major_minor$([ "$latest" = true ] && printf ', latest')"
+
+  checks:
+    name: Checks
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip_image: true
+
+  image:
+    name: Build & push release image
+    needs: [version, checks]
+    uses: ./.github/workflows/publish.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      tags: ${{ needs.version.outputs.tags }}
+
+  release:
+    name: GitHub Release
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Stage env template asset
+        # GitHub renames assets that start with a dot ("default.env.example")
+        run: cp .env.example env.example
+
+      - name: Create release (and tag the commit)
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: ${{ needs.version.outputs.prerelease }}
+          files: |
+            docker-compose.prod.yml
+            env.example
+          body: |
+            ## Container image
+
+            ```bash
+            docker pull ${{ needs.image.outputs.image }}:${{ needs.version.outputs.version }}
+            ```
+
+            | | |
+            |---|---|
+            | Image | `${{ needs.image.outputs.image }}` |
+            | Version | `${{ needs.version.outputs.version }}` |
+            | Digest | `${{ needs.image.outputs.digest }}` |
+            | Platforms | `linux/amd64`, `linux/arm64` |
+
+            ### Run it
+
+            The image bundles nginx, the API, the worker, and Redis; Postgres
+            runs as a sidecar. Grab this release's compose file and start it —
+            the database password and TLS certificates are generated on first
+            boot and reused after:
+
+            ```bash
+            mkdir homst && cd homst
+            curl -fLO https://github.com/${{ github.repository }}/releases/download/v${{ needs.version.outputs.version }}/docker-compose.prod.yml
+            docker compose -f docker-compose.prod.yml up -d
+            ```
+
+            > The repository and the GHCR container package must be public so
+            > the release links, `docker pull`, and the in-app updater work
+            > anonymously.
+
+            Trust `https://<host>:8443/ca.pem` on each device once (single
+            install via the dashboard's settings panel). The attached
+            `env.example` is the full config template — copy it to `.env.prod`
+            only when you want to override defaults (database password,
+            external Postgres/Redis, TLS hostnames, CORS, Google Calendar,
+            VAPID keys).

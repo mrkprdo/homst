@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Packaged images (make image-save)
+homst-image-*.tar.gz
+
+# Generated design tokens (make tokens)
+web/public/tokens.css
+web/public/shadows.css
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ruff_cache/
+
+# Environment
+.env
+.env.*
+.env.local
+.env.prod.local
+!.env.example
+!.env.dev
+
+# Claude
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+pg_data/
+
+# Uploaded photos (runtime data)
+api/uploads/
+
+# SSL certs (generated locally)
+nginx/ssl/*.pem
+nginx/ssl/*.srl
+nginx/ssl/*.csr
+
+# Test
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+web/playwright-report/
+web/test-results/
+
+# Prod migration scratch (photo backups/staging — not for the repo)
+prod-backup/
+prod-staging/

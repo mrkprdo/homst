@@ -1,0 +1,85 @@
+#!/bin/sh
+# Generate (or re-issue) the local TLS certificate chain served by nginx:
+#
+#   ca.pem / ca-key.pem — root CA; install ca.pem on each device once
+#   cert.pem / key.pem  — server certificate for this host
+#
+# A browser only treats the origin as "secure" (needed for PWA install and
+# Web Push) when it trusts the certificate, so the server cert is signed by
+# this local CA instead of being a bare self-signed cert (which browsers
+# reject outright when it has no subjectAltName).
+#
+# Usage:
+#   homst-cert [host-or-ip ...]           extra SANs on the command line
+#   HOMST_TLS_HOSTS=192.168.1.50,homst.local   ...or via the environment
+#
+# The CA is reused when it already exists, so re-issuing the server cert for
+# a new address does not force every device to re-trust the CA. nginx is
+# reloaded when it is already running.
+set -eu
+
+DIR=/etc/ssl/homst
+mkdir -p "$DIR"
+
+HOSTS="${*:-${HOMST_TLS_HOSTS:-}}"
+
+san="DNS:localhost,IP:127.0.0.1"
+for host in $(printf '%s' "$HOSTS" | tr ',' ' '); do
+    [ -n "$host" ] || continue
+    case "$host" in
+        *[!0-9.]*) case "$host" in
+                       *:*) entry="IP:$host" ;;   # IPv6 literal
+                       *)   entry="DNS:$host" ;;
+                   esac ;;
+        *) entry="IP:$host" ;;
+    esac
+    case ",$san," in
+        *",$entry,"*) ;;   # already in the list
+        *) san="$san,$entry" ;;
+    esac
+done
+
+# ── Root CA (kept stable across re-issues) ───────────────────────────
+if [ -s "$DIR/ca.pem" ] && [ -s "$DIR/ca-key.pem" ]; then
+    NEW_CA=0
+else
+    NEW_CA=1
+    echo "[homst-cert] creating local root CA"
+    openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+        -keyout "$DIR/ca-key.pem" -out "$DIR/ca.pem" \
+        -subj "/CN=HOMST Local CA/O=HOMST" \
+        -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+        -addext "keyUsage=critical,digitalSignature,keyCertSign" \
+        -addext "subjectKeyIdentifier=hash"
+fi
+
+# ── Server key + CSR ─────────────────────────────────────────────────
+openssl req -newkey rsa:2048 -nodes -sha256 \
+    -keyout "$DIR/key.pem" -out "$DIR/cert.csr" -subj "/CN=homst"
+
+# ── Sign the server certificate with the CA ──────────────────────────
+cat > /tmp/homst-leaf.ext <<EOF
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=$san
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid
+EOF
+
+openssl x509 -req -sha256 -days 825 \
+    -in "$DIR/cert.csr" -CA "$DIR/ca.pem" -CAkey "$DIR/ca-key.pem" \
+    -CAcreateserial -extfile /tmp/homst-leaf.ext -out "$DIR/cert.pem"
+
+rm -f "$DIR/cert.csr" "$DIR/ca.srl" /tmp/homst-leaf.ext
+chmod 600 "$DIR/key.pem" "$DIR/ca-key.pem"
+chmod 644 "$DIR/cert.pem" "$DIR/ca.pem"
+
+echo "[homst-cert] certificates written to $DIR"
+echo "[homst-cert] subject alternative names: $san"
+if [ "$NEW_CA" = "1" ]; then
+    echo "[homst-cert] trust ca.pem on each device — download it at https://<host>:8443/ca.pem"
+fi
+
+# Pick the new server certificate up if nginx is already serving
+nginx -s reload 2>/dev/null || true

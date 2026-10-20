@@ -1,0 +1,41 @@
+{
+  "name": "@homst/web",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "vue-tsc --noEmit",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .vue,.ts",
+    "format": "prettier --write src/",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:dev": "playwright test --ui",
+    "e2e:report": "playwright show-report"
+  },
+  "dependencies": {
+    "@phosphor-icons/vue": "^2.2.1",
+    "animejs": "^4.5.0",
+    "vue": "^3.5.44",
+    "vue-router": "^5.4.0"
+  },
+  "devDependencies": {
+    "@fontsource/figtree": "^5.3.0",
+    "@fontsource/jost": "^5.3.0",
+    "@playwright/test": "^1.64.1",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@vitest/coverage-v8": "^5.0.5",
+    "@vue/test-utils": "^2.5.1",
+    "jsdom": "^30.1.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.4",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.5",
+    "vue-tsc": "^3.3.13"
+  }
+}

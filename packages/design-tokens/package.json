@@ -1,0 +1,11 @@
+{
+  "name": "@homst/design-tokens",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bun build.ts"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}

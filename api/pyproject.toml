@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "homst-api"
+version = "0.1.0"
+description = "HOMST backend API"
+license = {text = "AGPL-3.0-only"}
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.25.0",
+    "gunicorn>=21.2.0",
+    "sqlalchemy[asyncio]>=2.0.25",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "packaging>=24.0",
+    "arq>=0.26.0",
+    "redis>=5.0.0",
+    "httpx>=0.26.0",
+    "pillow>=10.0.0",
+    "python-multipart>=0.0.6",
+    "sse-starlette>=1.8.0",
+    "zeroconf>=0.132.0",
+    "tzdata>=2024.1",
+    "pywebpush>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.26.0",
+    "ruff>=0.1.0",
+    "aiosqlite>=0.20.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+# SQLAlchemy's asyncio extension drives the DBAPI through greenlets; without
+# greenlet-aware tracing, coverage stops recording once an endpoint hits the
+# database, so router bodies look untested even when they run.
+concurrency = ["greenlet", "thread"]
+source = ["app"]

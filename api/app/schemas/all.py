@@ -1,0 +1,252 @@
+from datetime import date, datetime
+from typing import Literal, Optional
+from uuid import UUID
+
+from pydantic import BaseModel
+
+
+# ── Members ──
+class MemberCreate(BaseModel):
+    name: str
+    avatar_url: Optional[str] = None
+    color: Optional[str] = None
+    role: Literal["member", "admin"] = "member"
+
+
+class MemberUpdate(BaseModel):
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    color: Optional[str] = None
+    role: Optional[Literal["member", "admin"]] = None
+
+
+class MemberResponse(BaseModel):
+    id: UUID
+    household_id: UUID
+    name: str
+    avatar_url: Optional[str] = None
+    color: Optional[str] = None
+    role: str
+    joined_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Household ──
+class HouseholdResponse(BaseModel):
+    id: UUID
+    name: str
+    settings: dict = {}
+
+    model_config = {"from_attributes": True}
+
+
+class HouseholdSettingsUpdate(BaseModel):
+    name: Optional[str] = None
+    settings: Optional[dict] = None
+
+
+# ── Calendar ──
+class CalendarCreate(BaseModel):
+    name: str
+    color: str = "sage"
+    source: Literal["internal", "google", "apple", "ical"] = "internal"
+    feed_url: Optional[str] = None
+
+
+class CalendarUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    is_visible: Optional[bool] = None
+
+
+class CalendarResponse(BaseModel):
+    id: UUID
+    household_id: UUID
+    name: str
+    color: str
+    source: str
+    feed_url: Optional[str] = None
+    is_visible: bool
+    created_by: Optional[UUID] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SubscribeCalendarRequest(BaseModel):
+    feed_url: str
+    name: Optional[str] = None
+    color: str = "sage"
+
+
+class EventCreate(BaseModel):
+    calendar_id: UUID
+    title: str
+    description: str = ""
+    start_at: datetime
+    end_at: Optional[datetime] = None
+    all_day: bool = False
+    recurrence: Optional[dict] = None
+    reminder_minutes: Optional[int] = None
+    assignee_id: Optional[UUID] = None
+
+
+class EventUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    all_day: Optional[bool] = None
+    recurrence: Optional[dict] = None
+    reminder_minutes: Optional[int] = None
+    assignee_id: Optional[UUID] = None
+
+
+class EventResponse(BaseModel):
+    id: UUID
+    calendar_id: UUID
+    title: str
+    description: str = ""
+    start_at: datetime
+    end_at: Optional[datetime] = None
+    all_day: bool = False
+    recurrence: Optional[dict] = None
+    reminder_minutes: Optional[int] = None
+    source: str
+    external_uid: Optional[str] = None
+    assignee_id: Optional[UUID] = None
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Tasks ──
+class TaskListCreate(BaseModel):
+    name: str
+    color: str = "sage"
+    position: int = 0
+
+
+class TaskListUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    position: Optional[int] = None
+
+
+class TaskListResponse(BaseModel):
+    id: UUID
+    household_id: UUID
+    name: str
+    color: str
+    position: int
+
+    model_config = {"from_attributes": True}
+
+
+class TaskCreate(BaseModel):
+    list_id: UUID
+    title: str
+    description: str = ""
+    assignee_id: Optional[UUID] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    priority: Literal["low", "medium", "high"] = "medium"
+    position: int = 0
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    assignee_id: Optional[UUID] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    status: Optional[Literal["todo", "doing", "done"]] = None
+    priority: Optional[Literal["low", "medium", "high"]] = None
+    position: Optional[int] = None
+
+
+class TaskMove(BaseModel):
+    list_id: UUID
+    position: int
+
+
+# ── Photos ──
+class PhotoUpdate(BaseModel):
+    selected: bool
+
+
+class PhotoResponse(BaseModel):
+    id: str
+    url: str
+    selected: bool
+    created_at: datetime
+
+
+# ── Holidays ──
+class HolidaySyncRequest(BaseModel):
+    country_code: str
+    province: Optional[str] = None
+
+
+class HolidayResponse(BaseModel):
+    id: UUID
+    household_id: UUID
+    date: date
+    name: str
+    local_name: Optional[str] = None
+    country_code: str
+    province: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TaskResponse(BaseModel):
+    id: UUID
+    list_id: UUID
+    title: str
+    description: str = ""
+    assignee_id: Optional[UUID] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    status: str
+    priority: str
+    position: int
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Notifications ──
+class NotificationTestRequest(BaseModel):
+    """Send a test reminder through the HUD / Web Push channels."""
+
+    channels: Optional[list[Literal["hud", "push"]]] = None
+
+
+class NotificationTestResponse(BaseModel):
+    results: dict[str, str]
+
+
+# ── Web Push ──
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscribeRequest(BaseModel):
+    endpoint: str
+    keys: PushSubscriptionKeys
+    user_agent: Optional[str] = None
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+
+class VapidKeyResponse(BaseModel):
+    key: str

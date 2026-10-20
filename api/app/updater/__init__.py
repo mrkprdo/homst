@@ -1,0 +1,1 @@
+"""HOMST updater sidecar package."""

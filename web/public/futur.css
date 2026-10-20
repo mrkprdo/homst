@@ -1,0 +1,452 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   HOMST "Futur" theme layer
+   Applied by adding the `futur` class to <html>. It paints the app as flat cel
+   color: warm paper, ink contours, hard offset shadows, saturated tertiary
+   fields, and a geometric display face. The default theme is untouched.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Light — Delivery Day ──────────────────────────────────────────────────── */
+.futur {
+  --color-ink: #15171c;
+  --color-paper: #f3edd6;
+  --color-paperBright: #fffdf4;
+  --color-paperDeep: #e4dbbe;
+
+  --font-display: "Jost", "Futura", "Century Gothic", sans-serif;
+
+  --color-bgBase: #f3edd6;
+  --color-bgSurface: #fffdf4;
+  --color-bgElevated: #fffdf4;
+  --color-bgSubtle: #e4dbbe;
+  --color-textPrimary: #15171c;
+  --color-textSecondary: #45493f;
+  --color-textMuted: #626757;
+  --color-textInverse: #fffdf4;
+  --color-border: #c8bfa3;
+  --color-borderStrong: #8c8367;
+
+  --color-primary: var(--color-accent-darker, #16756b);
+  --color-primaryLight: var(--color-accent-light, #8ae3c6);
+  --color-primaryDark: var(--color-accent-dark, #0f5a52);
+  --color-action: var(--color-accent-base, #8ae3c6);
+  --color-actionHover: var(--color-accent-light, #b5f3df);
+  --color-on-accent: #15171c;
+
+  --color-success: #5f6e2a;
+  --color-successFill: #7b8a36;
+  --color-warning: #8a6206;
+  --color-warningFill: #e0a21a;
+  --color-danger: #b23b30;
+  --color-dangerFill: #b23b30;
+  --color-dangerFillHover: #8e2a22;
+  --color-info: #33619f;
+  --color-infoFill: #67d5e0;
+
+  --shadow-shine: rgba(255, 255, 255, 0.6);
+  --shadow-inner: transparent;
+  --shadow-drop: transparent;
+  --shadow-lip: #15171c;
+  --shadow-accent-lip: var(--color-ink);
+  --shadow-accent-drop: transparent;
+  --shadow-accent-inner: transparent;
+  --clay-gradient-top: transparent;
+  --clay-gradient-bottom: transparent;
+}
+
+/* ── Dark — Deep Space ─────────────────────────────────────────────────────── */
+.futur.dark {
+  --color-ink: #05080e;
+  --color-paper: #f3edd6;
+
+  --color-bgBase: #0c1220;
+  --color-bgSurface: #141a26;
+  --color-bgElevated: #1c2432;
+  --color-bgSubtle: #090e18;
+  --color-textPrimary: #f3edd6;
+  --color-textSecondary: #c2c4b4;
+  --color-textMuted: #8b9184;
+  --color-textInverse: #15171c;
+  --color-border: #2b3442;
+  --color-borderStrong: #556273;
+
+  --color-primary: var(--color-accent-light, #b5f3df);
+  --color-primaryLight: var(--color-accent-lighter, #d6f8ec);
+  --color-primaryDark: var(--color-accent-base, #8ae3c6);
+  --color-action: var(--color-accent-base, #8ae3c6);
+  --color-actionHover: var(--color-accent-light, #b5f3df);
+
+  --color-success: #a7c46a;
+  --color-warning: #f2c64b;
+  --color-danger: #f08a78;
+  --color-dangerFill: #f08a78;
+  --color-dangerFillHover: #e07a68;
+  --color-info: #67d5e0;
+
+  --shadow-shine: rgba(255, 255, 255, 0.12);
+  --shadow-lip: #05080e;
+  --shadow-accent-lip: var(--color-ink);
+}
+
+/* ── Warm light — Mars Campus ─────────────────────────────────────────────── */
+.futur.warm {
+  --color-ink: #2a2114;
+  --color-paper: #f2e4c4;
+  --color-paperBright: #fff8e8;
+  --color-paperDeep: #e8d6b0;
+
+  --color-bgBase: #f2e4c4;
+  --color-bgSurface: #fbf2dd;
+  --color-bgElevated: #fff8e8;
+  --color-bgSubtle: #e8d6b0;
+  --color-textPrimary: #2a2114;
+  --color-textSecondary: #5a4d36;
+  --color-textMuted: #6d5f47;
+  --color-textInverse: #fff8e8;
+  --color-border: #d0be97;
+  --color-borderStrong: #94794d;
+
+  --color-primary: var(--color-accent-darker, #16756b);
+  --color-primaryLight: var(--color-accent-light, #8ae3c6);
+  --color-primaryDark: var(--color-accent-dark, #0f5a52);
+
+  --color-success: #5f6e2a;
+  --color-warning: #8a6206;
+  --color-danger: #a83a2e;
+  --color-info: #33619f;
+
+  --shadow-lip: #2a2114;
+  --shadow-accent-lip: var(--color-ink);
+}
+
+/* ── Warm dark — Mars Night ───────────────────────────────────────────────── */
+.futur.dark.warm {
+  --color-ink: #05080e;
+  --color-bgBase: #1b1208;
+  --color-bgSurface: #24180c;
+  --color-bgElevated: #2e2012;
+  --color-bgSubtle: #150e06;
+  --color-textPrimary: #f6e8d3;
+  --color-textSecondary: #cbb192;
+  --color-textMuted: #927a5c;
+  --color-textInverse: #1b1208;
+  --color-border: #4d3b26;
+  --color-borderStrong: #94744a;
+
+  --color-primary: var(--color-accent-light, #b5f3df);
+  --color-primaryLight: var(--color-accent-lighter, #d6f8ec);
+  --color-primaryDark: var(--color-accent-base, #8ae3c6);
+
+  --color-success: #a7c46a;
+  --color-warning: #f2c64b;
+  --color-danger: #f08a78;
+  --color-info: #67d5e0;
+}
+
+/* ── Palette family remap ─────────────────────────────────────────────────────
+   Components that still reference the five original families adopt the Futur
+   palette without needing per-component edits. Member colours are stored as
+   inline hex, so they are unaffected. */
+.futur {
+  --color-peach-base: #e0a21a;  --color-peach-light: #f2c64b;
+  --color-peach-lighter: #fce3a0; --color-peach-lightest: #fff7da;
+  --color-peach-dark: #b27a0b;  --color-peach-darker: #8a6206;  --color-peach-darkest: #5e3d03;
+
+  --color-sage-base: #8ae3c6;   --color-sage-light: #b5f3df;
+  --color-sage-lighter: #d6f8ec; --color-sage-lightest: #edfcf7;
+  --color-sage-dark: #4fb99c;   --color-sage-darker: #16756b;   --color-sage-darkest: #0b4a43;
+
+  --color-mauve-base: #6b5aa0;  --color-mauve-light: #a99bd2;
+  --color-mauve-lighter: #cfc7e7; --color-mauve-lightest: #f2effa;
+  --color-mauve-dark: #52447f;  --color-mauve-darker: #3b305e;  --color-mauve-darkest: #241c3d;
+
+  --color-plum-base: #b23b30;   --color-plum-light: #d96c5b;
+  --color-plum-lighter: #f0b3a9; --color-plum-lightest: #fbedeb;
+  --color-plum-dark: #8e2a22;   --color-plum-darker: #6a1d17;   --color-plum-darkest: #42120e;
+
+  --color-sky-base: #67d5e0;    --color-sky-light: #9ae7ef;
+  --color-sky-lighter: #c9f5f8; --color-sky-lightest: #edfcfd;
+  --color-sky-dark: #2a9fac;    --color-sky-darker: #17666f;    --color-sky-darkest: #124f56;
+}
+
+.futur.dark {
+  --color-peach-base: #f2c64b;  --color-peach-light: #fce3a0;
+  --color-peach-lighter: #fff7da; --color-peach-lightest: #ffffff;
+  --color-peach-dark: #e0a21a;  --color-peach-darker: #b27a0b;  --color-peach-darkest: #8a6206;
+
+  --color-sage-base: #b5f3df;   --color-sage-light: #d6f8ec;
+  --color-sage-lighter: #edfcf7; --color-sage-lightest: #ffffff;
+  --color-sage-dark: #8ae3c6;   --color-sage-darker: #4fb99c;   --color-sage-darkest: #16756b;
+
+  --color-mauve-base: #a99bd2;  --color-mauve-light: #cfc7e7;
+  --color-mauve-lighter: #f2effa; --color-mauve-lightest: #ffffff;
+  --color-mauve-dark: #6b5aa0;  --color-mauve-darker: #52447f;  --color-mauve-darkest: #3b305e;
+
+  --color-plum-base: #d96c5b;   --color-plum-light: #f0b3a9;
+  --color-plum-lighter: #fbedeb; --color-plum-lightest: #ffffff;
+  --color-plum-dark: #b23b30;   --color-plum-darker: #8e2a22;   --color-plum-darkest: #6a1d17;
+
+  --color-sky-base: #9ae7ef;    --color-sky-light: #c9f5f8;
+  --color-sky-lighter: #edfcfd; --color-sky-lightest: #ffffff;
+  --color-sky-dark: #67d5e0;    --color-sky-darker: #2a9fac;    --color-sky-darkest: #17666f;
+}
+
+/* ── Flat cel surfaces ────────────────────────────────────────────────────── */
+.futur .clay-surface { background: none !important; }
+
+.futur [class*="shadow-clay-sm"],
+.futur [class*="shadow-clay-md"],
+.futur [class*="shadow-clay-lg"] {
+  box-shadow: 0 3px 0 0 var(--color-ink) !important;
+}
+.futur [class*="shadow-clay-pressed"] {
+  box-shadow: none !important;
+  transform: translateY(3px);
+}
+.futur [class*="shadow-clay-inset"] {
+  box-shadow: inset 0 2px 0 0 var(--color-paperDeep) !important;
+}
+
+/* ── Typography ───────────────────────────────────────────────────────────── */
+.futur h1,
+.futur h2,
+.futur h3,
+.futur .page-header__title,
+.futur .card-title,
+.futur .row-title,
+.futur .theme-label,
+.futur .preset-label,
+.futur .block-title,
+.futur .datetime-house,
+.futur .datetime-time,
+.futur .weather-temp {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ── Cards and widgets ────────────────────────────────────────────────────── */
+.futur .ui-card,
+.futur .settings-card,
+.futur .font-preview {
+  background: var(--color-bgSurface) !important;
+  border: 2px solid var(--color-ink) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 3px 0 0 var(--color-ink) !important;
+}
+
+.futur .ui-card--accent { border-color: var(--color-ink) !important; }
+.futur .grid-cell-bg {
+  background: transparent;
+  border: 1.5px dashed var(--color-ink);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.futur .ui-btn {
+  border: 2px solid var(--color-ink) !important;
+  box-shadow: 0 3px 0 0 var(--color-ink) !important;
+}
+.futur .ui-btn__inner {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.futur .ui-btn.ui-btn--primary {
+  background: var(--color-action) !important;
+  color: var(--color-on-accent) !important;
+}
+.futur .ui-btn.ui-btn--primary:hover { background: var(--color-actionHover) !important; }
+.futur .ui-btn.ui-btn--secondary {
+  background: var(--color-bgSurface) !important;
+  color: var(--color-textPrimary) !important;
+}
+.futur .ui-btn.ui-btn--secondary:hover { background: var(--color-bgSubtle) !important; }
+.futur .ui-btn.ui-btn--destructive {
+  background: var(--color-dangerFill) !important;
+  color: var(--color-textInverse) !important;
+}
+.futur .ui-btn.ui-btn--destructive:hover { background: var(--color-dangerFillHover) !important; }
+.futur .ui-btn.ui-btn--ghost {
+  background: transparent !important;
+  color: var(--color-textPrimary) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.futur .ui-btn.ui-btn--ghost:hover {
+  background: var(--color-bgSubtle) !important;
+  border-color: var(--color-ink) !important;
+}
+.futur .ui-btn.ui-btn--link {
+  border: none !important;
+  box-shadow: none !important;
+  background: none !important;
+  color: var(--color-primary) !important;
+}
+.futur .ui-btn.ui-btn--link .ui-btn__inner {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.futur .ui-btn:active { box-shadow: none !important; }
+
+/* ── Inputs and selects ───────────────────────────────────────────────────── */
+.futur .ui-input,
+.futur .ui-select,
+.futur .ui-textarea {
+  background: var(--color-bgSurface) !important;
+  border: 2px solid var(--color-ink) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: none !important;
+}
+.futur .ui-input:focus,
+.futur .ui-select:focus,
+.futur .ui-textarea:focus {
+  border-color: var(--color-primary) !important;
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+
+/* ── Toggles and segmented controls ───────────────────────────────────────── */
+.futur .ui-toggle {
+  background: var(--color-bgSubtle) !important;
+  border: 2px solid var(--color-ink);
+  box-shadow: none !important;
+}
+.futur .ui-toggle.on { background: var(--color-action) !important; }
+.futur .ui-toggle__knob {
+  background: var(--color-bgSurface) !important;
+  box-shadow: 0 2px 0 0 var(--color-ink) !important;
+}
+
+.futur .segmented-control {
+  background: var(--color-bgSubtle) !important;
+  box-shadow: inset 0 0 0 2px var(--color-ink) !important;
+}
+.futur .segmented-indicator {
+  background: var(--color-action) !important;
+  box-shadow: 0 2px 0 0 var(--color-ink) !important;
+}
+.futur .segmented-btn {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.futur .segmented-btn.active { color: var(--color-on-accent) !important; }
+
+/* ── Navigation ───────────────────────────────────────────────────────────── */
+.futur .app-nav {
+  background: var(--color-bgSurface) !important;
+  border-right: 2px solid var(--color-ink);
+  box-shadow: none !important;
+}
+.futur .nav-item {
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-textMuted);
+}
+.futur .nav-item:hover {
+  background: var(--color-bgSubtle);
+  border-color: var(--color-border);
+  color: var(--color-textPrimary);
+}
+.futur .nav-item.active {
+  background: var(--color-action);
+  color: var(--color-on-accent);
+  border-color: var(--color-ink);
+  box-shadow: 0 2px 0 0 var(--color-ink);
+}
+.futur .nav-logo svg rect:first-child,
+.futur .nav-logo svg rect:nth-of-type(2) { fill: var(--color-action); }
+.futur .nav-logo svg path:first-of-type { fill: var(--color-ink); }
+
+/* ── Settings cards ───────────────────────────────────────────────────────── */
+.futur .theme-card,
+.futur .preset-card {
+  background: var(--color-bgSurface) !important;
+  border: 2px solid var(--color-ink) !important;
+  box-shadow: 0 2px 0 0 var(--color-ink) !important;
+}
+.futur .theme-card:hover,
+.futur .preset-card:hover { transform: translateY(-1px); }
+.futur .theme-card.active,
+.futur .preset-card.active {
+  background: color-mix(in srgb, var(--color-accent-base) 18%, var(--color-bgSurface)) !important;
+  border-color: var(--color-action) !important;
+  box-shadow: 0 2px 0 0 var(--color-ink) !important;
+}
+.futur .theme-card.active .theme-desc,
+.futur .preset-card.active .preset-desc {
+  color: var(--color-textSecondary) !important;
+}
+.futur .color-swatch {
+  border: 2px solid var(--color-ink) !important;
+  box-shadow: 0 2px 0 0 var(--color-ink) !important;
+}
+.futur .color-swatch.active {
+  outline: 3px solid var(--color-ink);
+  outline-offset: 2px;
+}
+.futur .swatch-check {
+  color: var(--color-on-accent) !important;
+  filter: none;
+}
+.futur .selected-badge,
+.futur .download-btn {
+  background: color-mix(in srgb, var(--color-accent-base) 18%, var(--color-bgSurface)) !important;
+  color: var(--color-primary) !important;
+  border: 1px solid var(--color-ink);
+}
+.futur .setting-row {
+  border-top-color: color-mix(in srgb, var(--color-ink) 18%, transparent) !important;
+}
+
+/* ── Avatars, tasks, calendar ─────────────────────────────────────────────── */
+.futur .ui-avatar {
+  box-shadow: 0 0 0 2px var(--color-ink), 0 2px 0 0 var(--color-ink) !important;
+}
+.futur .task-card {
+  border: 1px solid var(--color-ink);
+  box-shadow: 0 3px 0 0 var(--color-ink) !important;
+}
+.futur .task-card:hover:not(.task-card--done) {
+  box-shadow: 0 5px 0 0 var(--color-ink) !important;
+}
+.futur .day-banner.today {
+  background: var(--color-primary) !important;
+  color: var(--color-textInverse) !important;
+}
+.futur .day-cell {
+  border: 1px solid var(--color-ink);
+  box-shadow: 0 1px 0 0 var(--color-ink) !important;
+}
+.futur .week-event-block,
+.futur .day-event-block {
+  border: 1px solid color-mix(in srgb, var(--color-ink) 35%, transparent);
+  border-left-width: 3px;
+}
+
+/* ── Floating controls ────────────────────────────────────────────────────── */
+.futur .lock-toggle {
+  background: var(--color-bgSurface) !important;
+  border: 2px solid var(--color-ink);
+  color: var(--color-textPrimary);
+  box-shadow: 0 3px 0 0 var(--color-ink) !important;
+}
+.futur .lock-toggle--unlocked {
+  background: var(--color-action) !important;
+  color: var(--color-on-accent) !important;
+}
+.futur .ms-nav { border-top: 2px solid var(--color-ink) !important; }
+.futur .ms-tab.active {
+  background: var(--color-action) !important;
+  color: var(--color-on-accent) !important;
+  box-shadow: inset 0 0 0 2px var(--color-ink);
+}
+.futur .ms-fab {
+  background: var(--color-action) !important;
+  color: var(--color-on-accent) !important;
+  border: 2px solid var(--color-ink);
+  box-shadow: 0 3px 0 0 var(--color-ink) !important;
+}
+.futur .ms-fab:hover { background: var(--color-actionHover) !important; }

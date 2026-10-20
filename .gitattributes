@@ -1,0 +1,13 @@
+# Normalize line endings on commit
+* text=auto
+
+# Keep cross-platform scripts runnable
+*.sh  text eol=lf
+*.mjs text eol=lf
+*.bat text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary

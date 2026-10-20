@@ -1,0 +1,102 @@
+@import "@fontsource/figtree/index.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-family, "Figtree", sans-serif);
+  font-size: var(--text-body-size, 14px);
+  font-weight: var(--font-weight-thin, 300);
+  color: var(--color-textPrimary);
+  background-color: var(--color-bgBase);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+}
+
+/* Touch target minimum */
+button, a, [role="button"], .clickable {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+/* Theme transition — only fires during the 400ms after a theme toggle */
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition:
+    background-color var(--duration-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color var(--duration-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color var(--duration-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow var(--duration-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    fill var(--duration-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+}
+
+/* ── Low-power / Pi display mode ──
+   Applied by lib/motion.ts when running on a Pi or when reduced motion is
+   requested. Neutralizes paint-heavy CSS transitions without touching markup. */
+html.low-power *,
+html.low-power *::before,
+html.low-power *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* The forced 0.01ms duration above turns infinite animations into fast flickers
+   on low-power displays. Restore the intended durations for the ones that matter. */
+html.low-power .is-editing .widget {
+  animation-duration: 3.2s !important;
+}
+
+/* Spotify vinyl — slow, steady record spin */
+html.low-power .spotify-disc {
+  animation-duration: 20s !important;
+}
+
+
+/* ── Scrollbars — thin, rounded, follows light/dark tokens ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-borderStrong);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+/* ── Accent-tinted clay shadow (follows selected accent color) ── */
+.clay-shadow-accent {
+  box-shadow:
+    0 4px 0 0 var(--shadow-accent-lip),
+    0 14px 40px -6px var(--shadow-accent-drop),
+    inset 0 3px 8px var(--shadow-shine),
+    inset 0 -3px 8px var(--shadow-accent-inner);
+}
