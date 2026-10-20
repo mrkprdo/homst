@@ -123,8 +123,8 @@ prod-down:
 	$(PROD) down --remove-orphans
 
 # ── Release ──────────────────────────────────────────────
-# Multi-arch build + push to GHCR — the local equivalent of the Release
-# GitHub workflow (which runs on v* tags). Needs `docker login ghcr.io`.
+# Multi-arch build + push to GHCR — the local equivalent of the Build
+# GitHub workflow's release path. Needs `docker login ghcr.io`.
 release:
 	@if [ "$(VERSION)" = "dev" ]; then \
 		echo "usage: make release VERSION=1.2.3"; exit 1; \

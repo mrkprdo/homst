@@ -1,6 +1,5 @@
 # Reusable: build the app image for linux/amd64 + linux/arm64 and push it to
-# GHCR. Called by the Nightly and Release workflows so both publish the exact
-# same way. `tags` uses docker/metadata-action syntax.
+# GHCR. Called by the Build workflow. `tags` uses docker/metadata-action syntax.
 name: Publish image
 
 on:

@@ -1,0 +1,204 @@
+# One build workflow for both channels.
+#
+#   dev  → nightly images (:dev, :dev-<sha>)
+#   tag  → release images (:x.y.z, :x.y, and :latest for stable tags)
+#
+# Run it from Actions → Build. Leave the workflow branch selector on `dev`
+# and enter the branch/tag to build in the `ref` input. A release ref must be
+# a git tag such as `v0.2.0`. A branch named `0.2.0` is also accepted and will
+# have the `v0.2.0` tag created and pushed automatically.
+name: Build
+
+on:
+  schedule:
+    # Nightly dev build at 03:00 UTC (uses the default branch).
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or tag to build. Use dev for nightly; use v0.2.0 (or a 0.2.0 branch) for a release."
+        required: true
+        default: dev
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: build-${{ inputs.ref || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Resolve build
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.resolve.outputs.channel }}
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      tags: ${{ steps.resolve.outputs.tags }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || 'dev' }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve dev or release
+        id: resolve
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -eu
+          ref="${INPUT_REF:-dev}"
+          ref="${ref#refs/heads/}"
+          ref="${ref#refs/tags/}"
+
+          if [ "$ref" = "dev" ]; then
+            short_sha="$(git rev-parse --short HEAD)"
+            {
+              echo "channel=dev"
+              echo "version=dev"
+              echo "tag="
+              echo "ref=dev"
+              echo "prerelease=false"
+              echo "tags<<EOF"
+              echo "type=raw,value=dev"
+              echo "type=raw,value=dev-$short_sha"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "Building dev images from $short_sha"
+            exit 0
+          fi
+
+          tag=""
+          if git rev-parse -q --verify "refs/tags/$ref" >/dev/null 2>&1; then
+            tag="$ref"
+          else
+            candidate="${ref##*/}"
+            candidate="${candidate#v}"
+            if printf '%s' "$candidate" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+              tag="v$candidate"
+            else
+              tag="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
+            fi
+          fi
+
+          if [ -z "$tag" ]; then
+            echo "::error::No git tag found on '$ref'. Tag the commit first (e.g. git tag v0.2.0 && git push origin v0.2.0) or use a branch named like 0.2.0."
+            exit 1
+          fi
+
+          version="${tag#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+            echo "::error::Tag '$tag' is not a semantic version (expected v0.2.0 or v0.2.0-rc.1)."
+            exit 1
+          fi
+
+          head="$(git rev-parse HEAD)"
+          existing="$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)"
+          if [ -n "$existing" ]; then
+            if [ "$existing" != "$head" ]; then
+              echo "::error::Tag '$tag' already exists on a different commit. Bump the version or select the right ref."
+              exit 1
+            fi
+          else
+            git tag "$tag" "$head"
+            git push origin "refs/tags/$tag"
+          fi
+
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          major_minor="$(printf '%s' "$version" | cut -d. -f1,2)"
+
+          {
+            echo "channel=release"
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "ref=$tag"
+            echo "prerelease=$prerelease"
+            echo "tags<<EOF"
+            echo "type=raw,value=$version"
+            echo "type=raw,value=$major_minor"
+            if [ "$prerelease" = false ]; then
+              echo "type=raw,value=latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Building release $version from $tag"
+
+  checks:
+    name: Checks
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.version.outputs.ref }}
+      skip_image: true
+
+  image:
+    name: Build & push image
+    needs: [version, checks]
+    uses: ./.github/workflows/publish.yml
+    with:
+      ref: ${{ needs.version.outputs.ref }}
+      version: ${{ needs.version.outputs.version }}
+      tags: ${{ needs.version.outputs.tags }}
+
+  release:
+    name: GitHub Release
+    if: needs.version.outputs.channel == 'release'
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+
+      - name: Stage env template asset
+        # GitHub renames assets that start with a dot ("default.env.example")
+        run: cp .env.example env.example
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: ${{ needs.version.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
+          files: |
+            docker-compose.prod.yml
+            env.example
+          body: |
+            ## Container image
+
+            ```bash
+            docker pull ${{ needs.image.outputs.image }}:${{ needs.version.outputs.version }}
+            ```
+
+            | | |
+            |---|---|
+            | Image | `${{ needs.image.outputs.image }}` |
+            | Version | `${{ needs.version.outputs.version }}` |
+            | Digest | `${{ needs.image.outputs.digest }}` |
+            | Platforms | `linux/amd64`, `linux/arm64` |
+
+            ### In-app updates
+
+            This release is available to the in-app updater. HOMST pulls the
+            exact version tag and keeps the previous stable image for rollback.
+
+            ### Run it
+
+            ```bash
+            mkdir homst && cd homst
+            curl -fLO https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.tag }}/docker-compose.prod.yml
+            docker compose -f docker-compose.prod.yml up -d
+            ```
+
+            > The repository and the GHCR container package must be public so
+            > the release links, `docker pull`, and the in-app updater work
+            > anonymously.

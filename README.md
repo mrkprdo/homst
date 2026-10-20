@@ -211,14 +211,23 @@ To try the production image built from source: `make prod-build`.
 
 ## Releasing
 
-Releases are cut from the Actions tab:
+Everything goes through one **Build** workflow:
 
-1. **Actions → Release → Run workflow** — pick the branch to release (usually `dev`) and enter the version (`0.2.0`, leading `v` optional).
-2. The workflow runs the test suite, builds the image for `linux/amd64` and `linux/arm64`, pushes `:0.2.0`, `:0.2` and `:latest` to GHCR, tags the commit `v0.2.0`, and opens the GitHub Release with the compose file and env template attached.
+- **`dev`** → nightly images `:dev` and `:dev-<sha>`.
+- **tag** → release images `:x.y.z`, `:x.y`, and `:latest` for stable tags.
 
-Prerelease versions like `0.2.0-rc.1` are marked as such and don't move `:latest`.
+1. **Actions → Build → Run workflow.** Leave the workflow branch selector on `dev` and enter the branch or tag to build in the `ref` input.
+2. For a release, tag the commit first:
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+   Then run Build with `ref=v0.2.0`. A branch named `0.2.0` also works: if the tag does not exist, the workflow creates and pushes `v0.2.0` automatically.
+3. The workflow runs the test suite, builds for `linux/amd64` and `linux/arm64`, pushes the image tags, and creates or updates the GitHub Release for the tag with the compose file and env template attached.
 
-A nightly job builds the `dev` branch (~03:00 UTC) and publishes `:dev` + `:dev-<sha>` — the bleeding-edge image. Try it with `HOMST_VERSION=dev docker compose -f docker-compose.prod.yml up -d`.
+Prerelease tags like `v0.2.0-rc.1` are marked as prereleases and don't move `:latest`.
+
+The nightly schedule builds `dev` at 03:00 UTC and publishes `:dev` + `:dev-<sha>` — the bleeding-edge image. Try it with `HOMST_VERSION=dev docker compose -f docker-compose.prod.yml up -d`.
 
 The local equivalents (same Dockerfile):
 
