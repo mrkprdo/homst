@@ -516,7 +516,7 @@ class UpdateManager:
             if old_version and _is_older(version, old_version):
                 held_version = old_version
                 held_reason = (
-                    "Automatic updates are paused for the version you rolled back from."
+                    "Update prompts are paused for the version you rolled back from."
                 )
                 previous_held = before_state.get("held_version")
                 if previous_held:

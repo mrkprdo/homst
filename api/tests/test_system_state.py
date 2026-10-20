@@ -1,13 +1,9 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 from app.system_state import (
     ImageRef,
     is_major_update,
     is_managed,
     is_newer,
     merge_update_prefs,
-    update_window_open,
 )
 
 
@@ -57,26 +53,22 @@ def test_managed_requires_official_latest_or_managed_label():
 
 
 def test_update_prefs_validation():
-    prefs = merge_update_prefs(
-        {"enabled": False, "windowStart": "23:30", "windowEnd": "05:00", "allowMajor": True}
-    )
+    assert merge_update_prefs({}) == {
+        "enabled": True,
+        "checkIntervalMinutes": 5,
+    }
+    prefs = merge_update_prefs({"enabled": False, "checkIntervalMinutes": 15})
     assert prefs == {
         "enabled": False,
-        "windowStart": "23:30",
-        "windowEnd": "05:00",
-        "allowMajor": True,
+        "checkIntervalMinutes": 15,
     }
-    # Invalid times fall back to the defaults.
-    assert merge_update_prefs({"windowStart": "nope"})["windowStart"] == "03:00"
 
+    # Invalid intervals fall back to the 5-minute default.
+    assert merge_update_prefs({"checkIntervalMinutes": 0})["checkIntervalMinutes"] == 5
+    assert merge_update_prefs({"checkIntervalMinutes": "nope"})["checkIntervalMinutes"] == 5
+    assert merge_update_prefs({"checkIntervalMinutes": 9999})["checkIntervalMinutes"] == 5
 
-def test_update_window_day_and_overnight():
-    tz = ZoneInfo("UTC")
-    day = {"enabled": True, "windowStart": "03:00", "windowEnd": "05:00"}
-    assert update_window_open(day, "UTC", datetime(2026, 1, 1, 4, 0, tzinfo=tz))
-    assert not update_window_open(day, "UTC", datetime(2026, 1, 1, 6, 0, tzinfo=tz))
-
-    overnight = {"enabled": True, "windowStart": "23:00", "windowEnd": "05:00"}
-    assert update_window_open(overnight, "UTC", datetime(2026, 1, 1, 23, 30, tzinfo=tz))
-    assert update_window_open(overnight, "UTC", datetime(2026, 1, 2, 4, 0, tzinfo=tz))
-    assert not update_window_open(overnight, "UTC", datetime(2026, 1, 2, 12, 0, tzinfo=tz))
+    # Old maintenance-window keys are ignored.
+    assert merge_update_prefs(
+        {"windowStart": "23:30", "windowEnd": "05:00", "allowMajor": True}
+    ) == {"enabled": True, "checkIntervalMinutes": 5}

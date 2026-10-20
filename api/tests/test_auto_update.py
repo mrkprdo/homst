@@ -29,11 +29,6 @@ class FakeSession:
         return False
 
 
-class FakeRedis:
-    async def set(self, *args, **kwargs):
-        return True
-
-
 def _feed(version="0.3.0"):
     return ReleaseFeed(
         releases=[
@@ -62,7 +57,7 @@ def _patch_common(monkeypatch, household_settings, version="0.2.0"):
         lambda: FakeSession(_household(household_settings)),
     )
     monkeypatch.setattr(worker, "VERSION", version)
-    monkeypatch.setattr(worker, "update_window_open", lambda *args: True)
+    monkeypatch.setattr(worker, "_last_update_check", 0.0)
     monkeypatch.setattr(
         worker.updater_client,
         "get_target",
@@ -73,9 +68,19 @@ def _patch_common(monkeypatch, household_settings, version="0.2.0"):
         "get_status",
         lambda: _coro({"job": None, "held_version": None}),
     )
-    monkeypatch.setattr(worker, "fetch_releases", lambda: _coro(_feed()))
-    monkeypatch.setattr(worker, "get_redis", lambda: _coro(FakeRedis()))
-    monkeypatch.setattr(worker, "publish_event", lambda *a, **k: _coro(None))
+    monkeypatch.setattr(
+        worker, "fetch_releases", lambda **kwargs: _coro(_feed())
+    )
+
+
+def _capture_events(monkeypatch):
+    events = []
+
+    async def fake_publish(household_id, event_type, data):
+        events.append((household_id, event_type, data))
+
+    monkeypatch.setattr(worker, "publish_event", fake_publish)
+    return events
 
 
 def _coro(value):
@@ -86,35 +91,44 @@ def _coro(value):
 
 
 @pytest.mark.asyncio
-async def test_auto_update_installs_new_stable_release(monkeypatch):
+async def test_update_check_prompts_displays_without_installing(monkeypatch):
     calls = []
 
     async def fake_install(version, latest):
         calls.append((version, latest))
         return {"id": "job-1"}
 
-    _patch_common(
-        monkeypatch,
-        {"updates": {"enabled": True, "windowStart": "00:00", "windowEnd": "23:59"}},
-    )
+    _patch_common(monkeypatch, {"updates": {"enabled": True}})
+    events = _capture_events(monkeypatch)
     monkeypatch.setattr(worker.updater_client, "install", fake_install)
 
     await worker.check_auto_update(None)
-    assert calls == [("0.3.0", True)]
+
+    assert calls == []
+    assert len(events) == 1
+    _household_id, event_type, payload = events[0]
+    assert event_type == "system.update.available"
+    assert payload["version"] == "0.3.0"
+    assert payload["major"] is False
 
 
 @pytest.mark.asyncio
-async def test_auto_update_skips_disabled_and_held(monkeypatch):
-    calls = []
-
-    async def fake_install(version, latest):
-        calls.append(version)
-        return {"id": "job-1"}
-
+async def test_update_check_skips_disabled_dismissed_and_held(monkeypatch):
     _patch_common(monkeypatch, {"updates": {"enabled": False}})
-    monkeypatch.setattr(worker.updater_client, "install", fake_install)
+    events = _capture_events(monkeypatch)
     await worker.check_auto_update(None)
-    assert calls == []
+    assert events == []
+
+    _patch_common(
+        monkeypatch,
+        {
+            "updates": {"enabled": True},
+            "updateDismissedVersion": "0.3.0",
+        },
+    )
+    events = _capture_events(monkeypatch)
+    await worker.check_auto_update(None)
+    assert events == []
 
     _patch_common(monkeypatch, {"updates": {"enabled": True}})
     monkeypatch.setattr(
@@ -122,37 +136,70 @@ async def test_auto_update_skips_disabled_and_held(monkeypatch):
         "get_status",
         lambda: _coro({"job": None, "held_version": "0.3.0"}),
     )
+    events = _capture_events(monkeypatch)
     await worker.check_auto_update(None)
-    assert calls == []
+    assert events == []
 
 
 @pytest.mark.asyncio
-async def test_auto_update_skips_major_by_default(monkeypatch):
-    calls = []
-
-    async def fake_install(version, latest):
-        calls.append(version)
-        return {"id": "job-1"}
-
+async def test_update_check_prompts_for_major_with_warning_flag(monkeypatch):
     _patch_common(monkeypatch, {"updates": {"enabled": True}})
-    monkeypatch.setattr(worker, "fetch_releases", lambda: _coro(_feed("1.0.0")))
-    monkeypatch.setattr(worker.updater_client, "install", fake_install)
+    monkeypatch.setattr(
+        worker, "fetch_releases", lambda **kwargs: _coro(_feed("1.0.0"))
+    )
+    events = _capture_events(monkeypatch)
 
     await worker.check_auto_update(None)
-    assert calls == []
+
+    assert len(events) == 1
+    assert events[0][2]["version"] == "1.0.0"
+    assert events[0][2]["major"] is True
 
 
 @pytest.mark.asyncio
-async def test_auto_update_respects_window(monkeypatch):
-    calls = []
-
-    async def fake_install(version, latest):
-        calls.append(version)
-        return {"id": "job-1"}
-
+async def test_update_check_respects_interval_and_rechecks_later(monkeypatch):
     _patch_common(monkeypatch, {"updates": {"enabled": True}})
-    monkeypatch.setattr(worker, "update_window_open", lambda *args: False)
-    monkeypatch.setattr(worker.updater_client, "install", fake_install)
+    events = _capture_events(monkeypatch)
 
     await worker.check_auto_update(None)
-    assert calls == []
+    assert len(events) == 1
+
+    await worker.check_auto_update(None)
+    assert len(events) == 1
+
+    # Pretend the 5-minute window elapsed.
+    monkeypatch.setattr(worker, "_last_update_check", time.monotonic() - 301)
+    await worker.check_auto_update(None)
+    assert len(events) == 2
+
+
+@pytest.mark.asyncio
+async def test_update_check_skips_when_up_to_date_or_unmanaged(monkeypatch):
+    _patch_common(monkeypatch, {"updates": {"enabled": True}}, version="0.3.0")
+    events = _capture_events(monkeypatch)
+    await worker.check_auto_update(None)
+    assert events == []
+
+    _patch_common(monkeypatch, {"updates": {"enabled": True}})
+    monkeypatch.setattr(
+        worker.updater_client,
+        "get_target",
+        lambda: _coro({"image": "ghcr.io/mrkprdo/homst:dev", "labels": {}}),
+    )
+    events = _capture_events(monkeypatch)
+    await worker.check_auto_update(None)
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_update_check_skips_active_job(monkeypatch):
+    _patch_common(monkeypatch, {"updates": {"enabled": True}})
+    monkeypatch.setattr(
+        worker.updater_client,
+        "get_status",
+        lambda: _coro({"job": {"state": "pulling"}, "held_version": None}),
+    )
+    events = _capture_events(monkeypatch)
+
+    await worker.check_auto_update(None)
+    assert events == []

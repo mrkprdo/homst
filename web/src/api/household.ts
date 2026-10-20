@@ -35,9 +35,7 @@ export interface NotificationPreferences {
 
 export interface UpdatePreferences {
   enabled: boolean
-  windowStart: string
-  windowEnd: string
-  allowMajor: boolean
+  checkIntervalMinutes: number
 }
 
 export interface HouseholdMember {

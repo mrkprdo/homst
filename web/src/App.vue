@@ -10,6 +10,7 @@ import { householdApi } from "@/api/household"
 import { photosApi } from "@/api/photos"
 import AppNav from "@/components/shared/AppNav.vue"
 import HudAlert from "@/components/shared/HudAlert.vue"
+import UpdatePrompt from "@/components/shared/UpdatePrompt.vue"
 import { animate, ease, springs } from "@/lib/motion"
 import HomeView from "@/components/home/HomeView.vue"
 import CalendarView from "@/components/calendar/CalendarView.vue"
@@ -243,6 +244,9 @@ function panelLeave(el: Element, done: () => void) {
 
       <!-- Reminder heads-up display (kiosk) -->
       <HudAlert />
+
+      <!-- New-version prompt (display clients only) -->
+      <UpdatePrompt />
 
       <!-- Connection status indicator -->
       <div class="stream-status" :class="streamStatus" :title="streamStatus === 'connected' ? 'Live' : streamStatus === 'connecting' ? 'Connecting...' : 'Disconnected'">

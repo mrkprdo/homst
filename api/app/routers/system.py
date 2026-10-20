@@ -16,8 +16,9 @@ from app.config import settings
 from app.db import get_db
 from app.events.publisher import publish_event
 from app.models.all import Household
-from app.schemas.system import InstallRequest
+from app.schemas.system import DismissRequest, InstallRequest
 from app.system_state import (
+    ACTIVE_JOB_STATES,
     OFFICIAL_IMAGE_REPO,
     ImageRef,
     is_major_update,
@@ -51,11 +52,15 @@ def _require_update_header(request: Request) -> None:
             raise HTTPException(status_code=403, detail="Cross-origin update blocked.")
 
 
-async def _household_settings(db: AsyncSession) -> dict:
+async def _household(db: AsyncSession) -> Household | None:
     result = await db.execute(
         select(Household).where(Household.id == DEFAULT_HOUSEHOLD_ID)
     )
-    household = result.scalar_one_or_none()
+    return result.scalar_one_or_none()
+
+
+async def _household_settings(db: AsyncSession) -> dict:
+    household = await _household(db)
     return dict(household.settings or {}) if household else {}
 
 
@@ -114,12 +119,28 @@ async def _snapshot(db: AsyncSession, refresh: bool = False) -> dict:
     previous_version = status.get("previous_version")
     held_version = status.get("held_version")
     job = status.get("job")
+    prefs = merge_update_prefs(household_settings.get("updates"))
 
     update_available = bool(
         managed
         and latest
         and is_stable_version(current)
         and is_newer(current, latest["version"])
+    )
+
+    latest_version = latest["version"] if latest else None
+    dismissed_version = household_settings.get("updateDismissedVersion")
+    job_active = bool(job and job.get("state") in ACTIVE_JOB_STATES)
+    prompt_version = (
+        latest_version
+        if (
+            prefs["enabled"]
+            and update_available
+            and not job_active
+            and latest_version != held_version
+            and latest_version != dismissed_version
+        )
+        else None
     )
 
     release_rows = []
@@ -159,7 +180,15 @@ async def _snapshot(db: AsyncSession, refresh: bool = False) -> dict:
             "reason": status.get("held_reason"),
         },
         "job": job,
-        "auto": merge_update_prefs(household_settings.get("updates")),
+        "auto": prefs,
+        "update_prompt": {
+            "version": prompt_version,
+            "dismissed": bool(
+                update_available
+                and latest_version
+                and dismissed_version == latest_version
+            ),
+        },
         "self_update": {
             "available": updater_available,
             "managed": managed,
@@ -260,6 +289,42 @@ async def install_version(
         pass
 
     return JSONResponse(status_code=202, content=job)
+
+
+@router.post("/prompt/dismiss")
+async def dismiss_update_prompt(
+    req: DismissRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Stop asking display clients about this release.
+
+    The update stays visible in Settings → Software update, and a newer stable
+    release will be offered again.
+    """
+
+    _require_update_header(request)
+    household = await _household(db)
+    if household is None:
+        household = Household(id=DEFAULT_HOUSEHOLD_ID, name="Home", settings={})
+        db.add(household)
+        await db.flush()
+
+    settings = dict(household.settings or {})
+    settings["updateDismissedVersion"] = req.version
+    household.settings = settings
+    await db.commit()
+
+    try:
+        await publish_event(
+            DEFAULT_HOUSEHOLD_ID,
+            "system.update.dismissed",
+            {"version": req.version},
+        )
+    except Exception:
+        pass
+
+    return {"dismissed": req.version}
 
 
 @router.post("/recovery/retry-rollback")

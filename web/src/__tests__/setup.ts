@@ -8,6 +8,7 @@ import { _resetMembers } from "@/composables/useMembers"
 import { _resetStream } from "@/composables/useStream"
 import { _resetNotifications } from "@/composables/useNotifications"
 import { _resetPush } from "@/composables/usePush"
+import { _resetUpdatePrompt } from "@/composables/useUpdatePrompt"
 
 globalThis.ResizeObserver = class ResizeObserver {
   observe() {}
@@ -94,5 +95,6 @@ beforeEach(() => {
   _resetStream()
   _resetNotifications()
   _resetPush()
+  _resetUpdatePrompt()
   vi.clearAllMocks()
 })

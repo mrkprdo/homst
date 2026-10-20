@@ -57,9 +57,11 @@ export interface SystemStatus {
   job: SystemJob | null
   auto: {
     enabled: boolean
-    windowStart: string
-    windowEnd: string
-    allowMajor: boolean
+    checkIntervalMinutes: number
+  }
+  update_prompt: {
+    version: string | null
+    dismissed: boolean
   }
   self_update: {
     available: boolean
@@ -106,6 +108,14 @@ export const systemApi = {
       method: "POST",
       headers: { "X-HOMST-Update": "1" },
       body: JSON.stringify({ version, retry }),
+    })
+  },
+
+  dismissPrompt(version: string): Promise<{ dismissed: string }> {
+    return request<{ dismissed: string }>("/system/prompt/dismiss", {
+      method: "POST",
+      headers: { "X-HOMST-Update": "1" },
+      body: JSON.stringify({ version }),
     })
   },
 

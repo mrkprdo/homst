@@ -27,9 +27,7 @@ const autoMessage = ref("")
 const starting = ref(false)
 const auto = ref<UpdatePreferences>({
   enabled: true,
-  windowStart: "03:00",
-  windowEnd: "05:00",
-  allowMajor: false,
+  checkIntervalMinutes: 5,
 })
 const restarting = ref(false)
 
@@ -222,15 +220,10 @@ function onAutoToggle(enabled: boolean) {
   saveAuto()
 }
 
-function onWindowChange(field: "windowStart" | "windowEnd", event: Event) {
-  const value = (event.target as HTMLInputElement).value
-  if (!value) return
-  auto.value = { ...auto.value, [field]: value }
-  saveAuto()
-}
-
-function onAllowMajor(event: Event) {
-  auto.value = { ...auto.value, allowMajor: (event.target as HTMLInputElement).checked }
+function onIntervalChange(event: Event) {
+  const minutes = Number((event.target as HTMLSelectElement).value)
+  if (!Number.isFinite(minutes) || minutes < 1) return
+  auto.value = { ...auto.value, checkIntervalMinutes: minutes }
   saveAuto()
 }
 
@@ -241,7 +234,7 @@ async function saveAuto() {
     await householdApi.updateSettings({ updates: { ...auto.value } })
     autoMessage.value = "Saved."
   } catch {
-    autoMessage.value = "Could not save automatic update settings."
+    autoMessage.value = "Could not save update-check settings."
   } finally {
     savingAuto.value = false
   }
@@ -415,8 +408,8 @@ onUnmounted(() => {
         <div class="auto-update">
           <div class="auto-row">
             <div>
-              <p class="row-title">Automatic updates</p>
-              <p class="card-desc">Install stable releases automatically in the household-time window.</p>
+              <p class="row-title">Automatic checks</p>
+              <p class="card-desc">Look for new stable releases and ask on connected displays.</p>
             </div>
             <UiToggle
               :model-value="auto.enabled"
@@ -426,18 +419,19 @@ onUnmounted(() => {
           </div>
           <div v-if="auto.enabled" class="auto-window">
             <label class="time-field">
-              <span>From</span>
-              <input type="time" :value="auto.windowStart" @change="onWindowChange('windowStart', $event)" />
-            </label>
-            <label class="time-field">
-              <span>To</span>
-              <input type="time" :value="auto.windowEnd" @change="onWindowChange('windowEnd', $event)" />
-            </label>
-            <label class="major-check">
-              <input type="checkbox" :checked="auto.allowMajor" @change="onAllowMajor" />
-              Include major versions
+              <span>Every</span>
+              <select :value="auto.checkIntervalMinutes" @change="onIntervalChange">
+                <option :value="5">5 minutes</option>
+                <option :value="15">15 minutes</option>
+                <option :value="30">30 minutes</option>
+                <option :value="60">1 hour</option>
+              </select>
             </label>
           </div>
+          <p class="card-desc">
+            Displays show a Yes/No reminder when a new version is available. Choosing No hides
+            that reminder; the release stays available here.
+          </p>
           <p v-if="autoMessage" class="card-desc auto-message">{{ autoMessage }}</p>
         </div>
       </template>
@@ -686,11 +680,7 @@ onUnmounted(() => {
 .auto-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .auto-window { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .time-field { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-label-size); color: var(--color-textMuted); }
-.time-field input,
-.major-check input {
-  accent-color: var(--color-primary);
-}
-.time-field input {
+.time-field select {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xs);
@@ -700,7 +690,6 @@ onUnmounted(() => {
   font-size: var(--text-label-size);
   color-scheme: light dark;
 }
-.major-check { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-label-size); color: var(--color-textMuted); }
 .auto-message { margin-top: calc(-1 * var(--space-1)); }
 
 .confirm-box {

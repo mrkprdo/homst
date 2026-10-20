@@ -1,3 +1,5 @@
+import time
+
 from arq import cron
 from arq.connections import RedisSettings
 from sqlalchemy import select
@@ -8,19 +10,21 @@ from app.db import async_session
 from app.events.publisher import publish_event
 from app.models.all import Calendar, Household
 from app.notifications.reminders import dispatch_due_reminders
-from app.redis_client import get_redis
 from app.system_state import (
     ACTIVE_JOB_STATES,
     is_major_update,
     is_managed,
     is_newer,
     merge_update_prefs,
-    update_window_open,
 )
 from app.updates import fetch_releases
 from app.version import VERSION
 
 DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
+
+# The worker cron ticks every minute; this gate keeps the actual release check
+# at the household's configured interval (5 minutes by default).
+_last_update_check = 0.0
 
 
 async def sync_all_external_calendars(ctx):
@@ -47,8 +51,24 @@ async def dispatch_reminders(ctx):
         print(f"[worker] reminders: {sent}/{len(logs)} channel deliveries sent")
 
 
+def _check_due(interval_minutes: int, now: float | None = None) -> bool:
+    """Return True when the configured release-check interval has elapsed."""
+    global _last_update_check
+
+    current = time.monotonic() if now is None else now
+    if _last_update_check and current - _last_update_check < interval_minutes * 60:
+        return False
+    _last_update_check = current
+    return True
+
+
 async def check_auto_update(ctx):
-    """Periodic stable-channel auto-update, inside the household window."""
+    """Check the stable channel and ask displays to install a new release.
+
+    Nothing is installed silently: connected display clients receive a prompt
+    with Yes/No over the SSE stream. A dismissed version is remembered so the
+    same release is not offered again until a newer one is published.
+    """
 
     if not updater_client.enabled():
         return
@@ -63,7 +83,7 @@ async def check_auto_update(ctx):
     prefs = merge_update_prefs(household_settings.get("updates"))
     if not prefs["enabled"]:
         return
-    if not update_window_open(prefs, household_settings.get("timezone")):
+    if not _check_due(prefs["checkIntervalMinutes"]):
         return
 
     target = await updater_client.get_target()
@@ -75,17 +95,13 @@ async def check_auto_update(ctx):
     if not managed:
         return
 
-    feed = await fetch_releases()
+    # Force the release feed here: the card can use its normal cache, but the
+    # background check should actually hit GitHub at the configured interval.
+    feed = await fetch_releases(force=True)
     latest = feed.latest
     if not latest:
         return
     if not is_newer(VERSION, latest["version"]):
-        return
-    if is_major_update(VERSION, latest["version"]) and not prefs["allowMajor"]:
-        print(
-            f"[worker] auto-update: {latest['version']} is a major update; "
-            "waiting for manual approval"
-        )
         return
 
     status = await updater_client.get_status() or {}
@@ -93,35 +109,26 @@ async def check_auto_update(ctx):
         return
     if status.get("held_version") == latest["version"]:
         return
-
-    try:
-        redis = await get_redis()
-        acquired = await redis.set(
-            "homst:auto-update:lock", latest["version"], ex=1800, nx=True
-        )
-        if not acquired:
-            return
-    except Exception:
-        return
-
-    try:
-        job = await updater_client.install(latest["version"], latest=True)
-    except Exception as exc:
-        print(f"[worker] auto-update failed to start: {exc}")
+    if household_settings.get("updateDismissedVersion") == latest["version"]:
         return
 
     try:
         await publish_event(
             DEFAULT_HOUSEHOLD_ID,
-            "system.update.starting",
-            {"version": latest["version"], "job_id": job.get("id"), "auto": True},
+            "system.update.available",
+            {
+                "version": latest["version"],
+                "current": VERSION,
+                "major": is_major_update(VERSION, latest["version"]),
+                "html_url": latest.get("html_url"),
+            },
         )
     except Exception:
         pass
 
     print(
-        f"[worker] auto-update: installing {latest['version']} "
-        f"(current {VERSION})"
+        f"[worker] update available: {latest['version']} "
+        f"(current {VERSION}); waiting for display confirmation"
     )
 
 
@@ -165,8 +172,8 @@ class WorkerSettings:
     cron_jobs = [
         # Reminder scan: runs at second 0 of every minute.
         cron(dispatch_reminders),
-        # Stable auto-update check; installs only inside the configured window.
-        cron(check_auto_update, minute={0, 15, 30, 45}),
+        # Update availability check; the configured interval is enforced in code.
+        cron(check_auto_update),
         # cron(sync_all_external_calendars, hour={*range(24)}, minute={0, 15, 30, 45})
     ]
     redis_settings = RedisSettings.from_dsn(app_settings.redis_url)

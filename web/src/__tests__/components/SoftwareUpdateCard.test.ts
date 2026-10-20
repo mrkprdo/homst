@@ -66,7 +66,8 @@ function status(overrides: Record<string, unknown> = {}) {
     previous: { version: null, image: null },
     held: { version: null, reason: null },
     job: null,
-    auto: { enabled: true, windowStart: "03:00", windowEnd: "05:00", allowMajor: false },
+    auto: { enabled: true, checkIntervalMinutes: 5 },
+    update_prompt: { version: "0.3.0", dismissed: false },
     self_update: { available: true, managed: true, reason: null, mode: "managed" },
     manual: {
       current: "docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d",
@@ -129,6 +130,27 @@ describe("SoftwareUpdateCard", () => {
     expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({
       version: "0.3.0",
       retry: false,
+    })
+    wrapper.unmount()
+  })
+
+  it("saves the update-check interval", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValueOnce(json(status()))
+    fetchMock.mockResolvedValueOnce(json({ message: "ok" }))
+
+    const wrapper = mount(SoftwareUpdateCard)
+    await flushPromises()
+
+    const select = wrapper.find("select")
+    expect((select.element as HTMLSelectElement).value).toBe("5")
+    await select.setValue("15")
+    await flushPromises()
+
+    const patch = fetchMock.mock.calls.find((item) => (item[1] as RequestInit)?.method === "PATCH")
+    expect(patch).toBeTruthy()
+    expect(JSON.parse((patch![1] as RequestInit).body as string)).toEqual({
+      settings: { updates: { enabled: true, checkIntervalMinutes: 15 } },
     })
     wrapper.unmount()
   })

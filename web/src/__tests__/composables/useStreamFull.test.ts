@@ -5,6 +5,7 @@ import { useEvents } from "@/composables/useEvents"
 import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
 import { useSettings } from "@/composables/useSettings"
+import { useUpdatePrompt } from "@/composables/useUpdatePrompt"
 import { useStream, _resetStream } from "@/composables/useStream"
 
 let latestES: MockEventSource | null = null
@@ -185,11 +186,28 @@ describe("useStream (full)", () => {
     expect(settings.photos.value).toHaveLength(1)
   })
 
+  it("offers update prompts from the stream and clears them on dismissal", () => {
+    const { prompt } = useUpdatePrompt()
+    mountStream()
+
+    latestES!.dispatch("system.update.available", {
+      version: "0.3.0",
+      current: "0.2.0",
+      major: false,
+      html_url: "https://example.com/v0.3.0",
+    })
+    expect(prompt.value?.version).toBe("0.3.0")
+
+    latestES!.dispatch("system.update.dismissed", { version: "0.3.0" })
+    expect(prompt.value).toBeNull()
+  })
+
   it("ignores malformed payloads without throwing", () => {
     mountStream()
     const types = ["event.created", "event.updated", "event.deleted", "task.created",
       "task.updated", "task.deleted", "member.joined", "member.updated", "member.removed",
-      "settings.updated", "photos.updated", "reminder.due"]
+      "settings.updated", "photos.updated", "reminder.due",
+      "system.update.available", "system.update.dismissed", "system.update.starting"]
     for (const t of types) {
       expect(() => latestES!.dispatchRaw(t, "{ not json")).not.toThrow()
     }

@@ -64,7 +64,7 @@ docker compose -f docker-compose.prod.yml up -d
 On first boot the stack pulls the image, generates the database password (persisted in the `homst_secrets` volume) and initialises Postgres with it, generates a local CA + HTTPS certificate (persisted in `homst_ssl`), and serves the dashboard on **HTTPS port 8443**. Later starts reuse all of it.
 
 - Upgrade: `docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d`
-- In-app updates (optional): start the updater profile once — `docker compose -f docker-compose.prod.yml --profile updates up -d` — then use **Settings → Software update** to check, install, roll back, or configure automatic stable updates. See [In-app updates](#in-app-updates-optional) below.
+- In-app updates (optional): start the updater profile once — `docker compose -f docker-compose.prod.yml --profile updates up -d` — then use **Settings → Software update** to check, install, roll back, or configure update checks. See [In-app updates](#in-app-updates-optional) below.
 - Image tag: `latest` (stable releases) by default. Pin with `HOMST_VERSION=1.2.3 docker compose -f docker-compose.prod.yml up -d`, or edit the single `x-image:` line in the compose file. Compose resolves the tag before `.env.prod` is read, so the tag cannot live there.
 - Settings: copy `.env.example` to `.env.prod` (next to the compose file) — the single app config file (database password, external Postgres/Redis, TLS hostnames, CORS, Spotify, Google Calendar, VAPID keys, in-app update overrides). Without it, all defaults apply.
 - Building from source instead: `make prod-build` from the repository root.
@@ -128,13 +128,14 @@ Start the updater sidecar once:
 docker compose -f docker-compose.prod.yml --profile updates up -d
 ```
 
-The sidecar is the only container with access to the Docker socket, is not exposed to the LAN, and is skipped entirely unless the `updates` profile is enabled. With the profile running, **Settings → Software update** shows the current version, available stable releases, version history with rollback, and automatic update settings.
+The sidecar is the only container with access to the Docker socket, is not exposed to the LAN, and is skipped entirely unless the `updates` profile is enabled. With the profile running, **Settings → Software update** shows the current version, available stable releases, version history with rollback, and update-check settings.
 
 To keep it enabled across later `docker compose` commands, put `COMPOSE_PROFILES=updates` in the project's `.env` (or use `make prod-updates`).
 
 - Only official stable releases are installed by the UI. Dev/nightly and pinned images are read-only there and use the manual commands shown in the card.
-- Automatic updates are on by default when the updater is available, install only during the 03:00–05:00 household-time window, and hold major versions for manual approval. Both can be changed in Settings.
-- A failed update is automatically rolled back. The failed version is held so auto-update does not retry it in a loop; a newer stable release resumes automatic updates.
+- Update checks are on by default when the updater is available and run every 5 minutes (configurable in Settings). When a new stable release appears, connected display clients show a **New version available** reminder with Yes/No.
+- Choosing **Yes** installs the release immediately. Choosing **No** hides that reminder for the version; the update remains visible in **Settings → Software update** and a newer release will prompt again. Nothing is installed silently.
+- A failed update is automatically rolled back. The failed version is held so update checks do not offer it again in a loop; a newer stable release resumes prompts.
 - The previous stable image is kept. Nothing prunes it automatically; if disk space matters, prune unused images manually with `docker image prune` when no rollback is needed.
 - HOMST has no login: anyone who can open the dashboard can trigger an update. Keep it on a trusted LAN and do not expose port 8443 directly to the internet.
 

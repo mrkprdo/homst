@@ -4,11 +4,21 @@ import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
 import { useNotifications } from "@/composables/useNotifications"
 import { useSettings, applyHouseholdSettings, refreshPhotos } from "@/composables/useSettings"
+import {
+  offerUpdatePrompt,
+  refreshUpdatePrompt,
+  updatePromptDismissed,
+  updatePromptStarting,
+} from "@/composables/useUpdatePrompt"
 import { mapEvent } from "@/api/calendar"
 import { mapTask } from "@/api/tasks"
 import { mapMember } from "@/api/users"
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected"
+
+/** Phones use the mobile shell and must never show kiosk update prompts. */
+const isDisplayClient = typeof navigator === "undefined"
+  || !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
 
 const connected        = ref(false)
 const status           = ref<ConnectionStatus>("disconnected")
@@ -32,6 +42,7 @@ async function refreshAllStores() {
     refreshTasks(),
     refreshMembers(),
     refreshSettings(),
+    isDisplayClient ? refreshUpdatePrompt() : Promise.resolve(),
   ])
 }
 
@@ -116,6 +127,18 @@ function connect() {
   })
   eventSource.addEventListener("reminder.due", (e) => {
     try { pushNotification(JSON.parse(e.data)) } catch {}
+  })
+  eventSource.addEventListener("system.update.available", (e) => {
+    if (!isDisplayClient) return
+    try { offerUpdatePrompt(JSON.parse(e.data)) } catch {}
+  })
+  eventSource.addEventListener("system.update.dismissed", (e) => {
+    if (!isDisplayClient) return
+    try { updatePromptDismissed(JSON.parse(e.data).version) } catch {}
+  })
+  eventSource.addEventListener("system.update.starting", (e) => {
+    if (!isDisplayClient) return
+    try { updatePromptStarting(JSON.parse(e.data).version) } catch {}
   })
 
   eventSource.onerror = () => {

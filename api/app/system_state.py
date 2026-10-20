@@ -1,23 +1,21 @@
 """Shared update/version policy helpers.
 
-Used by both the HTTP API and the background auto-update worker so the two
-always agree on what counts as a managed stable install, which image tags
-are eligible, and when the maintenance window is open.
+Used by both the HTTP API and the background update-check worker so the two
+always agree on what counts as a managed stable install, which image tags are
+eligible, and how often release checks run.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from packaging.version import InvalidVersion, Version
 
 OFFICIAL_IMAGE_REPO = "ghcr.io/mrkprdo/homst"
 
-DEFAULT_WINDOW_START = "03:00"
-DEFAULT_WINDOW_END = "05:00"
+DEFAULT_CHECK_INTERVAL_MINUTES = 5
+MAX_CHECK_INTERVAL_MINUTES = 1440
 
 ACTIVE_JOB_STATES = frozenset(
     {"queued", "pulling", "restarting", "verifying", "rolling_back"}
@@ -108,23 +106,8 @@ def is_managed(
 def default_update_prefs() -> dict[str, Any]:
     return {
         "enabled": True,
-        "windowStart": DEFAULT_WINDOW_START,
-        "windowEnd": DEFAULT_WINDOW_END,
-        "allowMajor": False,
+        "checkIntervalMinutes": DEFAULT_CHECK_INTERVAL_MINUTES,
     }
-
-
-def _parse_hhmm(value: Any) -> time | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        hour_text, minute_text = value.strip().split(":", 1)
-        hour, minute = int(hour_text), int(minute_text)
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            return time(hour, minute)
-    except (TypeError, ValueError):
-        pass
-    return None
 
 
 def merge_update_prefs(raw: Any) -> dict[str, Any]:
@@ -134,40 +117,12 @@ def merge_update_prefs(raw: Any) -> dict[str, Any]:
 
     if "enabled" in raw:
         prefs["enabled"] = bool(raw.get("enabled"))
-    if "allowMajor" in raw:
-        prefs["allowMajor"] = bool(raw.get("allowMajor"))
-
-    start = _parse_hhmm(raw.get("windowStart"))
-    end = _parse_hhmm(raw.get("windowEnd"))
-    if start is not None:
-        prefs["windowStart"] = start.strftime("%H:%M")
-    if end is not None:
-        prefs["windowEnd"] = end.strftime("%H:%M")
-    return prefs
-
-
-def update_window_open(
-    prefs: dict[str, Any],
-    timezone_name: str | None,
-    now: datetime | None = None,
-) -> bool:
-    if not prefs.get("enabled", True):
-        return False
-
-    start = _parse_hhmm(prefs.get("windowStart"))
-    end = _parse_hhmm(prefs.get("windowEnd"))
-    if start is None or end is None:
-        return True
 
     try:
-        tz = ZoneInfo(timezone_name) if timezone_name else ZoneInfo("UTC")
-    except (ZoneInfoNotFoundError, ValueError):
-        tz = ZoneInfo("UTC")
+        minutes = int(raw.get("checkIntervalMinutes"))
+    except (TypeError, ValueError):
+        minutes = DEFAULT_CHECK_INTERVAL_MINUTES
+    if 1 <= minutes <= MAX_CHECK_INTERVAL_MINUTES:
+        prefs["checkIntervalMinutes"] = minutes
 
-    current = (now or datetime.now(tz)).astimezone(tz)
-    current_time = current.time().replace(tzinfo=None)
-
-    if start <= end:
-        return start <= current_time <= end
-    # Overnight window, e.g. 23:00 → 05:00.
-    return current_time >= start or current_time <= end
+    return prefs
