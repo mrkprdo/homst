@@ -391,7 +391,7 @@ async function init() {
 
   const wasCallback = await handleCallback()
 
-  // Adopt the server-wide Client ID (SPOTIFY_CLIENT_ID in .env.prod) only
+  // Adopt the server-wide Client ID (SPOTIFY_CLIENT_ID in .env) only
   // after the callback exchange — that exchange must use the ID from the
   // authorize request. Afterwards the server value wins over a stale
   // per-browser one; authorized sessions already have their token instead.

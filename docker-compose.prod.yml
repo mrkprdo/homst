@@ -1,15 +1,23 @@
 name: homst-prod
 
-# Image tag for both app services. Pin by overwriting the default after the
-# `:-` below (e.g. ${HOMST_VERSION:-1.2.3}) or by exporting HOMST_VERSION.
-# Compose resolves the tag before env_file is read, so .env.prod cannot set it.
+# Image tag for both app services. Compose reads `.env` automatically for
+# interpolation, so setting HOMST_VERSION there is enough (e.g. dev or
+# dev-<sha>). Exporting it in the shell also works and takes precedence.
 x-image: &homst-image ghcr.io/mrkprdo/homst:${HOMST_VERSION:-latest}
+
+# App configuration. `.env` is the documented file and takes precedence;
+# `.env.prod` is loaded first only for installs that predate it.
+x-env-files: &homst-env-files
+  - path: .env.prod
+    required: false
+  - path: .env
+    required: false
 
 services:
   # ── One-shot: materialise the shared database password (first boot only) ──
   # Generates /secrets/db_password in the homst_secrets volume if missing, or
-  # seeds it from POSTGRES_PASSWORD in .env.prod when set; later boots reuse
-  # it untouched.
+  # seeds it from POSTGRES_PASSWORD in .env when set; later boots reuse it
+  # untouched.
   init:
     image: *homst-image
     build:
@@ -17,9 +25,7 @@ services:
     container_name: homst-init
     restart: "no"
     entrypoint: ["/bin/sh", "/docker/init-secrets.sh"]
-    env_file:
-      - path: .env.prod
-        required: false
+    env_file: *homst-env-files
     volumes:
       - homst_secrets:/secrets
 
@@ -53,12 +59,10 @@ services:
       context: .
     container_name: homst
     restart: unless-stopped
-    # Configuration comes from .env.prod when present (see .env.example for
-    # every key); without it the defaults apply — Redis inside this container,
-    # SQL logging off, permissive CORS that only matters cross-origin.
-    env_file:
-      - path: .env.prod
-        required: false
+    # Configuration comes from .env when present (see .env.example for every
+    # key); without it the defaults apply — Redis inside this container, SQL
+    # logging off, permissive CORS that only matters cross-origin.
+    env_file: *homst-env-files
     environment:
       # In-app updates are performed by the optional "updater" service below.
       # Without the updates profile this URL is unreachable and the UI shows

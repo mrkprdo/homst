@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # ── Debug ──
     # SQL echo / verbose logging. Dev sets DEBUG=true; production is quiet
-    # by default (override via .env.prod).
+    # by default (override via .env).
     debug: bool = False
 
     # ── External Services ──
