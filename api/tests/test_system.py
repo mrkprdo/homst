@@ -221,6 +221,58 @@ async def test_install_triggers_updater(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_install_accepts_same_host_with_public_port(client, monkeypatch):
+    async def fake_fetch(force=False):
+        return _feed()
+
+    async def fake_target():
+        return _target()
+
+    async def fake_status():
+        return {"previous_version": "0.1.0", "held_version": None, "job": None}
+
+    async def fake_install(version, latest):
+        return {"id": "job-1", "state": "queued", "version": version}
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(system_router, "VERSION", "0.2.0")
+    monkeypatch.setattr(system_router, "fetch_releases", fake_fetch)
+    monkeypatch.setattr(system_router.updater_client, "get_target", fake_target)
+    monkeypatch.setattr(system_router.updater_client, "get_status", fake_status)
+    monkeypatch.setattr(system_router.updater_client, "install", fake_install)
+    monkeypatch.setattr(system_router, "publish_event", fake_publish)
+
+    response = await client.post(
+        "/api/v1/system/install",
+        json={"version": "0.3.0"},
+        headers={
+            "X-HOMST-Update": "1",
+            "Host": "homst.local",
+            "Origin": "https://homst.local:8443",
+            "X-Forwarded-Host": "homst.local:8443",
+        },
+    )
+    assert response.status_code == 202
+
+
+@pytest.mark.asyncio
+async def test_install_rejects_cross_origin_request(client):
+    response = await client.post(
+        "/api/v1/system/install",
+        json={"version": "0.3.0"},
+        headers={
+            "X-HOMST-Update": "1",
+            "Host": "homst.local",
+            "Origin": "https://evil.example",
+        },
+    )
+    assert response.status_code == 403
+    assert "Cross-origin" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_install_rejects_held_version_without_retry(client, monkeypatch):
     async def fake_fetch(force=False):
         return _feed()

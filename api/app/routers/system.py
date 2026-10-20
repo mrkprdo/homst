@@ -35,6 +35,15 @@ router = APIRouter()
 DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 
 
+def _host_only(value: str | None) -> str:
+    """Return the host name of a Host header or Origin URL, ignoring the port."""
+
+    if not value:
+        return ""
+    parsed = urlparse(value if "://" in value else f"//{value}")
+    return (parsed.hostname or "").rstrip(".")
+
+
 def _require_update_header(request: Request) -> None:
     """Reject simple cross-site form posts; the UI sends this header."""
 
@@ -46,8 +55,15 @@ def _require_update_header(request: Request) -> None:
 
     origin = request.headers.get("origin")
     if origin:
-        origin_host = urlparse(origin).netloc
-        request_host = request.headers.get("host", "")
+        # The bundled reverse proxy forwards Host without the public port
+        # (for example :8443), while the browser always includes it in Origin.
+        # Compare host names only; the custom header above already stops
+        # cross-site form posts.
+        forwarded_host = request.headers.get("x-forwarded-host", "").split(",")[0]
+        origin_host = _host_only(origin)
+        request_host = _host_only(
+            forwarded_host.strip() or request.headers.get("host", "")
+        )
         if origin_host and request_host and origin_host != request_host:
             raise HTTPException(status_code=403, detail="Cross-origin update blocked.")
 
