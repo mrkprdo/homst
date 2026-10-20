@@ -283,13 +283,20 @@ function reloadPage() {
   window.location.reload()
 }
 
+function onUpdateChanged() {
+  // Another display started, dismissed or finished an update; mirror it here.
+  void load()
+}
+
 onMounted(() => {
   try { dismissedJob = localStorage.getItem(DISMISSED_KEY) ?? "" } catch { /* ignore */ }
+  window.addEventListener("homst:update-changed", onUpdateChanged)
   load()
 })
 
 onUnmounted(() => {
   if (pollTimer) clearTimeout(pollTimer)
+  window.removeEventListener("homst:update-changed", onUpdateChanged)
 })
 </script>
 

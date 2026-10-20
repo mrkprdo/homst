@@ -33,6 +33,21 @@ function stopPolling() {
   pollFailures = 0
 }
 
+function startPolling() {
+  if (jobTimer) return
+  jobTimer = setTimeout(pollJob, 2000)
+}
+
+/** An install started on any display is shown on every display. */
+function showInstalling(version: string) {
+  if (prompt.value?.version !== version) {
+    prompt.value = { version, major: false, htmlUrl: null }
+  }
+  installing.value = true
+  error.value = ""
+  startPolling()
+}
+
 function clear() {
   stopPolling()
   prompt.value = null
@@ -68,14 +83,24 @@ async function refresh() {
     const status = await systemApi.getStatus()
     if (!status || !status.current) return
 
+    const job = status.job
+
     // A failed update leaves the old version running. Drop the spinner and
     // show the updater's error instead of waiting forever.
-    if (installing.value && status.job) {
-      if (status.job.state === "failed" || status.job.state === "rolled_back") {
+    if (installing.value && job) {
+      if (job.state === "failed" || job.state === "rolled_back") {
         installing.value = false
         stopPolling()
-        error.value = status.job.error || "The update could not be installed."
+        error.value = job.error || "The update could not be installed."
       }
+    }
+
+    // A client that was closed, reloaded or reconnected mid-install should
+    // still show the same installing state as the display that started it.
+    const installingVersion = job?.to_version || job?.version
+    if (job && installingVersion && ACTIVE_STATES.has(job.state)) {
+      showInstalling(installingVersion)
+      return
     }
 
     const info = status.update_prompt
@@ -146,7 +171,7 @@ async function accept() {
   error.value = ""
   try {
     await systemApi.install(current.version)
-    jobTimer = setTimeout(pollJob, 2000)
+    startPolling()
   } catch (exc) {
     installing.value = false
     error.value = exc instanceof Error ? exc.message : "Could not start the update."
@@ -175,15 +200,16 @@ async function decline() {
 
 function handleDismissed(version: unknown) {
   if (typeof version !== "string") return
+  if (installing.value) return
+  localDismissed = version
   if (prompt.value?.version === version) clear()
 }
 
 function handleStarting(version: unknown) {
-  // An install started from this prompt keeps its "installing" state.
-  if (installing.value && (typeof version !== "string" || prompt.value?.version === version)) {
-    return
-  }
-  clear()
+  if (typeof version !== "string" || !version) return
+  // The client that accepted already has the prompt (with its release
+  // metadata); the others open the same installing card.
+  showInstalling(version)
 }
 
 export function useUpdatePrompt() {

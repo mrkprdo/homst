@@ -155,6 +155,27 @@ describe("SoftwareUpdateCard", () => {
     wrapper.unmount()
   })
 
+  it("refreshes when another display changes the update state", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValueOnce(json(status()))
+
+    const wrapper = mount(SoftwareUpdateCard)
+    await flushPromises()
+    expect(wrapper.text()).toContain("HOMST 0.3.0 is available")
+
+    fetchMock.mockResolvedValueOnce(json(status({
+      update_available: false,
+      latest: null,
+      update_prompt: { version: null, dismissed: false },
+    })))
+    window.dispatchEvent(new CustomEvent("homst:update-changed"))
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain("HOMST 0.3.0 is available")
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
   it("shows manual instructions for nightly builds", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
     fetchMock.mockResolvedValueOnce(json(status({

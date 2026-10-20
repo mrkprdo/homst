@@ -191,6 +191,20 @@ describe("useStream (full)", () => {
     expect(settings.defaultReminderMinutes.value).toBe(30)
   })
 
+  it("announces update changes so the settings card stays in sync", () => {
+    mountStream()
+    const changed = vi.fn()
+    window.addEventListener("homst:update-changed", changed)
+
+    latestES!.dispatch("system.update.starting", { version: "0.3.0", job_id: "job-1" })
+    latestES!.dispatch("settings.updated", {
+      settings: { updates: { enabled: false, checkIntervalMinutes: 15 } },
+    })
+
+    expect(changed).toHaveBeenCalledTimes(2)
+    window.removeEventListener("homst:update-changed", changed)
+  })
+
   it("re-fetches the shared photo list on photos.updated", async () => {
     vi.useRealTimers()
     const settings = useSettings()
@@ -221,6 +235,19 @@ describe("useStream (full)", () => {
 
     latestES!.dispatch("system.update.dismissed", { version: "0.3.0" })
     expect(prompt.value).toBeNull()
+  })
+
+  it("mirrors the installing state when another display starts the update", () => {
+    const { prompt, installing } = useUpdatePrompt()
+    mountStream()
+
+    latestES!.dispatch("system.update.starting", {
+      version: "0.3.0",
+      job_id: "job-1",
+    })
+
+    expect(prompt.value?.version).toBe("0.3.0")
+    expect(installing.value).toBe(true)
   })
 
   it("ignores malformed payloads without throwing", () => {

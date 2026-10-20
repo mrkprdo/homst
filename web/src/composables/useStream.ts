@@ -59,6 +59,11 @@ function requestRefresh() {
   return refreshInFlight
 }
 
+/** Let the software-update card follow state changes made on another client. */
+function notifyUpdateChanged() {
+  window.dispatchEvent(new CustomEvent("homst:update-changed"))
+}
+
 function connect() {
   disconnect()
   status.value = "connecting"
@@ -83,7 +88,10 @@ function connect() {
   // server restart, network blip — and may have missed events.
   eventSource.addEventListener("sync.required", () => {
     syncFrames++
-    if (opens > 1 || syncFrames > 1) requestRefresh()
+    if (opens > 1 || syncFrames > 1) {
+      notifyUpdateChanged()
+      requestRefresh()
+    }
   })
 
   eventSource.addEventListener("event.created", (e) => {
@@ -125,6 +133,8 @@ function connect() {
       if (settings.widgetLayout) {
         window.dispatchEvent(new CustomEvent("homst:widget-layout-updated", { detail: settings.widgetLayout }))
       }
+      // Update-check preferences changed on another screen; refresh the card.
+      if (settings.updates) notifyUpdateChanged()
     } catch {}
   })
   eventSource.addEventListener("announcement.created", (e) => {
@@ -140,16 +150,22 @@ function connect() {
     try { pushNotification(JSON.parse(e.data)) } catch {}
   })
   eventSource.addEventListener("system.update.available", (e) => {
-    if (!isDisplayClient) return
-    try { offerUpdatePrompt(JSON.parse(e.data)) } catch {}
+    if (isDisplayClient) {
+      try { offerUpdatePrompt(JSON.parse(e.data)) } catch {}
+    }
+    notifyUpdateChanged()
   })
   eventSource.addEventListener("system.update.dismissed", (e) => {
-    if (!isDisplayClient) return
-    try { updatePromptDismissed(JSON.parse(e.data).version) } catch {}
+    if (isDisplayClient) {
+      try { updatePromptDismissed(JSON.parse(e.data).version) } catch {}
+    }
+    notifyUpdateChanged()
   })
   eventSource.addEventListener("system.update.starting", (e) => {
-    if (!isDisplayClient) return
-    try { updatePromptStarting(JSON.parse(e.data).version) } catch {}
+    if (isDisplayClient) {
+      try { updatePromptStarting(JSON.parse(e.data).version) } catch {}
+    }
+    notifyUpdateChanged()
   })
 
   eventSource.onerror = () => {

@@ -105,6 +105,33 @@ describe("UpdatePrompt", () => {
     wrapper.unmount()
   })
 
+  it("shows the install started from another display", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValueOnce(json(status({
+      update_prompt: { version: null, dismissed: false },
+      job: {
+        id: "job-1",
+        state: "pulling",
+        version: "0.3.0",
+        latest: true,
+        message: "Downloading",
+        progress: { percent: 10, bytes: 10, total: 100 },
+        error: null,
+        from_version: "0.2.0",
+        to_version: "0.3.0",
+        started_at: "2026-10-19T12:00:00Z",
+        finished_at: null,
+      },
+    })))
+
+    const wrapper = mount(UpdatePrompt, { global })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Installing HOMST 0.3.0")
+    expect(wrapper.text()).not.toContain("Yes, install")
+    wrapper.unmount()
+  })
+
   it("starts the install when accepted", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
     fetchMock.mockResolvedValueOnce(json(status()))
