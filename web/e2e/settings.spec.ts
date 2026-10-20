@@ -9,7 +9,7 @@ test.describe("Settings", () => {
   })
 
   async function openSettings(page: any) {
-    await page.locator(".app-nav button").nth(3).click()
+    await page.locator('.nav-item[aria-label="Settings"]').click()
     await page.waitForTimeout(300)
   }
 
@@ -81,13 +81,19 @@ test.describe("Settings", () => {
 
   test("font size has 4 options", async ({ page }) => {
     await openSettings(page)
-    const buttons = page.locator(".settings-card").nth(2).locator(".segmented-btn")
+    const buttons = page
+      .locator(".settings-card")
+      .filter({ hasText: "Text Size" })
+      .locator(".segmented-btn")
     await expect(buttons).toHaveCount(4)
   })
 
   test("can cycle through all font sizes", async ({ page }) => {
     await openSettings(page)
-    const buttons = page.locator(".settings-card").nth(2).locator(".segmented-btn")
+    const buttons = page
+      .locator(".settings-card")
+      .filter({ hasText: "Text Size" })
+      .locator(".segmented-btn")
     for (let i = 0; i < 4; i++) {
       await buttons.nth(i).click()
       await page.waitForTimeout(100)
@@ -123,6 +129,6 @@ test.describe("Settings", () => {
   test("settings sections exist", async ({ page }) => {
     await openSettings(page)
     const sections = page.locator(".settings-card")
-    await expect(sections).toHaveCount(6)
+    await expect(sections).toHaveCount(8)
   })
 })

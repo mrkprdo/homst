@@ -4,6 +4,7 @@ defineProps<{
   placeholder?: string
   rows?: number
   disabled?: boolean
+  maxlength?: number
 }>()
 
 defineEmits<{ "update:modelValue": [value: string] }>()
@@ -16,6 +17,7 @@ defineEmits<{ "update:modelValue": [value: string] }>()
     :placeholder="placeholder"
     :rows="rows ?? 3"
     :disabled="disabled"
+    :maxlength="maxlength"
     @input="$emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
   />
 </template>

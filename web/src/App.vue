@@ -5,16 +5,21 @@ import { useUi } from "@/composables/useUi"
 import type { PanelView } from "@/composables/useUi"
 import { useSettings, applyHouseholdSettings, isApplyingRemoteSettings } from "@/composables/useSettings"
 import { useStream } from "@/composables/useStream"
+import { useEvents } from "@/composables/useEvents"
+import { useAnnouncements } from "@/composables/useAnnouncements"
+import { useNotificationIntent } from "@/composables/useNotificationIntent"
 import { api } from "@/api/client"
 import { householdApi } from "@/api/household"
 import { photosApi } from "@/api/photos"
 import AppNav from "@/components/shared/AppNav.vue"
+import AnnouncementBanner from "@/components/shared/AnnouncementBanner.vue"
 import HudAlert from "@/components/shared/HudAlert.vue"
 import UpdatePrompt from "@/components/shared/UpdatePrompt.vue"
 import { animate, ease, springs } from "@/lib/motion"
 import HomeView from "@/components/home/HomeView.vue"
 import CalendarView from "@/components/calendar/CalendarView.vue"
 import KanbanView from "@/components/kanban/KanbanView.vue"
+import AnnouncementPanel from "@/components/announcements/AnnouncementPanel.vue"
 import SettingsPanel from "@/components/settings/SettingsPanel.vue"
 import DrawerOverlay from "@/components/shared/DrawerOverlay.vue"
 import MemberDetailPanel from "@/components/profile/MemberDetailPanel.vue"
@@ -27,6 +32,9 @@ const route = useRoute()
 const ui = useUi()
 const settings = useSettings()
 const { status: streamStatus } = useStream()
+const { prefetchAround } = useEvents()
+const { ensureLoaded: ensureAnnouncementsLoaded } = useAnnouncements()
+const { take: takeNotificationIntent } = useNotificationIntent()
 
 const isMobile = computed(() => /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent))
 const householdComplete = ref(false)
@@ -114,6 +122,29 @@ if (!isMobile.value) {
   })
 }
 
+/**
+ * A Web Push tap opens the app with `?event=…` or `?announcement=…`.
+ * Load the data that the destination needs, then open the matching sheet or
+ * panel. The query is consumed once so a reload does not reopen it.
+ */
+async function openNotificationIntent() {
+  const intent = takeNotificationIntent()
+  if (!intent) return
+
+  if (intent.type === "event") {
+    const parsed = intent.startAt ? new Date(Number(intent.startAt) * 1000) : new Date()
+    const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed
+    await prefetchAround(date.getFullYear(), date.getMonth())
+    ui.setPanel("calendar")
+    ui.openDrawer("event-detail", intent.id)
+    return
+  }
+
+  await ensureAnnouncementsLoaded()
+  if (isMobile.value) ui.openAnnouncements()
+  else ui.setPanel("announcements")
+}
+
 const isOnboarding = computed(() => route.path === "/onboarding")
 
 const prefersDark = ref(window.matchMedia("(prefers-color-scheme: dark)").matches)
@@ -129,10 +160,11 @@ const isDark = computed(() =>
 )
 
 const views: Record<string, typeof CalendarView> = {
-  home:     HomeView,
-  calendar: CalendarView,
-  tasks:    KanbanView,
-  settings: SettingsPanel,
+  home:          HomeView,
+  calendar:      CalendarView,
+  tasks:         KanbanView,
+  announcements: AnnouncementPanel,
+  settings:      SettingsPanel,
 }
 
 const themeReady = ref(false)
@@ -157,6 +189,7 @@ onMounted(() => {
     .finally(() => {
       photosApi.list().then(photos => { settings.photos.value = Array.isArray(photos) ? photos : [] }).catch(() => {})
       appReady.value = true
+      void openNotificationIntent()
     })
 })
 
@@ -217,6 +250,9 @@ function panelLeave(el: Element, done: () => void) {
   <template v-if="isMobile && appReady">
     <MobileOnboardingGate v-if="!householdComplete" @joined="onMobileJoined" />
     <MobileShell v-else />
+
+    <!-- Household announcements appear above both shells -->
+    <AnnouncementBanner :display="false" />
   </template>
 
   <!-- DESKTOP branch (identical to original template) -->
@@ -242,8 +278,11 @@ function panelLeave(el: Element, done: () => void) {
         <TaskDetailPanel v-else-if="ui.drawer.value.type === 'task-detail'" />
       </DrawerOverlay>
 
+      <!-- Household announcements from any screen -->
+      <AnnouncementBanner :display="true" />
+
       <!-- Reminder heads-up display (kiosk) -->
-      <HudAlert />
+      <HudAlert :display="true" />
 
       <!-- New-version prompt (display clients only) -->
       <UpdatePrompt />

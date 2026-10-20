@@ -11,6 +11,8 @@ import MobileCalendarView from "@/components/mobile/MobileCalendarView.vue"
 import MobileTasksView from "@/components/mobile/MobileTasksView.vue"
 import MobileProfile from "@/components/mobile/MobileProfile.vue"
 import MobileQuickAdd from "@/components/mobile/MobileQuickAdd.vue"
+import MobileAnnouncements from "@/components/mobile/MobileAnnouncements.vue"
+import { useUi } from "@/composables/useUi"
 
 beforeEach(() => {
   setLowPower(true)
@@ -83,6 +85,33 @@ describe("MobileShell", () => {
     expect(w.findComponent(MobileQuickAdd).exists()).toBe(true)
     w.findComponent(MobileQuickAdd).vm.$emit("close")
     await nextTick()
+
+    // Announcement sheet opens from the app bar.
+    await w.find(".ms-announce-btn").trigger("click")
+    expect(w.findComponent(MobileAnnouncements).exists()).toBe(true)
+    w.findComponent(MobileAnnouncements).vm.$emit("close")
+    await nextTick()
+    expect(useUi().announcementsOpen.value).toBe(false)
+  })
+
+  it("opens notification intents from shared UI state", async () => {
+    const ui = useUi()
+    const w = mount(MobileShell)
+    await flushPromises()
+
+    ui.openAnnouncements()
+    await nextTick()
+    expect(w.findComponent(MobileAnnouncements).exists()).toBe(true)
+    w.findComponent(MobileAnnouncements).vm.$emit("close")
+    await nextTick()
+    expect(ui.announcementsOpen.value).toBe(false)
+
+    ui.openDrawer("event-detail", "e1")
+    await nextTick()
+    expect(w.find(".ms-detail-overlay").exists()).toBe(true)
+    await w.find(".ms-detail-close").trigger("click")
+    await nextTick()
+    expect(w.find(".ms-detail-overlay").exists()).toBe(false)
   })
 })
 

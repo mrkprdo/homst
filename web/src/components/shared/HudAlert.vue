@@ -2,6 +2,8 @@
 import { PhBell, PhX } from "@phosphor-icons/vue"
 import { useNotifications, type HudNotification } from "@/composables/useNotifications"
 
+defineProps<{ display?: boolean }>()
+
 const { notifications, dismiss } = useNotifications()
 
 function minutesUntil(n: HudNotification): number | null {
@@ -36,8 +38,24 @@ function whenLabel(n: HudNotification): string {
 
 <template>
   <Teleport to="body">
-    <TransitionGroup v-if="notifications.length" name="hud" tag="div" class="hud-stack">
-      <article v-for="n in notifications" :key="n.id" class="hud-card" role="alert">
+    <Transition name="hud-blur">
+      <div v-if="notifications.length" class="hud-backdrop" aria-hidden="true" />
+    </Transition>
+
+    <TransitionGroup
+      v-if="notifications.length"
+      name="hud"
+      tag="div"
+      class="hud-stack"
+      :class="{ 'hud-stack--display': display }"
+    >
+      <article
+        v-for="n in notifications"
+        :key="n.id"
+        class="hud-card"
+        :class="{ 'hud-card--display': display }"
+        role="alert"
+      >
         <span class="hud-icon">
           <PhBell :size="26" weight="fill" />
         </span>
@@ -65,6 +83,30 @@ function whenLabel(n: HudNotification): string {
   gap: var(--space-3);
   width: min(580px, calc(100vw - 2 * var(--space-6)));
   pointer-events: none;
+}
+
+.hud-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 390;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-bgBase) 4%, transparent);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+}
+
+.hud-blur-enter-active,
+.hud-blur-leave-active {
+  transition: opacity var(--duration-base) ease;
+}
+
+.hud-blur-enter-from,
+.hud-blur-leave-to {
+  opacity: 0;
+}
+
+.hud-stack--display {
+  width: min(860px, calc(100vw - 2 * var(--space-8)));
 }
 
 .hud-card {
@@ -135,6 +177,67 @@ function whenLabel(n: HudNotification): string {
   transition: background var(--duration-fast), color var(--duration-fast);
 }
 .hud-dismiss:hover { background: var(--color-bgSubtle); color: var(--color-textPrimary); }
+
+/* ── Wall display: larger cards with a breathing danger glow ── */
+.hud-card--display {
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border-width: 3px;
+  border-left-width: 10px;
+  animation: hud-breathe 2.8s ease-in-out infinite;
+}
+
+.hud-card--display .hud-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.hud-card--display .hud-icon :deep(svg) {
+  width: 32px;
+  height: 32px;
+}
+
+.hud-card--display .hud-title {
+  font-size: var(--text-title-size);
+}
+
+.hud-card--display .hud-when {
+  font-size: var(--text-body-size);
+}
+
+.hud-card--display .hud-dismiss {
+  width: 56px;
+  height: 56px;
+}
+
+@keyframes hud-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-danger) 18%, transparent),
+      0 0 12px 1px color-mix(in srgb, var(--color-danger) 22%, transparent),
+      0 20px 48px -14px color-mix(in srgb, var(--color-danger) 28%, transparent),
+      inset 0 1px 2px var(--shadow-shine);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--color-danger) 35%, transparent),
+      0 0 26px 5px color-mix(in srgb, var(--color-danger) 40%, transparent),
+      0 24px 64px -12px color-mix(in srgb, var(--color-danger) 42%, transparent),
+      inset 0 1px 2px var(--shadow-shine);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-card--display {
+    animation: none;
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--color-danger) 35%, transparent),
+      0 0 26px 5px color-mix(in srgb, var(--color-danger) 40%, transparent),
+      0 24px 64px -12px color-mix(in srgb, var(--color-danger) 42%, transparent),
+      inset 0 1px 2px var(--shadow-shine);
+  }
+}
 
 /* Arrival / dismissal motion — reduced-motion zeroes the duration tokens. */
 .hud-enter-active,

@@ -5,10 +5,10 @@ import AppNav from "@/components/shared/AppNav.vue"
 import { useUi } from "@/composables/useUi"
 
 describe("AppNav", () => {
-  it("renders 4 nav items (3 panels + profile)", () => {
+  it("renders 5 nav items (4 panels + profile)", () => {
     const wrapper = mount(AppNav)
     const items = wrapper.findAll(".nav-item")
-    expect(items).toHaveLength(4)
+    expect(items).toHaveLength(5)
   })
 
   it("home logo is active by default", () => {
@@ -33,10 +33,17 @@ describe("AppNav", () => {
     expect(ui.activePanel.value).toBe("tasks")
   })
 
-  it("clicking settings sets active panel", async () => {
+  it("clicking announcements sets active panel", async () => {
     const wrapper = mount(AppNav)
     const ui = useUi()
     await wrapper.findAll(".nav-item")[2]!.trigger("click")
+    expect(ui.activePanel.value).toBe("announcements")
+  })
+
+  it("clicking settings sets active panel", async () => {
+    const wrapper = mount(AppNav)
+    const ui = useUi()
+    await wrapper.findAll(".nav-item")[3]!.trigger("click")
     expect(ui.activePanel.value).toBe("settings")
   })
 
@@ -45,8 +52,9 @@ describe("AppNav", () => {
     const items = wrapper.findAll(".nav-item")
     expect(items[0]!.attributes("aria-label")).toBe("Calendar")
     expect(items[1]!.attributes("aria-label")).toBe("Tasks")
-    expect(items[2]!.attributes("aria-label")).toBe("Settings")
-    expect(items[3]!.attributes("aria-label")).toBe("Profile")
+    expect(items[2]!.attributes("aria-label")).toBe("Announcements")
+    expect(items[3]!.attributes("aria-label")).toBe("Settings")
+    expect(items[4]!.attributes("aria-label")).toBe("Profile")
   })
 
   it("active state persists after re-render", async () => {

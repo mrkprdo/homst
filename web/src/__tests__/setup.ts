@@ -7,8 +7,10 @@ import { _resetSettings } from "@/composables/useSettings"
 import { _resetMembers } from "@/composables/useMembers"
 import { _resetStream } from "@/composables/useStream"
 import { _resetNotifications } from "@/composables/useNotifications"
+import { _resetAnnouncements } from "@/composables/useAnnouncements"
 import { _resetPush } from "@/composables/usePush"
 import { _resetUpdatePrompt } from "@/composables/useUpdatePrompt"
+import { _resetNotificationIntent } from "@/composables/useNotificationIntent"
 
 globalThis.ResizeObserver = class ResizeObserver {
   observe() {}
@@ -31,7 +33,7 @@ globalThis.fetch = vi.fn((url: string | URL, options?: RequestInit) => {
   const path = String(url)
   const method = (options?.method as string) || "GET"
   const postData = options?.body ? JSON.parse(options.body as string) : {}
-  const isList = path.includes("/calendars") || path.includes("/events") || path.includes("/tasks") || path.includes("/task-lists") || path.includes("/members") || path.includes("/holidays")
+  const isList = path.includes("/calendars") || path.includes("/events") || path.includes("/tasks") || path.includes("/task-lists") || path.includes("/members") || path.includes("/holidays") || path.includes("/announcements")
 
   if (isList && method === "GET") {
     return Promise.resolve(buildResponse([]))
@@ -94,7 +96,9 @@ beforeEach(() => {
   _resetMembers()
   _resetStream()
   _resetNotifications()
+  _resetAnnouncements()
   _resetPush()
   _resetUpdatePrompt()
+  _resetNotificationIntent()
   vi.clearAllMocks()
 })

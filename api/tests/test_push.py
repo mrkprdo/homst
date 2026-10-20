@@ -194,6 +194,8 @@ async def test_dispatch_sends_push_when_device_subscribed(db_session, monkeypatc
     assert push_logs[0].status == "sent"
     assert payloads[0]["title"] == "Reminder: Soccer practice"
     assert payloads[0]["event_id"]
+    assert f"/?event={payloads[0]['event_id']}" in payloads[0]["url"]
+    assert "event_start=" in payloads[0]["url"]
 
 
 async def test_test_endpoint_pushes_to_devices(client, db_session, monkeypatch):

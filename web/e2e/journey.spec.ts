@@ -145,18 +145,21 @@ test("full user journey: onboarding → events → views → edit", async ({ pag
   // ═══════════════════════════════════════════════════════════
   // STEP 8 — SETTINGS
   // ═══════════════════════════════════════════════════════════
-  await page.locator(".app-nav button").nth(3).click()
+  await page.locator('.nav-item[aria-label="Settings"]').click()
   await page.waitForTimeout(300)
   await expect(page.locator(".settings-panel")).toBeVisible()
-  // Accent Color, Appearance, Text Size, Reminders, Add to your devices, Motion
-  await expect(page.locator(".card-title")).toHaveCount(6)
+  // Theme, Accent Color, Appearance, Text Size, Reminders, Devices, Motion
+  await expect(page.locator(".card-title")).toHaveCount(7)
 
   // Change accent color
   await page.locator(".color-swatch").nth(2).click()
   await page.waitForTimeout(200)
 
   // Change font size
-  const fontSizeButtons = page.locator(".settings-card").nth(2).locator(".segmented-btn")
+  const fontSizeButtons = page
+    .locator(".settings-card")
+    .filter({ hasText: "Text Size" })
+    .locator(".segmented-btn")
   await fontSizeButtons.nth(3).click()
   await page.waitForTimeout(200)
 

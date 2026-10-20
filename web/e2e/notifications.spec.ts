@@ -42,6 +42,8 @@ test.describe("Reminder HUD", () => {
     ])
 
     await expect(page.locator(".hud-card")).toHaveCount(2)
+    await expect(page.locator(".hud-card--display")).toHaveCount(2)
+    await expect(page.locator(".hud-backdrop")).toBeVisible()
     await expect(page.locator(".hud-card").first()).toHaveAttribute("role", "alert")
     await expect(page.locator(".hud-title").first()).toContainText("Dentist appointment")
     await expect(page.locator(".hud-when").first()).toContainText("In 5 min")

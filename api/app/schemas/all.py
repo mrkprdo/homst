@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Members ──
@@ -217,6 +217,27 @@ class TaskResponse(BaseModel):
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Announcements ──
+class AnnouncementCreate(BaseModel):
+    message: str = Field(min_length=1, max_length=500)
+    created_by: Optional[UUID] = None
+    # None means "until someone removes it"; the default matches the composer.
+    duration_minutes: Optional[int] = Field(default=30, ge=1, le=10080)
+    send_push: bool = True
+
+
+class AnnouncementResponse(BaseModel):
+    id: UUID
+    household_id: UUID
+    message: str
+    created_by: Optional[UUID] = None
+    author_name: Optional[str] = None
+    created_at: datetime
+    expires_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

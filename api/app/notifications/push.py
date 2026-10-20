@@ -160,11 +160,13 @@ def push_payload(
     minutes_before: int | None = None,
     all_day: bool = False,
     url: str = "/",
+    tag: str | None = None,
 ) -> dict:
     """Shape a payload the service worker can render as a notification."""
     if isinstance(start_at, datetime):
         start_at = start_at.isoformat()
-    tag = f"{event_id}::{start_at}" if event_id else None
+    if tag is None and event_id:
+        tag = f"{event_id}::{start_at}"
     return {
         "title": title,
         "body": body,

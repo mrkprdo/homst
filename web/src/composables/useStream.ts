@@ -2,6 +2,7 @@ import { ref, onMounted, onUnmounted } from "vue"
 import { useEvents } from "@/composables/useEvents"
 import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
+import { useAnnouncements } from "@/composables/useAnnouncements"
 import { useNotifications } from "@/composables/useNotifications"
 import { useSettings, applyHouseholdSettings, refreshPhotos } from "@/composables/useSettings"
 import {
@@ -13,6 +14,7 @@ import {
 import { mapEvent } from "@/api/calendar"
 import { mapTask } from "@/api/tasks"
 import { mapMember } from "@/api/users"
+import { mapAnnouncement } from "@/api/announcements"
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected"
 
@@ -36,11 +38,13 @@ async function refreshAllStores() {
   const { refresh: refreshEvents } = useEvents()
   const { refresh: refreshTasks } = useTasks()
   const { refresh: refreshMembers } = useMembers()
+  const { refresh: refreshAnnouncements } = useAnnouncements()
   const { refreshFromServer: refreshSettings } = useSettings()
   await Promise.allSettled([
     refreshEvents(),
     refreshTasks(),
     refreshMembers(),
+    refreshAnnouncements(),
     refreshSettings(),
     isDisplayClient ? refreshUpdatePrompt() : Promise.resolve(),
   ])
@@ -63,6 +67,7 @@ function connect() {
   const { upsertEvent, removeEvent } = useEvents()
   const { upsertTask,  removeTask  } = useTasks()
   const { upsertMember, removeMember } = useMembers()
+  const { upsertAnnouncement, removeAnnouncement } = useAnnouncements()
   const { push: pushNotification } = useNotifications()
 
   eventSource.onopen = () => {
@@ -121,6 +126,12 @@ function connect() {
         window.dispatchEvent(new CustomEvent("homst:widget-layout-updated", { detail: settings.widgetLayout }))
       }
     } catch {}
+  })
+  eventSource.addEventListener("announcement.created", (e) => {
+    try { upsertAnnouncement(mapAnnouncement(JSON.parse(e.data))) } catch {}
+  })
+  eventSource.addEventListener("announcement.deleted", (e) => {
+    try { const { id } = JSON.parse(e.data); removeAnnouncement(id) } catch {}
   })
   eventSource.addEventListener("photos.updated", () => {
     void refreshPhotos()

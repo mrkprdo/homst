@@ -8,6 +8,7 @@ import {
   PhCalendar,
   PhCheckSquare,
   PhDownloadSimple,
+  PhMegaphone,
   PhPlus,
   PhUserCircle,
   PhX,
@@ -16,6 +17,7 @@ import MobileCalendarView from "./MobileCalendarView.vue"
 import MobileTasksView from "./MobileTasksView.vue"
 import MobileQuickAdd from "./MobileQuickAdd.vue"
 import MobileProfile from "./MobileProfile.vue"
+import MobileAnnouncements from "./MobileAnnouncements.vue"
 import EventDetailPanel from "@/components/events/EventDetailPanel.vue"
 import TaskDetailPanel from "@/components/tasks/TaskDetailPanel.vue"
 
@@ -32,6 +34,13 @@ const { members, ensureLoaded: loadMembers } = useMembers()
 const tab = ref<MobileTab>("events")
 const showQuickAdd = ref(false)
 const showProfile = ref(false)
+const showAnnouncements = computed({
+  get: () => ui.announcementsOpen.value,
+  set: (open: boolean) => {
+    if (open) ui.openAnnouncements()
+    else ui.closeAnnouncements()
+  },
+})
 const showEventDetail = ref(false)
 const showTaskDetail = ref(false)
 const showInstallBanner = ref(true)
@@ -107,6 +116,17 @@ function closeTaskDetail() {
   ui.closeDrawer()
 }
 
+// Notification taps (and other entry points) can open a detail drawer without
+// going through this shell's local click handlers.
+watch(
+  () => ui.drawer.value.type,
+  (type) => {
+    if (type === "event-detail") showEventDetail.value = true
+    else if (type === "task-detail") showTaskDetail.value = true
+  },
+  { immediate: true },
+)
+
 // Detail panels can close themselves (delete, etc.) — keep the sheet in sync.
 watch(
   () => ui.isDrawerOpen.value,
@@ -126,22 +146,32 @@ watch(
         <span class="ms-wordmark">HOMST</span>
         <span class="ms-date">{{ todayLabel }}</span>
       </div>
-      <button
-        class="ms-profile-btn"
-        type="button"
-        aria-label="Open profile"
-        @click="showProfile = true"
-      >
-        <span
-          v-if="currentMember"
-          class="ms-avatar"
-          :style="{ background: currentMemberColor, color: currentMemberText }"
-          aria-hidden="true"
+      <div class="ms-appbar-actions">
+        <button
+          class="ms-announce-btn"
+          type="button"
+          aria-label="Open announcements"
+          @click="showAnnouncements = true"
         >
-          {{ (currentMember.name || "?")[0]?.toUpperCase() }}
-        </span>
-        <PhUserCircle v-else :size="26" />
-      </button>
+          <PhMegaphone :size="22" />
+        </button>
+        <button
+          class="ms-profile-btn"
+          type="button"
+          aria-label="Open profile"
+          @click="showProfile = true"
+        >
+          <span
+            v-if="currentMember"
+            class="ms-avatar"
+            :style="{ background: currentMemberColor, color: currentMemberText }"
+            aria-hidden="true"
+          >
+            {{ (currentMember.name || "?")[0]?.toUpperCase() }}
+          </span>
+          <PhUserCircle v-else :size="26" />
+        </button>
+      </div>
     </header>
 
     <div v-if="canInstall" class="ms-install-banner" role="region" aria-label="Install app">
@@ -217,6 +247,10 @@ watch(
 
     <MobileQuickAdd v-if="showQuickAdd" @close="showQuickAdd = false" />
     <MobileProfile v-if="showProfile" @close="showProfile = false" />
+    <MobileAnnouncements
+      v-if="showAnnouncements"
+      @close="showAnnouncements = false"
+    />
 
     <div v-if="showEventDetail" class="ms-detail-overlay" @click="closeEventDetail">
       <div
@@ -319,7 +353,15 @@ watch(
   color: var(--color-textPrimary);
 }
 
-.ms-profile-btn {
+.ms-appbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.ms-profile-btn,
+.ms-announce-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -336,11 +378,13 @@ watch(
   cursor: pointer;
 }
 
-.ms-profile-btn:active {
+.ms-profile-btn:active,
+.ms-announce-btn:active {
   transform: scale(0.94);
 }
 
 .ms-profile-btn:focus-visible,
+.ms-announce-btn:focus-visible,
 .ms-tab:focus-visible,
 .ms-fab:focus-visible,
 .ms-install-action:focus-visible,

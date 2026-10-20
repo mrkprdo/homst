@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { useUi, type PanelView } from "@/composables/useUi"
-import { PhCalendar, PhKanban, PhGear, PhUserCircle } from "@phosphor-icons/vue"
+import { PhCalendar, PhKanban, PhGear, PhMegaphone, PhUserCircle } from "@phosphor-icons/vue"
 import { animate, stagger, springs, dur } from "@/lib/motion"
 
 const ui = useUi()
@@ -9,9 +9,10 @@ const ui = useUi()
 const navEl = ref<HTMLElement | null>(null)
 
 const navItems: { id: PanelView; icon: typeof PhCalendar; label: string }[] = [
-  { id: "calendar", icon: PhCalendar, label: "Calendar" },
-  { id: "tasks",    icon: PhKanban,   label: "Tasks"    },
-  { id: "settings", icon: PhGear,     label: "Settings" },
+  { id: "calendar",      icon: PhCalendar,  label: "Calendar"      },
+  { id: "tasks",         icon: PhKanban,    label: "Tasks"         },
+  { id: "announcements", icon: PhMegaphone, label: "Announcements" },
+  { id: "settings",      icon: PhGear,      label: "Settings"      },
 ]
 
 onMounted(() => {

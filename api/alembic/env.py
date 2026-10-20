@@ -7,7 +7,16 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 from app.db import Base
-from app.models.all import (Household, Member, Calendar, Event, TaskList, Task, Holiday)
+from app.models.all import (
+    Announcement,
+    Calendar,
+    Event,
+    Holiday,
+    Household,
+    Member,
+    Task,
+    TaskList,
+)
 
 config = context.config
 if config.config_file_name is not None:

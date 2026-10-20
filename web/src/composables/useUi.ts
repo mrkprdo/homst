@@ -1,6 +1,6 @@
 import { ref, nextTick } from "vue"
 
-export type PanelView = "home" | "calendar" | "tasks" | "settings"
+export type PanelView = "home" | "calendar" | "tasks" | "announcements" | "settings"
 export type DrawerType = "event-detail" | "task-detail" | "member-detail" | "quick-add" | "confirm" | null
 
 export interface DrawerState {
@@ -14,6 +14,7 @@ export interface DrawerState {
 const activePanel = ref<PanelView>("home")
 const drawer = ref<DrawerState>({ type: null, id: null, date: null, time: null })
 const isDrawerOpen = ref(false)
+const announcementsOpen = ref(false)
 const closeGuard = ref<(() => boolean) | null>(null)
 
 function setPanel(panel: PanelView) {
@@ -34,6 +35,14 @@ function closeDrawer() {
   }, 320)
 }
 
+function openAnnouncements() {
+  announcementsOpen.value = true
+}
+
+function closeAnnouncements() {
+  announcementsOpen.value = false
+}
+
 function registerCloseGuard(fn: () => boolean) {
   closeGuard.value = fn
 }
@@ -43,12 +52,25 @@ function unregisterCloseGuard() {
 }
 
 export function useUi() {
-  return { activePanel, drawer, isDrawerOpen, setPanel, openDrawer, closeDrawer, registerCloseGuard, unregisterCloseGuard }
+  return {
+    activePanel,
+    drawer,
+    isDrawerOpen,
+    announcementsOpen,
+    setPanel,
+    openDrawer,
+    closeDrawer,
+    openAnnouncements,
+    closeAnnouncements,
+    registerCloseGuard,
+    unregisterCloseGuard,
+  }
 }
 
 export function _resetUi() {
   activePanel.value = "home"
   drawer.value = { type: null, id: null, date: null, time: null }
   isDrawerOpen.value = false
+  announcementsOpen.value = false
   closeGuard.value = null
 }

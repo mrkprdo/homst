@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test"
-import { setupApiMocks, setMockComplete, seedMockMembers, addMockEvent, addMockTask } from "./mocks"
+import {
+  setupApiMocks,
+  setMockComplete,
+  seedMockMembers,
+  addMockAnnouncement,
+  addMockEvent,
+  addMockTask,
+} from "./mocks"
 
 /**
  * Mobile PWA shell. Mobile layout is chosen from the user agent, so we present
@@ -129,6 +136,30 @@ test.describe("Mobile shell", () => {
 
     await page.locator(".mp-close").click()
     await expect(page.locator(".mobile-profile")).not.toBeVisible()
+  })
+
+  test("a reminder notification deep-link opens the event sheet", async ({ page }) => {
+    const ev = addMockEvent(
+      todayEvent({ id: "ev-deeplink", title: "Deep linked event" }),
+    )
+    const startSeconds = Math.floor(new Date(String(ev.start_at)).getTime() / 1000)
+
+    await page.goto(`/?event=${ev.id}&event_start=${startSeconds}`)
+    await expect(page.locator(".ms-detail-overlay")).toBeVisible()
+    await expect(page.locator(".ms-detail-overlay")).toContainText("Deep linked event")
+
+    // The query is consumed so a reload does not reopen the sheet.
+    expect(new URL(page.url()).search).toBe("")
+  })
+
+  test("an announcement notification deep-link opens the announcements sheet", async ({ page }) => {
+    addMockAnnouncement({ id: "ann-deeplink", message: "Deep linked announcement" })
+
+    await page.goto("/?announcement=ann-deeplink")
+    await expect(page.locator(".ma-sheet")).toBeVisible()
+    await expect(page.locator(".ma-sheet")).toContainText("Deep linked announcement")
+
+    expect(new URL(page.url()).search).toBe("")
   })
 
   test("mobile onboarding gate blocks an unconfigured household", async ({ page }) => {

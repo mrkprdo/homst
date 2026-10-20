@@ -42,7 +42,17 @@ self.addEventListener("notificationclick", (event) => {
       })
       for (const client of clientList) {
         if ("focus" in client) {
-          client.focus()
+          await client.focus()
+          // Navigate to the intent (event or announcement). The app reads the
+          // query once and opens the matching detail view.
+          try {
+            const target = new URL(url, self.location.origin).href
+            if (client.url !== target && "navigate" in client) {
+              await client.navigate(target)
+            }
+          } catch {
+            // The open window is still focused if navigation is unavailable.
+          }
           return
         }
       }

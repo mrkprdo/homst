@@ -9,6 +9,7 @@ const mockMembers: Record<string, unknown>[] = []
 
 const mockCalendars: Record<string, unknown>[] = []
 const mockEvents: Record<string, unknown>[] = []
+const mockAnnouncements: Record<string, unknown>[] = []
 const mockTasks: Record<string, unknown>[] = []
 const mockTaskLists: Record<string, unknown>[] = [
   { id: "tl-mock", household_id: "hh-mock", name: "General", color: "taupe", position: 0 },
@@ -57,6 +58,7 @@ export function resetMockState() {
     { id: "cal-main", household_id: "hh-mock", name: "Personal", color: "sage", source: "internal", feed_url: null, is_visible: true, created_by: null },
   )
   mockEvents.length = 0
+  mockAnnouncements.length = 0
   mockTasks.length = 0
   mockTaskLists.length = 1
   mockTaskLists[0] = { id: "tl-mock", household_id: "hh-mock", name: "General", color: "taupe", position: 0 }
@@ -105,6 +107,21 @@ export function addMockEvent(overrides?: Record<string, unknown>) {
   }
   mockEvents.push(ev)
   return ev
+}
+
+export function addMockAnnouncement(overrides?: Record<string, unknown>) {
+  const a = {
+    id: "ann-" + Date.now() + Math.random().toString(36).slice(2, 6),
+    household_id: "hh-mock",
+    message: "Mock announcement",
+    created_by: null,
+    author_name: null,
+    created_at: new Date().toISOString(),
+    expires_at: null,
+    ...overrides,
+  }
+  mockAnnouncements.push(a)
+  return a
 }
 
 export function addMockTask(overrides?: Record<string, unknown>) {
@@ -192,6 +209,46 @@ export async function setupApiMocks(page: Page) {
     if (channels.includes("hud")) results.hud = "sent to the display"
     if (channels.includes("push")) results.push = "skipped: no devices have push turned on"
     await route.fulfill(json({ results }))
+  })
+
+  // ── Announcements (stateful: POST/DELETE mutate mockAnnouncements) ──
+  await page.route(/\/api\/v1\/announcements/, async (route) => {
+    const url = route.request().url()
+    const method = route.request().method()
+    const match = url.match(/\/announcements\/([^/?]+)/)
+    const announcementId = match?.[1]
+
+    if (method === "GET") {
+      await route.fulfill(json([...mockAnnouncements]))
+    } else if (method === "POST") {
+      const body = JSON.parse(route.request().postData() || "{}")
+      const author = mockMembers.find((m: any) => m.id === body.created_by) as any
+      const createdAt = new Date()
+      const expiresAt = body.duration_minutes != null
+        ? new Date(createdAt.getTime() + body.duration_minutes * 60_000).toISOString()
+        : null
+      const announcement = {
+        id: "ann-" + Date.now(),
+        household_id: "hh-mock",
+        message: body.message || "",
+        created_by: body.created_by || null,
+        author_name: author?.name ?? null,
+        created_at: createdAt.toISOString(),
+        expires_at: expiresAt,
+      }
+      mockAnnouncements.push(announcement)
+      await route.fulfill(json(announcement))
+    } else if (method === "DELETE" && announcementId) {
+      const idx = mockAnnouncements.findIndex((a: any) => a.id === announcementId)
+      if (idx >= 0) {
+        mockAnnouncements.splice(idx, 1)
+        await route.fulfill(json({ message: "Announcement removed" }))
+      } else {
+        await route.fulfill({ status: 404, contentType: "application/json", body: '{"detail":"Announcement not found"}' })
+      }
+    } else {
+      await route.continue()
+    }
   })
 
   // ── Calendars ──

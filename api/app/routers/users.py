@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.events.publisher import publish_event
-from app.models.all import Event, Household, Member, Task
+from app.models.all import Announcement, Event, Household, Member, Task
 from app.schemas.all import MemberCreate, MemberResponse, MemberUpdate
 
 router = APIRouter()
@@ -98,6 +98,11 @@ async def delete_member(member_id: UUID, db: AsyncSession = Depends(get_db)):
     )
     await db.execute(
         Event.__table__.update().where(Event.assignee_id == member_id_str).values(assignee_id=None)
+    )
+    await db.execute(
+        Announcement.__table__.update()
+        .where(Announcement.created_by == member_id_str)
+        .values(created_by=None)
     )
     await db.execute(delete(Member).where(Member.id == member_id_str))
     await db.commit()

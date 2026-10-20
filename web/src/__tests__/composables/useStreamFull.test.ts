@@ -4,6 +4,7 @@ import { defineComponent, h } from "vue"
 import { useEvents } from "@/composables/useEvents"
 import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
+import { useAnnouncements } from "@/composables/useAnnouncements"
 import { useSettings } from "@/composables/useSettings"
 import { useUpdatePrompt } from "@/composables/useUpdatePrompt"
 import { useStream, _resetStream } from "@/composables/useStream"
@@ -126,6 +127,26 @@ describe("useStream (full)", () => {
     expect(events.value[0]!.title).toBe("Renamed event")
   })
 
+  it("applies announcement.created and announcement.deleted events", () => {
+    const { announcements } = useAnnouncements()
+    mountStream()
+
+    latestES!.dispatch("announcement.created", {
+      id: "a1",
+      household_id: "h1",
+      message: "Dinner is ready",
+      created_by: null,
+      author_name: null,
+      created_at: "2026-06-01T18:00:00Z",
+      expires_at: null,
+    })
+    expect(announcements.value).toHaveLength(1)
+    expect(announcements.value[0]!.message).toBe("Dinner is ready")
+
+    latestES!.dispatch("announcement.deleted", { id: "a1" })
+    expect(announcements.value).toHaveLength(0)
+  })
+
   it("relays a widget layout in settings.updated to a window event", () => {
     mountStream()
     const seen: unknown[] = []
@@ -207,6 +228,7 @@ describe("useStream (full)", () => {
     const types = ["event.created", "event.updated", "event.deleted", "task.created",
       "task.updated", "task.deleted", "member.joined", "member.updated", "member.removed",
       "settings.updated", "photos.updated", "reminder.due",
+      "announcement.created", "announcement.deleted",
       "system.update.available", "system.update.dismissed", "system.update.starting"]
     for (const t of types) {
       expect(() => latestES!.dispatchRaw(t, "{ not json")).not.toThrow()

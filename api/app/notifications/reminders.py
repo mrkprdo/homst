@@ -239,6 +239,7 @@ async def _dispatch_one(
                     start_at=occ,
                     minutes_before=due.minutes_before,
                     all_day=bool(ev.all_day),
+                    url=f"/?event={ev.id}&event_start={int(occ.timestamp())}",
                 ),
                 private_key=private_key,
                 subject=vapid_subject(),

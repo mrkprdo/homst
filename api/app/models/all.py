@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -132,6 +133,27 @@ class ServerSetting(Base):
     key = Column(String(64), primary_key=True)
     value = Column(Text, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class Announcement(Base):
+    """A short message broadcast to every connected screen.
+
+    ``expires_at`` is NULL when the announcement stays until someone removes
+    it; otherwise readers ignore it after the timestamp without needing a
+    cleanup job.
+    """
+
+    __tablename__ = "announcements"
+    __table_args__ = (
+        Index("ix_announcements_household_created", "household_id", "created_at"),
+    )
+
+    id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
+    household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)
+    message = Column(Text, nullable=False)
+    created_by = Column(Uuid(as_uuid=False), ForeignKey("members.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class ReminderLog(Base):
