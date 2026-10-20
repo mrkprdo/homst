@@ -72,6 +72,7 @@ onUnmounted(() => {
   justify-content: center;
   padding: var(--space-6);
   background: color-mix(in srgb, var(--color-bgBase) 40%, transparent);
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 }
 

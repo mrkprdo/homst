@@ -117,7 +117,6 @@ function whenLabel(n: HudNotification): string {
   padding: var(--space-5);
   background: var(--color-bgElevated);
   border: 2px solid color-mix(in srgb, var(--color-danger) 70%, var(--color-border));
-  border-left: 8px solid var(--color-danger);
   border-radius: var(--radius-md);
   box-shadow:
     0 4px 0 0 color-mix(in srgb, var(--color-danger) 35%, transparent),
@@ -183,7 +182,6 @@ function whenLabel(n: HudNotification): string {
   gap: var(--space-5);
   padding: var(--space-6);
   border-width: 3px;
-  border-left-width: 10px;
   animation: hud-breathe 2.8s ease-in-out infinite;
 }
 

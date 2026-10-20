@@ -135,7 +135,6 @@ function timeLabel(a: Announcement): string {
   padding: var(--space-4);
   background: var(--color-bgElevated);
   border: 2px solid color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
-  border-left: 8px solid var(--color-primary);
   border-radius: var(--radius-md);
   box-shadow:
     0 4px 0 0 color-mix(in srgb, var(--color-primary) 30%, transparent),
@@ -215,7 +214,6 @@ function timeLabel(a: Announcement): string {
   gap: var(--space-5);
   padding: var(--space-6);
   border-width: 3px;
-  border-left-width: 10px;
   animation: announcement-breathe 2.8s ease-in-out infinite;
 }
 
