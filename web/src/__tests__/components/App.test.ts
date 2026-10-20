@@ -233,7 +233,8 @@ describe("App", () => {
     const removeSpy = vi.spyOn(window, "removeEventListener")
 
     const wrapper = mountApp()
-    expect(addSpy).toHaveBeenCalledTimes(4)
+    // Four idle listeners plus online and offline (visibilitychange is on document).
+    expect(addSpy).toHaveBeenCalledTimes(6)
 
     wrapper.unmount()
     expect(removeSpy).toHaveBeenCalledWith("pointerdown", expect.any(Function))

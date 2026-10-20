@@ -144,6 +144,8 @@ HOMST is a PWA. Install it on each display or phone. Then enable notifications.
 
 Then open **Settings > Reminders > Phone & browser**. Permit notifications. Use **Send test to all clients** to test the configuration. HOMST generates its own VAPID keys and stores them in the database. You do not need a third-party push account.
 
+Web Push is one-way. A phone that is away from the local network can still receive notifications, and HOMST keeps a copy of recent notification text on the device so you can read it in the app. Sending an announcement or firing a test needs a route back to the local server. Connect to the household network, or use a VPN, to make changes.
+
 ### In-app updates (optional)
 
 The updater does these operations:

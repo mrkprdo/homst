@@ -11,6 +11,10 @@ import { _resetAnnouncements } from "@/composables/useAnnouncements"
 import { _resetPush } from "@/composables/usePush"
 import { _resetUpdatePrompt } from "@/composables/useUpdatePrompt"
 import { _resetNotificationIntent } from "@/composables/useNotificationIntent"
+import { _resetServerReachability } from "@/composables/useServerReachability"
+import { _resetOfflineNotifications } from "@/composables/useOfflineNotifications"
+import { _resetPushStore } from "@/lib/pushStore"
+import { HOUSEHOLD_COMPLETE_KEY } from "@/lib/householdCache"
 
 globalThis.ResizeObserver = class ResizeObserver {
   observe() {}
@@ -100,5 +104,9 @@ beforeEach(() => {
   _resetPush()
   _resetUpdatePrompt()
   _resetNotificationIntent()
+  _resetServerReachability()
+  _resetOfflineNotifications()
+  _resetPushStore()
+  localStorage.removeItem(HOUSEHOLD_COMPLETE_KEY)
   vi.clearAllMocks()
 })

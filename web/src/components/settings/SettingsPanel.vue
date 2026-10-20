@@ -4,7 +4,13 @@ import { useSettings, type Theme, type ThemePreset, type AccentColor, type FontS
 import { getAnimationEnabled, setAnimationEnabled } from "@/lib/motion"
 import { householdApi } from "@/api/household"
 import { notificationsApi } from "@/api/notifications"
+import { isServerUnreachable } from "@/api/client"
 import { usePush } from "@/composables/usePush"
+import {
+  SERVER_UNREACHABLE_DETAIL,
+  SERVER_UNREACHABLE_TITLE,
+  useServerReachability,
+} from "@/composables/useServerReachability"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
 import { PhSun, PhMoon, PhDesktop, PhCheck, PhBell, PhDeviceMobile, PhDownloadSimple } from "@phosphor-icons/vue"
 import PageHeader from "@/components/ui/PageHeader.vue"
@@ -123,6 +129,8 @@ watch(animationsEnabled, (enabled) => {
 const defaultReminder = ref("")
 const testing = ref(false)
 const testResults = ref<Record<string, string> | null>(null)
+const testUnreachable = ref(false)
+const { serverReachable } = useServerReachability()
 
 const {
   supported: pushSupported,
@@ -153,6 +161,10 @@ onMounted(async () => {
 /** Mirror reminder preferences changed on another client (SSE broadcast). */
 watch(() => settings.defaultReminderMinutes.value, (minutes) => {
   defaultReminder.value = minutes != null ? String(minutes) : ""
+})
+
+watch(serverReachable, (reachable) => {
+  if (reachable) testUnreachable.value = false
 })
 
 /** Toggling push turns *this* device's subscription on or off (per device). */
@@ -187,11 +199,16 @@ function onDefaultReminderChange(value: string) {
 async function sendTest() {
   testing.value = true
   testResults.value = null
+  testUnreachable.value = false
   try {
     const res = await notificationsApi.sendTest({ channels: ["hud", "push"] })
     testResults.value = res.results
-  } catch {
-    testResults.value = { hud: "failed: could not reach the server" }
+  } catch (err) {
+    if (isServerUnreachable(err)) {
+      testUnreachable.value = true
+    } else {
+      testResults.value = { hud: "failed: could not send the test" }
+    }
   } finally {
     testing.value = false
   }
@@ -385,6 +402,10 @@ async function sendTest() {
             <strong>{{ CHANNEL_LABELS[channel] ?? channel }}:</strong> {{ detail }}
           </p>
         </div>
+        <p v-if="testUnreachable || !serverReachable" class="reminder-notice" role="status">
+          <strong>{{ SERVER_UNREACHABLE_TITLE }}.</strong>
+          {{ SERVER_UNREACHABLE_DETAIL }}
+        </p>
       </div>
 
       <p class="card-desc reminder-hint">
@@ -852,6 +873,22 @@ async function sendTest() {
 }
 
 .reminder-result strong {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textPrimary);
+}
+
+.reminder-notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-warning, #caa681);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--color-warning, #caa681) 12%, transparent);
+  color: var(--color-textSecondary);
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+}
+
+.reminder-notice strong {
   font-weight: var(--font-weight-medium);
   color: var(--color-textPrimary);
 }

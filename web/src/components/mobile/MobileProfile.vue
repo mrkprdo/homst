@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue"
+import { ref, computed, onMounted, watch } from "vue"
 import { useMembers } from "@/composables/useMembers"
 import { usePush } from "@/composables/usePush"
 import { notificationsApi } from "@/api/notifications"
+import { isServerUnreachable } from "@/api/client"
+import {
+  SERVER_UNREACHABLE_DETAIL,
+  SERVER_UNREACHABLE_TITLE,
+  useServerReachability,
+} from "@/composables/useServerReachability"
 import { memberColorHex, type MemberColor } from "@/types/household"
 import { readableTextOn } from "@/utils/color"
 import { PhX, PhUser, PhBell, PhDownloadSimple } from "@phosphor-icons/vue"
@@ -25,10 +31,16 @@ const {
 
 const testing = ref(false)
 const testResults = ref<Record<string, string> | null>(null)
+const testUnreachable = ref(false)
+const { serverReachable } = useServerReachability()
 
 onMounted(async () => {
   refreshPush()
   await ensureLoaded()
+})
+
+watch(serverReachable, (reachable) => {
+  if (reachable) testUnreachable.value = false
 })
 
 /** Toggling turns *this* device's push subscription on or off. */
@@ -42,11 +54,16 @@ async function onPushToggle(enabled: boolean) {
 async function sendTestPush() {
   testing.value = true
   testResults.value = null
+  testUnreachable.value = false
   try {
     const res = await notificationsApi.sendTest({ channels: ["hud", "push"] })
     testResults.value = res.results
-  } catch {
-    testResults.value = { hud: "failed: could not reach the server" }
+  } catch (err) {
+    if (isServerUnreachable(err)) {
+      testUnreachable.value = true
+    } else {
+      testResults.value = { hud: "failed: could not send the test" }
+    }
   } finally {
     testing.value = false
   }
@@ -136,6 +153,10 @@ function formatDate(iso: string) {
               <strong>{{ CHANNEL_LABELS[channel] ?? channel }}:</strong> {{ detail }}
             </p>
           </div>
+          <p v-if="testUnreachable || !serverReachable" class="mp-notice" role="status">
+            <strong>{{ SERVER_UNREACHABLE_TITLE }}.</strong>
+            {{ SERVER_UNREACHABLE_DETAIL }}
+          </p>
         </div>
 
         <div class="mp-section">
@@ -408,6 +429,23 @@ function formatDate(iso: string) {
 .mp-test-result {
   font-size: var(--text-label-size);
   color: var(--color-textSecondary);
+}
+
+.mp-notice {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-warning, #caa681);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--color-warning, #caa681) 12%, transparent);
+  color: var(--color-textSecondary);
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+  text-align: left;
+}
+
+.mp-notice strong {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textPrimary);
 }
 
 .mp-hint {

@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue"
+import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import { PhMegaphone, PhPaperPlaneTilt } from "@phosphor-icons/vue"
 import { useMembers } from "@/composables/useMembers"
 import { useAnnouncements } from "@/composables/useAnnouncements"
+import { isServerUnreachable } from "@/api/client"
+import {
+  SERVER_UNREACHABLE_DETAIL,
+  SERVER_UNREACHABLE_TITLE,
+  useServerReachability,
+} from "@/composables/useServerReachability"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSelect from "@/components/ui/UiSelect.vue"
 import UiTextarea from "@/components/ui/UiTextarea.vue"
@@ -12,6 +18,7 @@ defineProps<{ fill?: boolean }>()
 
 const { send } = useAnnouncements()
 const { members, ensureLoaded: ensureMembersLoaded } = useMembers()
+const { serverReachable } = useServerReachability()
 
 const message = ref("")
 const authorId = ref("")
@@ -20,6 +27,8 @@ const notifyPhones = ref(true)
 const sending = ref(false)
 const error = ref("")
 const sent = ref(false)
+/** The request never reached the server, so this is a notice, not an error. */
+const unreachable = ref(false)
 
 let sentTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -45,6 +54,10 @@ onMounted(async () => {
   defaultAuthor()
 })
 
+watch(serverReachable, (reachable) => {
+  if (reachable) unreachable.value = false
+})
+
 onUnmounted(() => {
   if (sentTimer) clearTimeout(sentTimer)
 })
@@ -55,6 +68,7 @@ async function submit() {
 
   sending.value = true
   error.value = ""
+  unreachable.value = false
   try {
     await send({
       message: text,
@@ -67,7 +81,11 @@ async function submit() {
     if (sentTimer) clearTimeout(sentTimer)
     sentTimer = setTimeout(() => { sent.value = false }, 4000)
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Could not send the announcement"
+    if (isServerUnreachable(err)) {
+      unreachable.value = true
+    } else {
+      error.value = err instanceof Error ? err.message : "Could not send the announcement"
+    }
   } finally {
     sending.value = false
   }
@@ -127,6 +145,10 @@ async function submit() {
         </UiButton>
       </div>
 
+      <p v-if="unreachable || !serverReachable" class="ac-notice" role="status">
+        <strong>{{ SERVER_UNREACHABLE_TITLE }}.</strong>
+        {{ SERVER_UNREACHABLE_DETAIL }}
+      </p>
       <p v-if="error" class="ac-error" role="alert">{{ error }}</p>
     </form>
   </div>
@@ -209,6 +231,21 @@ async function submit() {
   margin-right: auto;
   font-size: var(--text-label-size);
   color: var(--color-success, #6f7a58);
+}
+
+.ac-notice {
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-warning, #caa681);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--color-warning, #caa681) 12%, transparent);
+  color: var(--color-textSecondary);
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+}
+
+.ac-notice strong {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textPrimary);
 }
 
 .ac-error {

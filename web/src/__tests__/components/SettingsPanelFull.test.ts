@@ -85,11 +85,11 @@ describe("SettingsPanel (notifications & motion)", () => {
     expect(wrapper.text()).toContain("skipped: no devices have push turned on")
   })
 
-  it("surfaces a friendly error when the test request fails", async () => {
+  it("explains that the local server is unreachable instead of showing a failure", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
     fetchMock.mockResolvedValueOnce(json({}))
     fetchMock.mockResolvedValueOnce(json({}))
-    fetchMock.mockRejectedValueOnce(new Error("offline"))
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))
 
     const wrapper = mount(SettingsPanel)
     await flushPromises()
@@ -97,7 +97,9 @@ describe("SettingsPanel (notifications & motion)", () => {
     await wrapper.findAll("button").find(b => b.text().includes("Send test to all clients"))!.trigger("click")
     await flushPromises()
 
-    expect(wrapper.find(".reminder-result").text()).toContain("could not reach the server")
+    expect(wrapper.find(".reminder-result").exists()).toBe(false)
+    expect(wrapper.find(".reminder-notice").text()).toContain("HOMST local server is out of reach")
+    expect(wrapper.find(".reminder-notice").text()).toContain("outbound connection")
   })
 
   it("the motion toggle flips the runtime animation setting", async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import { api } from "@/api/client"
+import { api, isServerUnreachable } from "@/api/client"
 
 describe("api client", () => {
   beforeEach(() => {
@@ -87,14 +87,19 @@ describe("api client", () => {
     }))
   })
 
-  it("throws on network error", async () => {
+  it("marks the server unreachable on a network error", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"))
-    await expect(api.get("/network-error")).rejects.toThrow("Failed to fetch")
+    const error = await api.get("/network-error").catch((err) => err)
+    expect(isServerUnreachable(error)).toBe(true)
+    if (isServerUnreachable(error)) {
+      expect(error.message).toContain("outbound connection")
+    }
   })
 
-  it("throws on request timeout", async () => {
+  it("marks the server unreachable on a request timeout", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new DOMException("The operation timed out", "TimeoutError"))
-    await expect(api.get("/timeout")).rejects.toThrow("The operation timed out")
+    const error = await api.get("/timeout").catch((err) => err)
+    expect(isServerUnreachable(error)).toBe(true)
   })
 
   it("sends Content-Type header by default", async () => {

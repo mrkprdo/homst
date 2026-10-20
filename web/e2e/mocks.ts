@@ -144,6 +144,11 @@ function json(body: unknown) {
 export async function setupApiMocks(page: Page) {
   resetMockState()
 
+  // ── Health (the shell probes this to detect an unreachable LAN server) ──
+  await page.route("**/api/health", async (route) => {
+    await route.fulfill(json({ status: "ok" }))
+  })
+
   // ── Settings ──
   await page.route("**/api/v1/household/settings", async (route) => {
     if (route.request().method() === "GET") {
@@ -314,8 +319,8 @@ export async function setupApiMocks(page: Page) {
     }
   })
 
-  // ── Holidays ──
-  await page.route("**/api/v1/holidays", async (route) => {
+  // ── Holidays (list + /sync) ──
+  await page.route(/\/api\/v1\/holidays(\/sync)?(\?|$)/, async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill(json(mockHolidays))
     } else if (route.request().method() === "POST") {

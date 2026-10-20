@@ -35,6 +35,20 @@ describe("useNotificationIntent", () => {
     expect(window.location.search).toBe("")
   })
 
+  it("carries the stored push id and handles a plain push tap", () => {
+    window.history.replaceState({}, "", "/?announcement=ann-1&push=push-9")
+    expect(useNotificationIntent().take()).toEqual({
+      type: "announcement",
+      id: "ann-1",
+      pushId: "push-9",
+    })
+
+    _resetNotificationIntent()
+    window.history.replaceState({}, "", "/?push=push-10")
+    expect(useNotificationIntent().take()).toEqual({ type: "push", id: "push-10" })
+    expect(window.location.search).toBe("")
+  })
+
   it("keeps unrelated query parameters when consuming an intent", () => {
     window.history.replaceState({}, "", "/?theme=dark&event=ev-2")
 

@@ -6,6 +6,7 @@ import { photosApi } from "@/api/photos"
 import { holidaysApi } from "@/api/holidays"
 import { api } from "@/api/client"
 import router, { invalidateSettings, markComplete } from "@/router"
+import { HOUSEHOLD_COMPLETE_KEY } from "@/lib/householdCache"
 import {
   setLowPower,
   getAnimationEnabled,
@@ -169,6 +170,15 @@ describe("router", () => {
     )
     await router.push("/?attempt=2")
     expect(router.currentRoute.value.path).toBe("/onboarding")
+  })
+
+  it("keeps the cached household when the server is unreachable off-LAN", async () => {
+    localStorage.setItem(HOUSEHOLD_COMPLETE_KEY, "true")
+    invalidateSettings()
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError("Failed to fetch"))
+
+    await router.push("/?offline=1")
+    expect(router.currentRoute.value.path).toBe("/")
   })
 
   it("redirects /onboarding to / when complete via API or markComplete()", async () => {

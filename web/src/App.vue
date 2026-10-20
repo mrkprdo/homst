@@ -3,11 +3,20 @@ import { ref, computed, watch, onMounted, onUnmounted } from "vue"
 import { useRoute } from "vue-router"
 import { useUi } from "@/composables/useUi"
 import type { PanelView } from "@/composables/useUi"
+import { readHouseholdComplete, writeHouseholdComplete } from "@/lib/householdCache"
 import { useSettings, applyHouseholdSettings, isApplyingRemoteSettings } from "@/composables/useSettings"
 import { useStream } from "@/composables/useStream"
 import { useEvents } from "@/composables/useEvents"
 import { useAnnouncements } from "@/composables/useAnnouncements"
 import { useNotificationIntent } from "@/composables/useNotificationIntent"
+import { useOfflineNotifications } from "@/composables/useOfflineNotifications"
+import { matchStoredPush, type StoredPush } from "@/lib/pushStore"
+import {
+  markServerUnreachable,
+  SERVER_UNREACHABLE_DETAIL,
+  SERVER_UNREACHABLE_TITLE,
+  useServerReachability,
+} from "@/composables/useServerReachability"
 import { api } from "@/api/client"
 import { householdApi } from "@/api/household"
 import { photosApi } from "@/api/photos"
@@ -27,6 +36,7 @@ import EventDetailPanel from "@/components/events/EventDetailPanel.vue"
 import TaskDetailPanel from "@/components/tasks/TaskDetailPanel.vue"
 import MobileShell from "@/components/mobile/MobileShell.vue"
 import MobileOnboardingGate from "@/components/mobile/MobileOnboardingGate.vue"
+import OfflineNotifications from "@/components/shared/OfflineNotifications.vue"
 
 const route = useRoute()
 const ui = useUi()
@@ -35,12 +45,22 @@ const { status: streamStatus } = useStream()
 const { prefetchAround } = useEvents()
 const { ensureLoaded: ensureAnnouncementsLoaded } = useAnnouncements()
 const { take: takeNotificationIntent } = useNotificationIntent()
+const { serverReachable, checkServerReachable } = useServerReachability()
+const { items: offlineNotifications, load: loadOfflineNotifications } = useOfflineNotifications()
+const sheetOpen = computed(() => ui.announcementsOpen.value || ui.isDrawerOpen.value)
+
+// Consume the deep link once, before the router or a reload can drop it.
+const notificationIntent = takeNotificationIntent()
 
 const isMobile = computed(() => /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent))
-const householdComplete = ref(false)
+const householdComplete = ref(readHouseholdComplete())
+const offlineSheetOpen = ref(false)
+const offlineSelected = ref<StoredPush | null>(null)
+let notificationIntentHandled = false
 
 function onMobileJoined() {
   householdComplete.value = true
+  writeHouseholdComplete(true)
 }
 
 const PAGE_CYCLE: PanelView[] = ["home", "calendar", "tasks"]
@@ -75,6 +95,29 @@ function onMouseMove() {
   }, 300)
 }
 
+function onOnline() {
+  void checkServerReachable()
+}
+
+function onOffline() {
+  markServerUnreachable()
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === "visible") void checkServerReachable()
+}
+
+/**
+ * Show the copy of a push payload that the service worker stored on this
+ * device. Used when the tap's deep link cannot load because the household
+ * server is unreachable (away from the LAN, without a VPN).
+ */
+async function openOfflineNotification(intent = notificationIntent) {
+  const rows = await loadOfflineNotifications(true)
+  offlineSelected.value = matchStoredPush(rows, intent) ?? rows[0] ?? null
+  offlineSheetOpen.value = true
+}
+
 onMounted(() => {
   if (!isMobile.value) {
     schedulePageCycle()
@@ -83,6 +126,24 @@ onMounted(() => {
     window.addEventListener("wheel", resetIdleTimer)
     window.addEventListener("mousemove", onMouseMove)
   }
+  void loadOfflineNotifications()
+  // A cached PWA can open while the LAN (or VPN) is out of reach. Probe once
+  // on launch so the shell can explain why writes will fail.
+  void checkServerReachable().then((reachable) => {
+    if (reachable) return
+    appReady.value = true
+    // A notification tap should still show its text instead of a blank app.
+    void openNotificationIntent()
+  })
+  window.addEventListener("online", onOnline)
+  window.addEventListener("offline", onOffline)
+  document.addEventListener("visibilitychange", onVisibilityChange)
+})
+
+watch(serverReachable, (reachable) => {
+  // Pick up pushes that arrived while the app was open so the banner can
+  // offer them without a reload.
+  if (!reachable) void loadOfflineNotifications(true)
 })
 
 onUnmounted(() => {
@@ -92,6 +153,9 @@ onUnmounted(() => {
   window.removeEventListener("keydown", resetIdleTimer)
   window.removeEventListener("wheel", resetIdleTimer)
   window.removeEventListener("mousemove", onMouseMove)
+  window.removeEventListener("online", onOnline)
+  window.removeEventListener("offline", onOffline)
+  document.removeEventListener("visibilitychange", onVisibilityChange)
 })
 
 // Sync settings to backend when they change
@@ -128,13 +192,28 @@ if (!isMobile.value) {
  * panel. The query is consumed once so a reload does not reopen it.
  */
 async function openNotificationIntent() {
-  const intent = takeNotificationIntent()
-  if (!intent) return
+  const intent = notificationIntent
+  if (!intent || notificationIntentHandled) return
+  notificationIntentHandled = true
+
+  if (!serverReachable.value) {
+    await openOfflineNotification(intent)
+    return
+  }
+
+  // A plain push (for example the settings test) has no destination view.
+  if (intent.type === "push") return
 
   if (intent.type === "event") {
     const parsed = intent.startAt ? new Date(Number(intent.startAt) * 1000) : new Date()
     const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed
-    await prefetchAround(date.getFullYear(), date.getMonth())
+    try {
+      await prefetchAround(date.getFullYear(), date.getMonth())
+    } catch {
+      // The event list could not load — show the stored reminder instead.
+      await openOfflineNotification(intent)
+      return
+    }
     ui.setPanel("calendar")
     ui.openDrawer("event-detail", intent.id)
     return
@@ -177,6 +256,7 @@ onMounted(() => {
   householdApi.getSettings()
     .then(s => {
       householdComplete.value = s.isComplete ?? false
+      writeHouseholdComplete(householdComplete.value)
       applyHouseholdSettings(s)
       // Remember the household's timezone once — the reminders worker uses it
       // to write "7:30 AM" into push reminders.
@@ -302,6 +382,38 @@ function panelLeave(el: Element, done: () => void) {
       </main>
     </div>
   </div>
+
+  <!-- Web Push is one-way; writes still need a route back to the household. -->
+  <div
+    v-if="!serverReachable && !offlineSheetOpen && !sheetOpen"
+    class="server-offline"
+    role="status"
+    aria-live="polite"
+  >
+    <span class="server-offline__dot" aria-hidden="true" />
+    <div class="server-offline__content">
+      <p>
+        <strong>{{ SERVER_UNREACHABLE_TITLE }}.</strong>
+        {{ SERVER_UNREACHABLE_DETAIL }}
+      </p>
+      <button
+        v-if="offlineNotifications.length"
+        class="server-offline__action"
+        type="button"
+        @click="openOfflineNotification()"
+      >
+        Read notifications
+      </button>
+    </div>
+  </div>
+
+  <!-- The service worker keeps a copy of each push so it is readable offline. -->
+  <OfflineNotifications
+    v-if="offlineSheetOpen"
+    :items="offlineNotifications"
+    :selected="offlineSelected"
+    @close="offlineSheetOpen = false"
+  />
 </template>
 
 <style scoped>
@@ -361,6 +473,83 @@ function panelLeave(el: Element, done: () => void) {
 .stream-status.disconnected .stream-dot { background: var(--color-danger,#a87781); }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ── Local server unreachable notice ── */
+.server-offline {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  z-index: 150;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: calc(100% - 2rem);
+  max-width: 520px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-warning, #caa681);
+  border-radius: var(--radius-sm);
+  background: var(--color-bgElevated);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+  color: var(--color-textSecondary);
+}
+
+.server-offline__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-warning, #caa681);
+}
+
+.server-offline__content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.server-offline p {
+  margin: 0;
+}
+
+.server-offline strong {
+  color: var(--color-textPrimary);
+  font-weight: var(--font-weight-medium);
+}
+
+.server-offline__action {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-borderStrong);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-textPrimary);
+  font-family: var(--font-family);
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.server-offline__action:active {
+  background: var(--color-bgSubtle);
+}
+
+.server-offline__action:focus-visible {
+  outline: 2px solid var(--color-accent-darker);
+  outline-offset: 2px;
+}
+
+/* Clear the phone tab bar and floating add button. */
+@media (max-width: 640px) {
+  .server-offline {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  }
+}
 
 /* ── App loading spinner ── */
 .app-loader {
