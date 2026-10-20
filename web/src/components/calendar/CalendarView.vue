@@ -627,12 +627,19 @@ function handleMonthNavigate(month: number, year: number, day?: number) {
 .day-cell.adjacent{opacity:0.3;box-shadow:none;background:var(--color-bgSubtle);cursor:pointer}
 .day-cell.adjacent:hover{opacity:0.5;background:var(--color-bgSurface)}
 
-.day-cell.selected{box-shadow:inset 0 0 0 2px var(--color-primary)}
+/* Today and selected cards carry an accent tint plus a strong accent ring. */
+.day-cell.today{background:color-mix(in srgb,var(--color-accent-base) 14%,var(--color-bgElevated));box-shadow:inset 0 0 0 2px var(--color-accent-base),0 2px 6px -2px var(--shadow-drop)}
+.day-cell.today:hover{background:color-mix(in srgb,var(--color-accent-base) 20%,var(--color-bgElevated))}
+.day-cell.selected{background:color-mix(in srgb,var(--color-accent-base) 26%,var(--color-bgElevated));box-shadow:inset 0 0 0 2px var(--color-accent-dark),0 2px 8px -2px var(--shadow-accent-drop)}
+.day-cell.selected:hover{background:color-mix(in srgb,var(--color-accent-base) 32%,var(--color-bgElevated))}
+.day-cell.selected.today{background:color-mix(in srgb,var(--color-accent-base) 36%,var(--color-bgElevated));box-shadow:inset 0 0 0 3px var(--color-accent-dark),0 3px 10px -2px var(--shadow-accent-drop)}
 @keyframes today-pulse{0%,70%,100%{opacity:0;transform:scale(0.85)}35%{opacity:0.40;transform:scale(1.15)}}
 
 /* Day number as a distinct pill badge */
 .day-num{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 var(--space-1);border-radius:var(--radius-xs);background:var(--color-bgSubtle);font-size:var(--text-label-size);font-weight:var(--font-weight-medium);align-self:flex-start;margin-bottom:2px;line-height:1;flex-shrink:0}
-.day-cell.today .day-num{width:22px;height:22px;min-width:unset;border-radius:var(--radius-full);background:var(--color-accent-dark);color:var(--color-textInverse);position:relative}
+.day-cell.today .day-num,
+.day-cell.selected .day-num{background:var(--color-accent-dark);color:var(--color-on-accent,var(--color-textInverse))}
+.day-cell.today .day-num{width:22px;height:22px;min-width:unset;border-radius:var(--radius-full);position:relative}
 .day-cell.today .day-num::after{content:'';position:absolute;inset:-6px;border-radius:var(--radius-full);background:var(--color-accent-glow);opacity:0;animation:today-pulse 2.8s cubic-bezier(0.25,0.46,0.45,0.94) infinite;animation-delay:1.2s;z-index:-1}
 .day-events{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;min-height:0;overflow:hidden}
 .more-events{flex-shrink:0;font-size:var(--text-micro-size);color:var(--color-textSecondary);padding:2px 5px 0}
@@ -649,7 +656,7 @@ function handleMonthNavigate(month: number, year: number, day?: number) {
 .week-time-gutter{grid-column:1}
 
 .week-col-header{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:var(--space-1);border-radius:var(--radius-sm);font-size:var(--text-body-size);font-weight:var(--font-weight-medium);background:var(--color-accent-lighter);color:var(--color-textPrimary);transition:background var(--duration-fast);border-bottom:2px solid transparent}
-.week-col-header.today{background:var(--color-accent-dark);color:var(--color-textInverse)}
+.week-col-header.today{background:var(--color-accent-base);color:var(--color-on-accent,var(--color-textInverse));border-bottom-color:var(--color-accent-dark);box-shadow:0 2px 0 0 var(--color-accent-dark)}
 .week-day-name{font-size:var(--text-micro-size);opacity:0.7;text-transform:uppercase;letter-spacing:0.04em}
 .week-day-num{font-size:var(--text-heading-size);line-height:1}
 
@@ -675,7 +682,7 @@ function handleMonthNavigate(month: number, year: number, day?: number) {
   position:absolute;top:0;bottom:0;
   left:calc(52px + var(--day-idx,0) * (4px + var(--_cw)));
   width:var(--_cw);
-  background:var(--color-accent-lighter);opacity:0.45;pointer-events:none;z-index:0
+  background:color-mix(in srgb,var(--color-accent-base) 16%,transparent);pointer-events:none;z-index:0
 }
 
 /* Current time line — positioned inside .week-grid (position:relative) */
@@ -697,7 +704,7 @@ function handleMonthNavigate(month: number, year: number, day?: number) {
 .day-scroll{flex:1;min-height:0;overflow-y:auto;width:100%}
 .day-sticky{position:sticky;top:0;z-index:10;background:var(--color-bgBase);border-bottom:1px solid var(--color-border)}
 .day-banner{display:flex;align-items:baseline;justify-content:center;gap:var(--space-3);padding:var(--space-3) var(--space-6);background:var(--color-bgSubtle);flex-shrink:0}
-.day-banner.today{background:linear-gradient(165deg,var(--color-accent-dark),var(--color-accent-darker));color:var(--color-textInverse)}
+.day-banner.today{background:linear-gradient(165deg,var(--color-accent-base),var(--color-accent-dark));color:var(--color-on-accent,var(--color-textInverse))}
 .day-banner-dayname{font-size:var(--text-title-size);font-weight:var(--font-weight-regular)}
 .day-banner-date{font-size:var(--text-display-size);font-weight:var(--font-weight-thin)}
 .day-banner-month{font-size:var(--text-body-size);opacity:0.7}

@@ -16,16 +16,16 @@ describe("SettingsPanel", () => {
     expect(wrapper.text()).toContain("Appearance")
   })
 
-  it("renders 3 theme buttons (Light, Dark, System)", () => {
+  it("renders 3 theme buttons for the default Futur preset (Day, Night, Auto)", () => {
     const wrapper = mount(SettingsPanel)
     const btns = wrapper.findAll(".theme-card")
     expect(btns).toHaveLength(3)
-    expect(btns[0]!.find(".theme-label").text()).toBe("Light")
-    expect(btns[1]!.find(".theme-label").text()).toBe("Dark")
-    expect(btns[2]!.find(".theme-label").text()).toBe("System")
+    expect(btns[0]!.find(".theme-label").text()).toBe("Day")
+    expect(btns[1]!.find(".theme-label").text()).toBe("Night")
+    expect(btns[2]!.find(".theme-label").text()).toBe("Auto")
   })
 
-  it("System is active by default", () => {
+  it("Auto is active by default", () => {
     const wrapper = mount(SettingsPanel)
     const btns = wrapper.findAll(".theme-card")
     expect(btns[2]!.classes()).toContain("active")
@@ -56,22 +56,31 @@ describe("SettingsPanel", () => {
     expect(settings.warm.value).toBe(true)
   })
 
-  it("renders the theme preset cards with Default active", () => {
+  it("renders the theme preset cards with Futur active", () => {
     const wrapper = mount(SettingsPanel)
     const cards = wrapper.findAll(".preset-card")
     expect(cards).toHaveLength(2)
-    expect(cards[0]!.text()).toContain("Default")
-    expect(cards[1]!.text()).toContain("Futur")
+    expect(cards[0]!.text()).toContain("Futur")
+    expect(cards[1]!.text()).toContain("Clay-o")
     expect(cards[0]!.classes()).toContain("active")
   })
 
-  it("switching to Futur swaps accents and appearance copy", async () => {
+  it("switching to Clay-o swaps accents and appearance copy", async () => {
     const wrapper = mount(SettingsPanel)
     const settings = useSettings()
     const cards = wrapper.findAll(".preset-card")
 
     await cards[1]!.trigger("click")
 
+    expect(settings.themePreset.value).toBe("default")
+    expect(settings.accentColor.value).toBe("sage")
+    expect(document.documentElement.classList.contains("futur")).toBe(false)
+
+    const appearance = wrapper.findAll(".theme-card")
+    expect(appearance[0]!.find(".theme-label").text()).toBe("Light")
+    expect(appearance[2]!.find(".theme-label").text()).toBe("System")
+
+    await cards[0]!.trigger("click")
     expect(settings.themePreset.value).toBe("futur")
     expect(settings.accentColor.value).toBe("mint")
     expect(document.documentElement.classList.contains("futur")).toBe(true)
@@ -80,14 +89,9 @@ describe("SettingsPanel", () => {
     expect(swatches).toHaveLength(5)
     expect(swatches[0]!.attributes("title")).toBe("Mint")
 
-    const appearance = wrapper.findAll(".theme-card")
-    expect(appearance[0]!.find(".theme-label").text()).toBe("Day")
-    expect(appearance[2]!.find(".theme-label").text()).toBe("Auto")
-
-    await cards[0]!.trigger("click")
-    expect(settings.themePreset.value).toBe("default")
-    expect(settings.accentColor.value).toBe("sage")
-    expect(document.documentElement.classList.contains("futur")).toBe(false)
+    const futurAppearance = wrapper.findAll(".theme-card")
+    expect(futurAppearance[0]!.find(".theme-label").text()).toBe("Day")
+    expect(futurAppearance[2]!.find(".theme-label").text()).toBe("Auto")
   })
 
   it("renders accent color section", () => {
@@ -127,9 +131,9 @@ describe("SettingsPanel", () => {
     const settings = useSettings()
     const swatches = wrapper.findAll(".color-swatch")
     await swatches[1]!.trigger("click")
-    expect(settings.accentColor.value).toBe(COLORS[1])
+    expect(settings.accentColor.value).toBe("honey")
     await swatches[3]!.trigger("click")
-    expect(settings.accentColor.value).toBe(COLORS[3])
+    expect(settings.accentColor.value).toBe("clay")
   })
 
   it("renders the reminders card with the unified test button", () => {

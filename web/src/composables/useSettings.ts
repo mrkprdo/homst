@@ -64,8 +64,8 @@ export const fontSizeScale: Record<FontSize, Record<string, string>> = {
 }
 
 const theme = ref<Theme>("system")
-const themePreset = ref<ThemePreset>("default")
-const accentColor = ref<AccentColor>("sage")
+const themePreset = ref<ThemePreset>("futur")
+const accentColor = ref<AccentColor>("mint")
 const fontSize = ref<FontSize>("large")
 const warm = ref(false)
 const hudEnabled = ref(true)
@@ -249,8 +249,8 @@ export function useSettings() {
 
 export function _resetSettings() {
   theme.value = "system"
-  themePreset.value = "default"
-  accentColor.value = "sage"
+  themePreset.value = "futur"
+  accentColor.value = "mint"
   fontSize.value = "large"
   warm.value = false
   hudEnabled.value = true
@@ -260,6 +260,6 @@ export function _resetSettings() {
   serverApplyDepth = 0
   accentMemory.default = presetDefaultAccent.default
   accentMemory.futur = presetDefaultAccent.futur
-  applyThemePresetToDOM("default")
-  applyAccentToDOM("sage")
+  applyThemePresetToDOM("futur")
+  applyAccentToDOM("mint")
 }

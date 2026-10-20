@@ -90,7 +90,7 @@ describe("App — bootstrap, idle cycle and cleanup", () => {
 
   it("applies theme, accent, font, warm and timezone from household settings", async () => {
     const settings = useSettings()
-    mockApi({ isComplete: true, theme: "dark", accentColor: "sage", fontSize: "large", warm: true })
+    mockApi({ isComplete: true, theme: "dark", themePreset: "default", accentColor: "sage", fontSize: "large", warm: true })
     const wrapper = mountApp()
     await settleFully()
 

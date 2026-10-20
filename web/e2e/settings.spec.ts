@@ -94,13 +94,22 @@ test.describe("Settings", () => {
     }
   })
 
-  test("theme has 3 options", async ({ page }) => {
+  test("theme has 3 options for the default Futur preset", async ({ page }) => {
     await openSettings(page)
     const cards = page.locator(".theme-card")
     await expect(cards).toHaveCount(3)
-    await expect(cards.nth(0)).toContainText("Light")
-    await expect(cards.nth(1)).toContainText("Dark")
-    await expect(cards.nth(2)).toContainText("System")
+    await expect(cards.nth(0)).toContainText("Day")
+    await expect(cards.nth(1)).toContainText("Night")
+    await expect(cards.nth(2)).toContainText("Auto")
+  })
+
+  test("theme presets are Futur (default) and Clay-o", async ({ page }) => {
+    await openSettings(page)
+    const presets = page.locator(".preset-card")
+    await expect(presets).toHaveCount(2)
+    await expect(presets.nth(0)).toContainText("Futur")
+    await expect(presets.nth(1)).toContainText("Clay-o")
+    await expect(presets.nth(0)).toHaveClass(/active/)
   })
 
   test("can switch between all themes", async ({ page }) => {

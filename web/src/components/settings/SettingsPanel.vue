@@ -36,16 +36,16 @@ const themePresets: {
   swatches: string[]
 }[] = [
   {
-    value: "default",
-    label: "Default",
-    desc: "Soft clay, muted accents",
-    swatches: [accentPalette.sage.base, accentPalette.peach.base, accentPalette.mauve.base],
-  },
-  {
     value: "futur",
     label: "Futur",
     desc: "Flat color, ink outlines",
     swatches: [accentPalette.mint.base, accentPalette.honey.base, accentPalette.violet.base],
+  },
+  {
+    value: "default",
+    label: "Clay-o",
+    desc: "Soft clay, muted accents",
+    swatches: [accentPalette.sage.base, accentPalette.peach.base, accentPalette.mauve.base],
   },
 ]
 
