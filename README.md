@@ -52,7 +52,7 @@ wget https://github.com/mrkprdo/homst/releases/latest/download/docker-compose.pr
 To pin a specific release, replace `latest` with its tag:
 
 ```bash
-https://github.com/mrkprdo/homst/releases/download/v0.1.1/docker-compose.prod.yml
+https://github.com/mrkprdo/homst/releases/download/v0.2.0/docker-compose.prod.yml
 ```
 
 ### 2. Start the stack

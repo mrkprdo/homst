@@ -14,6 +14,8 @@ import hashlib
 import os
 import socket
 
+from app.version import VERSION
+
 try:
     from zeroconf import ServiceInfo, Zeroconf
     _ZEROCONF_AVAILABLE = True
@@ -53,7 +55,7 @@ class HOMSTmDNS:
     def _start_sync(self) -> None:
         """Synchronous registration — runs in a thread to avoid blocking the event loop."""
         props: dict[str, str] = {
-            "version": "0.1.0",
+            "version": VERSION,
             "api": self._api_prefix,
             "host": self._host,
         }
