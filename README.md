@@ -13,7 +13,7 @@ HOMST is a self-hosted dashboard for shared households. You can install it on a 
 - **Today**: The home screen shows the daily schedule, current weather, and tasks that are due soon.
 - **Household members**: Household members have color-coded profiles. All members have the same permissions.
 - **Real-time updates**: Server-sent events send each change to all connected screens immediately.
-- **Announcements**: Send a short broadcast from a display or a phone. It appears on every connected screen and can also arrive as a Web Push notification. Tap a reminder or announcement notification on a phone to open the related event or message.
+- **Announcements**: Send a short broadcast from a display or a phone. On a display, open **Announcements** in the navigation. On a phone, tap the megaphone button. The message appears on every screen and can also arrive as a Web Push notification. Choose when it expires or keep it until removed. Tap a reminder or announcement notification on a phone to open the related event or message.
 - **Reminders**: HOMST sends Web Push notifications to phones and displays. You do not need a third-party push account.
 - **Other functions**: HOMST also has Spotify now playing, a household photo frame, ICS export, dark and light mode, and a mobile view.
 
