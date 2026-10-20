@@ -216,13 +216,14 @@ Everything goes through one **Build** workflow:
 - **`dev`** → nightly images `:dev` and `:dev-<sha>`.
 - **tag** → release images `:x.y.z`, `:x.y`, and `:latest` for stable tags.
 
-1. **Actions → Build → Run workflow.** Leave the workflow branch selector on `dev` and enter the branch or tag to build in the `ref` input.
-2. For a release, tag the commit first:
+1. **Actions → Build → Run workflow.** Choose `dev` or the release branch in the **Use workflow from** selector.
+2. For a release, create a version branch and run Build on it — no version input needed:
    ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
+   git checkout dev
+   git checkout -b 0.2.0
+   git push origin 0.2.0
    ```
-   Then run Build with `ref=v0.2.0`. A branch named `0.2.0` also works: if the tag does not exist, the workflow creates and pushes `v0.2.0` automatically.
+   Then choose `0.2.0` in the Build workflow. The workflow creates and pushes the `v0.2.0` tag, builds the release image, and publishes the GitHub Release. A non-version branch whose HEAD has a semantic-version tag (e.g. `v0.2.0`) is also accepted.
 3. The workflow runs the test suite, builds for `linux/amd64` and `linux/arm64`, pushes the image tags, and creates or updates the GitHub Release for the tag with the compose file and env template attached.
 
 Prerelease tags like `v0.2.0-rc.1` are marked as prereleases and don't move `:latest`.
