@@ -91,8 +91,9 @@ function whenLabel(n: HudNotification): string {
   z-index: 390;
   pointer-events: none;
   background: color-mix(in srgb, var(--color-bgBase) 4%, transparent);
-  backdrop-filter: blur(1.5px);
+  /* Prefixed first: Lightning CSS drops the standard property if it comes first. */
   -webkit-backdrop-filter: blur(1.5px);
+  backdrop-filter: blur(1.5px);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
