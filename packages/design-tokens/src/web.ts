@@ -63,7 +63,7 @@ ${cssVars("color", warmDarkMode)}
 
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-  :root {
+  :root:not(.motion-on) {
     --duration-fast: 0ms;
     --duration-base: 0ms;
     --duration-slow: 0ms;

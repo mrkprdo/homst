@@ -68,6 +68,7 @@ async function freshMotion() {
 beforeEach(() => {
   localStorage.clear()
   document.documentElement.classList.remove("low-power")
+  document.documentElement.classList.remove("motion-on")
   setMatchMedia(false)
   stubLocation("")
   setNavigator(REAL_UA, 8)
@@ -79,6 +80,7 @@ afterEach(() => {
   setNavigator(REAL_UA, REAL_CORES)
   delete (window.navigator as any).deviceMemory
   document.documentElement.classList.remove("low-power")
+  document.documentElement.classList.remove("motion-on")
 })
 
 describe("lib/motion — low-power detection at import time", () => {
@@ -99,6 +101,16 @@ describe("lib/motion — low-power detection at import time", () => {
     const on = await freshMotion()
     expect(on.isLowPower).toBe(false)
     expect(document.documentElement.classList.contains("low-power")).toBe(false)
+    expect(document.documentElement.classList.contains("motion-on")).toBe(true)
+  })
+
+  it("lets an explicit opt-in override the system reduced-motion preference", async () => {
+    setMatchMedia(true)
+    localStorage.setItem(ANIMATIONS_ENABLED_KEY, "true")
+    const motion = await freshMotion()
+    expect(motion.isLowPower).toBe(false)
+    expect(document.documentElement.classList.contains("low-power")).toBe(false)
+    expect(document.documentElement.classList.contains("motion-on")).toBe(true)
   })
 
   it("supports the ?low-power debug flag", async () => {

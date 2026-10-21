@@ -115,14 +115,12 @@ const fontSizeOptions: { label: string; value: FontSize }[] = [
 const selectedColorName = computed(() => colorNames[settings.accentColor.value] ?? "Custom")
 
 const animationsEnabled = ref(getAnimationEnabled())
-const reduceMotionLocked = typeof window !== 'undefined'
+const systemReducedMotion = typeof window !== 'undefined'
   && typeof window.matchMedia === 'function'
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 watch(animationsEnabled, (enabled) => {
-  if (!reduceMotionLocked) {
-    setAnimationEnabled(enabled)
-  }
+  setAnimationEnabled(enabled)
 })
 
 // ── Reminders ──
@@ -451,10 +449,10 @@ async function sendTest() {
           <h3 class="card-title">Motion</h3>
           <p class="card-desc">Enable bouncy animations and transitions</p>
         </div>
-        <UiToggle v-model="animationsEnabled" :disabled="reduceMotionLocked" />
+        <UiToggle v-model="animationsEnabled" />
       </div>
-      <p v-if="reduceMotionLocked" class="card-desc motion-locked">
-        Reduced motion is enabled in your system settings.
+      <p v-if="systemReducedMotion" class="card-desc motion-locked">
+        Your system asks for reduced motion. This switch overrides that for HOMST.
       </p>
     </div>
 

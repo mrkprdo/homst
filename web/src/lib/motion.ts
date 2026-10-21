@@ -20,17 +20,17 @@ function getUserAnimationOverride(): boolean | null {
 function detectLowPower(): boolean {
   if (typeof window === 'undefined') return false
 
-  // Respect user/system reduced-motion preference
+  // An explicit choice in the settings panel beats the system preference.
+  const userOverride = getUserAnimationOverride()
+  if (userOverride === true) return false
+  if (userOverride === false) return true
+
+  // Respect the system reduced-motion preference when the user hasn't chosen.
   if (typeof window.matchMedia === 'function') {
     try {
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true
     } catch {}
   }
-
-  // Settings-panel override takes precedence over auto-detection
-  const userOverride = getUserAnimationOverride()
-  if (userOverride === true) return false
-  if (userOverride === false) return true
 
   // Manual override for debugging or kiosk configuration
   try {
@@ -53,18 +53,22 @@ function detectLowPower(): boolean {
 let lowPower = detectLowPower()
 export let isLowPower = lowPower
 
+function syncMotionClasses(): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.classList.toggle('low-power', lowPower)
+  // Lets the token stylesheet keep durations when the user explicitly opts in
+  // despite `prefers-reduced-motion: reduce`.
+  document.documentElement.classList.toggle('motion-on', !lowPower)
+}
+
 /** Toggle low-power mode at runtime (useful for tests / debug). */
 export function setLowPower(enabled: boolean): void {
   lowPower = enabled
   isLowPower = enabled
-  if (typeof document !== 'undefined') {
-    document.documentElement.classList.toggle('low-power', enabled)
-  }
+  syncMotionClasses()
 }
 
-if (lowPower && typeof document !== 'undefined') {
-  document.documentElement.classList.add('low-power')
-}
+syncMotionClasses()
 
 /** Read whether animations are currently enabled. */
 export function getAnimationEnabled(): boolean {
