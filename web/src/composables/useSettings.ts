@@ -3,7 +3,7 @@ import { householdApi } from "@/api/household"
 import type { HouseholdSettings } from "@/api/household"
 import { photosApi } from "@/api/photos"
 
-export type Theme = "light" | "dark" | "system"
+export type Theme = "light" | "dark" | "system" | "auto"
 export type ThemePreset = "default" | "futur"
 export type AccentColor =
   | "peach" | "sage" | "mauve" | "plum" | "sky"
@@ -68,6 +68,11 @@ const themePreset = ref<ThemePreset>("futur")
 const accentColor = ref<AccentColor>("mint")
 const fontSize = ref<FontSize>("large")
 const warm = ref(false)
+/** Server-resolved day/night state while `theme` is "auto". Null until known. */
+const autoThemeDark = ref<boolean | null>(null)
+/** Today's sunrise/sunset (ISO 8601, household timezone) while theme is auto. */
+const autoSunrise = ref<string | null>(null)
+const autoSunset = ref<string | null>(null)
 const hudEnabled = ref(true)
 const houseName = ref("")
 const photos = ref<PhotoEntry[]>([])
@@ -127,6 +132,13 @@ function applyFontSizeToDOM(size: FontSize) {
 
 function updateTheme(t: Theme) {
   theme.value = t
+  if (t !== "auto") {
+    // Drop the resolved sun state so a later offline switch to auto falls
+    // back to the OS instead of reusing yesterday's day/night flag.
+    autoThemeDark.value = null
+    autoSunrise.value = null
+    autoSunset.value = null
+  }
   applyAccentToDOM(accentColor.value)
 }
 
@@ -196,6 +208,9 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
     if (s.accentColor) updateAccentColor(s.accentColor as AccentColor)
     if (s.fontSize) updateFontSize(s.fontSize as FontSize)
     if (s.warm !== undefined) updateWarm(!!s.warm)
+    if (s.autoThemeDark !== undefined) autoThemeDark.value = s.autoThemeDark ?? null
+    if (s.autoSunrise !== undefined) autoSunrise.value = s.autoSunrise ?? null
+    if (s.autoSunset !== undefined) autoSunset.value = s.autoSunset ?? null
     if (s.houseName !== undefined) updateHouseName(s.houseName)
     if (s.notifications) {
       if (s.notifications.hud !== undefined) updateHudEnabled(s.notifications.hud !== false)
@@ -239,6 +254,7 @@ export async function refreshFromServer() {
 export function useSettings() {
   return {
     theme, themePreset, accentColor, fontSize, warm, hudEnabled, houseName, photos, defaultReminderMinutes,
+    autoThemeDark, autoSunrise, autoSunset,
     accentPalette, accentSets, fontSizeScale,
     applyAccentToDOM, applyFontSizeToDOM,
     updateTheme, updateThemePreset, updateAccentColor, updateFontSize, updateWarm, updateHudEnabled,
@@ -253,6 +269,9 @@ export function _resetSettings() {
   accentColor.value = "mint"
   fontSize.value = "large"
   warm.value = false
+  autoThemeDark.value = null
+  autoSunrise.value = null
+  autoSunset.value = null
   hudEnabled.value = true
   houseName.value = ""
   photos.value = []

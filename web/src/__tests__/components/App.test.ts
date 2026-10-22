@@ -96,6 +96,38 @@ describe("App", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(false)
   })
 
+  it("uses the server day/night state when theme is auto", async () => {
+    const settings = useSettings()
+    settings.updateTheme("auto")
+    settings.autoThemeDark.value = true
+    const wrapper = mountApp()
+    await nextTick()
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+
+    settings.autoThemeDark.value = false
+    await nextTick()
+    expect(document.documentElement.classList.contains("dark")).toBe(false)
+    wrapper.unmount()
+  })
+
+  it("falls back to the OS preference until auto state arrives", async () => {
+    let changeHandler: ((e: MediaQueryListEvent) => void) | null = null
+    matchMediaMock.mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn((event: string, handler: (e: MediaQueryListEvent) => void) => {
+        if (event === "change") changeHandler = handler
+      }),
+      removeEventListener: vi.fn(),
+    })
+    const settings = useSettings()
+    settings.updateTheme("auto")
+    mountApp()
+
+    changeHandler!({ matches: true } as MediaQueryListEvent)
+    await nextTick()
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+  })
+
   it("applies warm class to html when warm lighting is on", async () => {
     const settings = useSettings()
     settings.updateWarm(true)

@@ -5,6 +5,7 @@ from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from app import updater_client
+from app.auto_theme import auto_theme_state
 from app.config import settings as app_settings
 from app.db import async_session
 from app.events.publisher import publish_event
@@ -132,6 +133,44 @@ async def check_auto_update(ctx):
     )
 
 
+async def apply_auto_theme(ctx, now=None):
+    """Flip every client's appearance at sunrise and sunset.
+
+    ``theme`` stays ``auto`` in the household settings; only the resolved
+    ``autoThemeDark`` flag is persisted and pushed over the normal
+    ``settings.updated`` event. Clients therefore never need to know the
+    household's coordinates or run their own solar clock.
+    """
+    async with async_session() as session:
+        result = await session.execute(
+            select(Household).where(Household.id == DEFAULT_HOUSEHOLD_ID)
+        )
+        household = result.scalar_one_or_none()
+        if household is None:
+            return
+
+        current = dict(household.settings or {})
+        state = auto_theme_state(current, now=now)
+        if not state:
+            return
+        if current.get("autoThemeDark") == state["autoThemeDark"]:
+            return
+
+        merged = {**current, "autoThemeDark": state["autoThemeDark"]}
+        household.settings = merged
+        await session.commit()
+
+    try:
+        await publish_event(
+            DEFAULT_HOUSEHOLD_ID,
+            "settings.updated",
+            {"settings": {**merged, **state}},
+        )
+    except Exception:
+        pass
+    print(f"[worker] auto theme → {'dark' if state['autoThemeDark'] else 'light'}")
+
+
 async def sync_calendar(ctx, calendar_id: str):
     """Sync a single external calendar by ID."""
     async with async_session() as session:
@@ -168,10 +207,13 @@ class WorkerSettings:
         sync_calendar,
         dispatch_reminders,
         check_auto_update,
+        apply_auto_theme,
     ]
     cron_jobs = [
         # Reminder scan: runs at second 0 of every minute.
         cron(dispatch_reminders),
+        # Sunrise/sunset appearance flips; only publishes on a real change.
+        cron(apply_auto_theme),
         # Update availability check; the configured interval is enforced in code.
         cron(check_auto_update),
         # cron(sync_all_external_calendars, hour={*range(24)}, minute={0, 15, 30, 45})

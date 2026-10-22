@@ -234,9 +234,16 @@ if (!isMobile.value) {
   onUnmounted(() => mq.removeEventListener("change", onMqChange))
 }
 
-const isDark = computed(() =>
-  settings.theme.value === "dark" || (settings.theme.value === "system" && prefersDark.value)
-)
+const isDark = computed(() => {
+  if (settings.theme.value === "dark") return true
+  if (settings.theme.value === "light") return false
+  if (settings.theme.value === "auto") {
+    // The server resolves sunrise/sunset for the household. Until that state
+    // arrives, follow the OS so the first paint is sensible.
+    return settings.autoThemeDark.value ?? prefersDark.value
+  }
+  return prefersDark.value
+})
 
 const views: Record<string, typeof CalendarView> = {
   home:          HomeView,

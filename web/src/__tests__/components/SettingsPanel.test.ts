@@ -16,19 +16,48 @@ describe("SettingsPanel", () => {
     expect(wrapper.text()).toContain("Appearance")
   })
 
-  it("renders 3 theme buttons for the default Futur preset (Day, Night, Auto)", () => {
+  it("renders 4 theme buttons for the default Futur preset (Day, Night, Auto, System)", () => {
     const wrapper = mount(SettingsPanel)
     const btns = wrapper.findAll(".theme-card")
-    expect(btns).toHaveLength(3)
+    expect(btns).toHaveLength(4)
     expect(btns[0]!.find(".theme-label").text()).toBe("Day")
     expect(btns[1]!.find(".theme-label").text()).toBe("Night")
     expect(btns[2]!.find(".theme-label").text()).toBe("Auto")
+    expect(btns[3]!.find(".theme-label").text()).toBe("System")
   })
 
-  it("Auto is active by default", () => {
+  it("System is active by default", () => {
     const wrapper = mount(SettingsPanel)
     const btns = wrapper.findAll(".theme-card")
-    expect(btns[2]!.classes()).toContain("active")
+    expect(btns[3]!.classes()).toContain("active")
+  })
+
+  it("clicking Auto asks the server to resolve sunrise and sunset", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+      message: "Settings updated",
+      settings: {
+        theme: "auto",
+        autoThemeDark: true,
+        autoSunrise: "2026-10-21T11:38:00+00:00",
+        autoSunset: "2026-10-21T22:26:00+00:00",
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } })))
+
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+    const settings = useSettings()
+
+    await wrapper.findAll(".theme-card")[2]!.trigger("click")
+    await flushPromises()
+
+    const patch = fetchMock.mock.calls.find(c => (c[1] as RequestInit)?.method === "PATCH")
+    expect(patch).toBeTruthy()
+    expect(JSON.parse((patch![1] as RequestInit).body as string).settings.theme).toBe("auto")
+    expect(settings.theme.value).toBe("auto")
+    expect(settings.autoThemeDark.value).toBe(true)
+    expect(settings.autoSunrise.value).toBe("2026-10-21T11:38:00+00:00")
+    expect(wrapper.find(".auto-note").exists()).toBe(true)
   })
 
   it("clicking Dark updates theme", async () => {
@@ -78,7 +107,8 @@ describe("SettingsPanel", () => {
 
     const appearance = wrapper.findAll(".theme-card")
     expect(appearance[0]!.find(".theme-label").text()).toBe("Light")
-    expect(appearance[2]!.find(".theme-label").text()).toBe("System")
+    expect(appearance[2]!.find(".theme-label").text()).toBe("Auto")
+    expect(appearance[3]!.find(".theme-label").text()).toBe("System")
 
     await cards[0]!.trigger("click")
     expect(settings.themePreset.value).toBe("futur")
@@ -92,6 +122,7 @@ describe("SettingsPanel", () => {
     const futurAppearance = wrapper.findAll(".theme-card")
     expect(futurAppearance[0]!.find(".theme-label").text()).toBe("Day")
     expect(futurAppearance[2]!.find(".theme-label").text()).toBe("Auto")
+    expect(futurAppearance[3]!.find(".theme-label").text()).toBe("System")
   })
 
   it("renders accent color section", () => {

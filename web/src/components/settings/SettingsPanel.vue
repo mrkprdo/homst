@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from "vue"
-import { useSettings, type Theme, type ThemePreset, type AccentColor, type FontSize, accentPalette, accentSets } from "@/composables/useSettings"
+import {
+  useSettings,
+  applyHouseholdSettings,
+  type Theme,
+  type ThemePreset,
+  type AccentColor,
+  type FontSize,
+  accentPalette,
+  accentSets,
+} from "@/composables/useSettings"
 import { getAnimationEnabled, setAnimationEnabled } from "@/lib/motion"
 import { householdApi } from "@/api/household"
 import { notificationsApi } from "@/api/notifications"
@@ -12,7 +21,7 @@ import {
   useServerReachability,
 } from "@/composables/useServerReachability"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
-import { PhSun, PhMoon, PhDesktop, PhCheck, PhBell, PhDeviceMobile, PhDownloadSimple } from "@phosphor-icons/vue"
+import { PhSun, PhMoon, PhSunHorizon, PhDesktop, PhCheck, PhBell, PhDeviceMobile, PhDownloadSimple } from "@phosphor-icons/vue"
 import PageHeader from "@/components/ui/PageHeader.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
 import UiToggle from "@/components/ui/UiToggle.vue"
@@ -56,20 +65,62 @@ const themePresets: {
 ]
 
 const defaultThemeOptions: { value: Theme; label: string; icon: typeof PhSun; desc: string }[] = [
-  { value: "light",  label: "Light",  icon: PhSun,     desc: "Always light" },
-  { value: "dark",   label: "Dark",   icon: PhMoon,    desc: "Always dark"  },
-  { value: "system", label: "System", icon: PhDesktop, desc: "Follows OS"   },
+  { value: "light",  label: "Light",  icon: PhSun,        desc: "Always light"      },
+  { value: "dark",   label: "Dark",   icon: PhMoon,       desc: "Always dark"       },
+  { value: "auto",   label: "Auto",   icon: PhSunHorizon, desc: "Sunrise & sunset"  },
+  { value: "system", label: "System", icon: PhDesktop,    desc: "Follows OS"        },
 ]
 
 const futurThemeOptions: typeof defaultThemeOptions = [
-  { value: "light",  label: "Day",   icon: PhSun,     desc: "Cream paper" },
-  { value: "dark",   label: "Night", icon: PhMoon,    desc: "Deep navy"   },
-  { value: "system", label: "Auto",  icon: PhDesktop, desc: "Follows OS"  },
+  { value: "light",  label: "Day",    icon: PhSun,        desc: "Cream paper"      },
+  { value: "dark",   label: "Night",  icon: PhMoon,       desc: "Deep navy"        },
+  { value: "auto",   label: "Auto",   icon: PhSunHorizon, desc: "Sunrise & sunset" },
+  { value: "system", label: "System", icon: PhDesktop,    desc: "Follows OS"       },
 ]
 
 const appearanceOptions = computed(() =>
   settings.themePreset.value === "futur" ? futurThemeOptions : defaultThemeOptions
 )
+
+const hasLocation = ref<boolean | null>(null)
+
+function sunTime(value: string | null): string {
+  if (!value) return ""
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+}
+
+const autoSchedule = computed(() => {
+  const sunrise = sunTime(settings.autoSunrise.value)
+  const sunset = sunTime(settings.autoSunset.value)
+  return sunrise && sunset ? `Sunrise ${sunrise} · Sunset ${sunset}` : ""
+})
+
+/**
+ * Auto needs the server to resolve sunrise/sunset, so ask for the new state in
+ * the same round-trip instead of waiting for the debounced settings watcher.
+ * Other themes apply immediately and persist through that watcher.
+ */
+let themeRequest = 0
+async function selectTheme(theme: Theme) {
+  const request = ++themeRequest
+  if (theme !== "auto") {
+    settings.updateTheme(theme)
+    return
+  }
+  try {
+    const res = await householdApi.updateSettings({ theme: "auto" })
+    // A newer click won while this request was in flight.
+    if (request !== themeRequest) return
+    applyHouseholdSettings(res.settings ?? { theme: "auto" })
+  } catch {
+    if (request !== themeRequest) return
+    // Offline: keep auto selected; it falls back to the OS preference until
+    // the next successful load supplies the server's day/night state.
+    settings.updateTheme("auto")
+  }
+}
 
 const colorOptions = computed<{ value: AccentColor; hex: string; name: string }[]>(() =>
   accentSets[settings.themePreset.value].map((key) => ({
@@ -91,8 +142,8 @@ const accentDescription = computed(() =>
 
 const appearanceDescription = computed(() =>
   settings.themePreset.value === "futur"
-    ? "Choose the light for the flat palette"
-    : "Choose how the interface looks"
+    ? "Choose the light for the flat palette on every screen"
+    : "Choose how the interface looks on every screen"
 )
 
 const warmTitle = computed(() =>
@@ -146,6 +197,7 @@ const CHANNEL_LABELS: Record<string, string> = { hud: "Display", push: "Phone" }
 onMounted(async () => {
   refreshPush()
   const s = await householdApi.getSettings().catch(() => null)
+  if (s) hasLocation.value = typeof s.lat === "number" && typeof s.lon === "number"
   const n = s?.notifications
   if (n) {
     settings.updateHudEnabled(n.hud !== false)
@@ -222,7 +274,7 @@ async function sendTest() {
       <div class="card-header">
         <div>
           <h3 class="card-title">Theme</h3>
-          <p class="card-desc">Choose the visual language for this display</p>
+          <p class="card-desc">Choose the visual language for every screen</p>
         </div>
         <span class="selected-badge">{{ activePreset.label }}</span>
       </div>
@@ -296,13 +348,21 @@ async function sendTest() {
           :key="opt.value"
           class="theme-card"
           :class="{ active: settings.theme.value === opt.value }"
-          @click="settings.updateTheme(opt.value)"
+          @click="selectTheme(opt.value)"
         >
           <component :is="opt.icon" :size="20" class="theme-icon" />
           <span class="theme-label">{{ opt.label }}</span>
           <span class="theme-desc">{{ opt.desc }}</span>
         </button>
       </div>
+      <p v-if="settings.theme.value === 'auto'" class="auto-note">
+        <PhSunHorizon :size="15" />
+        <span v-if="autoSchedule">{{ autoSchedule }}</span>
+        <span v-else-if="hasLocation === false">
+          Add a home address in your profile to use sunrise and sunset.
+        </span>
+        <span v-else>Sunrise and sunset are unavailable for this location today.</span>
+      </p>
       <div class="setting-row">
         <div>
           <p class="row-title">{{ warmTitle }}</p>
@@ -729,8 +789,26 @@ async function sendTest() {
 /* ── Theme cards ── */
 .theme-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+@media (max-width: 560px) {
+  .theme-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.auto-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-label-size);
+  color: var(--color-textMuted);
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.auto-note svg {
+  color: var(--color-primary);
+  flex-shrink: 0;
 }
 
 .theme-card {

@@ -22,6 +22,11 @@ export interface HouseholdSettings {
   accentColor?: string
   fontSize?: string
   warm?: boolean
+  /** Server-resolved day/night state while `theme` is "auto". */
+  autoThemeDark?: boolean
+  /** Today's sunrise/sunset (ISO 8601) while `theme` is "auto". */
+  autoSunrise?: string
+  autoSunset?: string
   widgetLayout?: WidgetDef[]
   notifications?: NotificationPreferences
   updates?: UpdatePreferences
@@ -53,8 +58,8 @@ export const householdApi = {
     return api.get<HouseholdSettings>("/household/settings") as Promise<HouseholdSettings>
   },
 
-  updateSettings(settings: Partial<HouseholdSettings>): Promise<{ message: string }> {
-    return api.patch<{ message: string }>("/household/settings", { settings })
+  updateSettings(settings: Partial<HouseholdSettings>): Promise<{ message: string; settings?: HouseholdSettings }> {
+    return api.patch<{ message: string; settings?: HouseholdSettings }>("/household/settings", { settings })
   },
 
   getMembers(): Promise<HouseholdMember[]> {

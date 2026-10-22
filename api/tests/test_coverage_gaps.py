@@ -298,8 +298,9 @@ async def test_worker_dispatch_reminders_and_misc(monkeypatch, db_session, capsy
     assert "worker started" in out
     assert "worker shutting" in out
 
-    assert len(worker_mod.WorkerSettings.cron_jobs) == 2
+    assert len(worker_mod.WorkerSettings.cron_jobs) == 3
     assert worker_mod.check_auto_update in worker_mod.WorkerSettings.functions
+    assert worker_mod.apply_auto_theme in worker_mod.WorkerSettings.functions
     assert worker_mod.WorkerSettings.on_startup is worker_mod.startup
 
 

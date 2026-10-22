@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auto_theme import auto_theme_state
 from app.db import get_db
 from app.events.publisher import publish_event
 from app.models.all import Household
@@ -104,16 +105,33 @@ async def update_settings(
             )
             merged.update(coords)
 
+    # Sunrise/sunset times are derived display data, never stored settings.
+    merged.pop("autoSunrise", None)
+    merged.pop("autoSunset", None)
+
+    # Resolve the scheduled appearance before saving. This gives the client
+    # that picked "auto" the current day/night state immediately and stores it
+    # so the worker only broadcasts real sunrise/sunset transitions.
+    auto_state = auto_theme_state(merged)
+    if auto_state:
+        merged["autoThemeDark"] = auto_state["autoThemeDark"]
+    else:
+        merged.pop("autoThemeDark", None)
+
     hh.settings = merged
     await db.commit()
+    payload = {**merged, **auto_state}
     try:
-        await publish_event(DEFAULT_HOUSEHOLD_ID, "settings.updated", {"settings": merged})
+        await publish_event(DEFAULT_HOUSEHOLD_ID, "settings.updated", {"settings": payload})
     except Exception:
         pass
-    return {"message": "Settings updated"}
+    return {"message": "Settings updated", "settings": payload}
 
 
 @router.get("/settings")
 async def get_settings(db: AsyncSession = Depends(get_db)):
     hh = await _get_or_create_household(db)
-    return hh.settings or {}
+    settings = dict(hh.settings or {})
+    # Keep the resolved state fresh for clients that reload between flips.
+    settings.update(auto_theme_state(settings))
+    return settings

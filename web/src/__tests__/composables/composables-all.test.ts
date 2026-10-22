@@ -225,11 +225,17 @@ describe("useSettings", () => {
       accentColor: "honey",
       fontSize: "xlarge",
       warm: true,
+      autoThemeDark: true,
+      autoSunrise: "2026-10-21T11:38:00+00:00",
+      autoSunset: "2026-10-21T22:26:00+00:00",
       houseName: "Cedar",
       notifications: { hud: false, defaultReminderMinutes: 30 },
     })
 
     expect(s.theme.value).toBe("dark")
+    expect(s.autoThemeDark.value).toBe(true)
+    expect(s.autoSunrise.value).toBe("2026-10-21T11:38:00+00:00")
+    expect(s.autoSunset.value).toBe("2026-10-21T22:26:00+00:00")
     expect(s.themePreset.value).toBe("futur")
     expect(s.accentColor.value).toBe("honey")
     expect(s.fontSize.value).toBe("xlarge")
