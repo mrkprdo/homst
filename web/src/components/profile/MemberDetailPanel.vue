@@ -89,6 +89,9 @@ const weatherLat = ref<number | null>(null)
 const weatherLon = ref<number | null>(null)
 const localMembers = ref<MemberEntry[]>([])
 const saved = ref(false)
+const fieldSaving = ref(false)
+const fieldError = ref("")
+let savedTimer: ReturnType<typeof setTimeout> | undefined
 
 // Track original state for change detection
 const originalHouseName = ref("")
@@ -120,6 +123,15 @@ const hasChanges = computed(() => {
   if (holidayProvince.value !== originalProvince.value) return true
   if (weatherLat.value !== originalWeatherLat.value) return true
   if (weatherLon.value !== originalWeatherLon.value) return true
+  // A field that is still open with a typed draft counts as unsaved too.
+  if (editingHouseName.value && houseNameDraft.value.trim() !== houseName.value) return true
+  if (editingAddress.value && addressDraft.value.trim() !== address.value) return true
+  if (editingCountry.value && countryDraft.value !== holidayCountry.value) return true
+  if (editingProvince.value && provinceDraft.value.trim() !== holidayProvince.value) return true
+  if (
+    editingWeatherCoords.value &&
+    (weatherLatDraft.value !== weatherLat.value || weatherLonDraft.value !== weatherLon.value)
+  ) return true
   if (removedMemberIds.value.length > 0) return true
   const current = localMembers.value
   if (current.length !== originalMembers.value.length) return true
@@ -171,34 +183,113 @@ onMounted(async () => {
 
 onUnmounted(() => {
   ui.unregisterCloseGuard()
+  clearTimeout(savedTimer)
 })
+
+function flashSaved() {
+  saved.value = true
+  clearTimeout(savedTimer)
+  savedTimer = setTimeout(() => { saved.value = false }, 2500)
+}
+
+/**
+ * Persist one field immediately. Inline Save buttons used to only update local
+ * state, so closing the drawer (or reloading) brought the old value back.
+ */
+async function persistField(patch: Partial<HouseholdSettings>, apply: () => void) {
+  fieldError.value = ""
+  fieldSaving.value = true
+  try {
+    await householdApi.updateSettings(patch)
+    apply()
+    flashSaved()
+  } catch {
+    fieldError.value = "Couldn't save that change. Check the connection and try again."
+  } finally {
+    fieldSaving.value = false
+  }
+}
+
+/** Pick up coordinates the server derived after an address/country change. */
+async function refreshCoordinates() {
+  const s = await householdApi.getSettings().catch(() => null)
+  if (!s) return
+  weatherLat.value = s.lat ?? null
+  weatherLon.value = s.lon ?? null
+  originalWeatherLat.value = weatherLat.value
+  originalWeatherLon.value = weatherLon.value
+}
 
 async function saveHouseName() {
   const v = houseNameDraft.value.trim()
-  houseName.value = v
-  editingHouseName.value = false
+  if (v === houseName.value) {
+    editingHouseName.value = false
+    return
+  }
+  await persistField({ houseName: v }, () => {
+    houseName.value = v
+    originalHouseName.value = v
+    settings.updateHouseName(v)
+    editingHouseName.value = false
+  })
 }
 
 async function saveAddress() {
   const v = addressDraft.value.trim()
-  address.value = v
-  editingAddress.value = false
+  if (v === address.value) {
+    editingAddress.value = false
+    return
+  }
+  await persistField({ address: v }, () => {
+    address.value = v
+    originalAddress.value = v
+    editingAddress.value = false
+  })
+  if (!fieldError.value && !editingWeatherCoords.value) await refreshCoordinates()
 }
 
-function saveCountry() {
-  holidayCountry.value = countryDraft.value
-  editingCountry.value = false
+async function saveCountry() {
+  const v = countryDraft.value
+  if (v === holidayCountry.value) {
+    editingCountry.value = false
+    return
+  }
+  await persistField({ holidayCountry: v }, () => {
+    holidayCountry.value = v
+    originalCountry.value = v
+    editingCountry.value = false
+  })
+  if (!fieldError.value && !editingWeatherCoords.value) await refreshCoordinates()
 }
 
-function saveProvince() {
-  holidayProvince.value = provinceDraft.value.trim()
-  editingProvince.value = false
+async function saveProvince() {
+  const v = provinceDraft.value.trim()
+  if (v === holidayProvince.value) {
+    editingProvince.value = false
+    return
+  }
+  await persistField({ holidayProvince: v }, () => {
+    holidayProvince.value = v
+    originalProvince.value = v
+    editingProvince.value = false
+  })
+  if (!fieldError.value && !editingWeatherCoords.value) await refreshCoordinates()
 }
 
-function saveWeatherCoords() {
-  weatherLat.value = weatherLatDraft.value ?? null
-  weatherLon.value = weatherLonDraft.value ?? null
-  editingWeatherCoords.value = false
+async function saveWeatherCoords() {
+  const lat = weatherLatDraft.value ?? null
+  const lon = weatherLonDraft.value ?? null
+  if (lat === weatherLat.value && lon === weatherLon.value) {
+    editingWeatherCoords.value = false
+    return
+  }
+  await persistField({ lat: lat ?? undefined, lon: lon ?? undefined }, () => {
+    weatherLat.value = lat
+    weatherLon.value = lon
+    originalWeatherLat.value = lat
+    originalWeatherLon.value = lon
+    editingWeatherCoords.value = false
+  })
 }
 
 function addMember() {
@@ -245,6 +336,42 @@ function resetAll() {
   weatherLon.value = originalWeatherLon.value
   localMembers.value = JSON.parse(JSON.stringify(originalMembers.value))
   removedMemberIds.value = []
+  editingHouseName.value = false
+  editingAddress.value = false
+  editingCountry.value = false
+  editingProvince.value = false
+  editingWeatherCoords.value = false
+  houseNameDraft.value = originalHouseName.value
+  addressDraft.value = originalAddress.value
+  countryDraft.value = originalCountry.value
+  provinceDraft.value = originalProvince.value
+  weatherLatDraft.value = originalWeatherLat.value
+  weatherLonDraft.value = originalWeatherLon.value
+}
+
+/** Fold any still-open inline editor into the model before a full save. */
+function commitDrafts() {
+  if (editingHouseName.value) {
+    houseName.value = houseNameDraft.value.trim()
+    editingHouseName.value = false
+  }
+  if (editingAddress.value) {
+    address.value = addressDraft.value.trim()
+    editingAddress.value = false
+  }
+  if (editingCountry.value) {
+    holidayCountry.value = countryDraft.value
+    editingCountry.value = false
+  }
+  if (editingProvince.value) {
+    holidayProvince.value = provinceDraft.value.trim()
+    editingProvince.value = false
+  }
+  if (editingWeatherCoords.value) {
+    weatherLat.value = weatherLatDraft.value ?? null
+    weatherLon.value = weatherLonDraft.value ?? null
+    editingWeatherCoords.value = false
+  }
 }
 
 function handleSaveClick() {
@@ -258,7 +385,7 @@ async function confirmSave() {
 
 async function confirmSaveAndClose() {
   confirmAction.value = null
-  await saveAll()
+  if (!(await saveAll())) return
   ui.unregisterCloseGuard()
   ui.closeDrawer()
 }
@@ -274,7 +401,9 @@ function cancelConfirm() {
   confirmAction.value = null
 }
 
-async function saveAll() {
+async function saveAll(): Promise<boolean> {
+  commitDrafts()
+  fieldError.value = ""
   try {
     // Persist house name if changed
     if (houseName.value !== originalHouseName.value) {
@@ -340,10 +469,14 @@ async function saveAll() {
     originalMembers.value = JSON.parse(JSON.stringify(localMembers.value))
     removedMemberIds.value = []
 
-    saved.value = true
-    setTimeout(() => { saved.value = false }, 2500)
+    // Keep the home screen's household label in sync even when SSE is down.
+    settings.updateHouseName(houseName.value)
+
+    flashSaved()
+    return true
   } catch {
-    // Silently fail — user can retry
+    fieldError.value = "Couldn't save all changes. Check the connection and try again."
+    return false
   }
 }
 </script>
@@ -363,7 +496,7 @@ async function saveAll() {
       <div class="md-row">
         <template v-if="editingHouseName">
           <UiInput v-model="houseNameDraft" class="md-input" autofocus />
-          <UiButton size="sm" @click="saveHouseName">Save</UiButton>
+          <UiButton size="sm" :disabled="fieldSaving" @click="saveHouseName">{{ fieldSaving ? "Saving…" : "Save" }}</UiButton>
         </template>
         <template v-else>
           <span class="md-value md-value--large">{{ houseName || "Unnamed" }}</span>
@@ -377,7 +510,7 @@ async function saveAll() {
       <div class="md-row">
         <template v-if="editingAddress">
           <UiInput v-model="addressDraft" class="md-input" autofocus />
-          <UiButton size="sm" @click="saveAddress">Save</UiButton>
+          <UiButton size="sm" :disabled="fieldSaving" @click="saveAddress">{{ fieldSaving ? "Saving…" : "Save" }}</UiButton>
         </template>
         <template v-else>
           <span class="md-value">{{ address || "Not set" }}</span>
@@ -393,7 +526,7 @@ async function saveAll() {
       <div class="md-row">
         <template v-if="editingProvince">
           <UiInput v-model="provinceDraft" class="md-input" autofocus />
-          <UiButton size="sm" @click="saveProvince">Save</UiButton>
+          <UiButton size="sm" :disabled="fieldSaving" @click="saveProvince">{{ fieldSaving ? "Saving…" : "Save" }}</UiButton>
         </template>
         <template v-else>
           <span class="md-value">{{ holidayProvince || "Not set" }}</span>
@@ -411,7 +544,7 @@ async function saveAll() {
           <UiSelect v-model="countryDraft" class="md-input">
             <option v-for="c in countries" :key="c.code" :value="c.code">{{ c.name }}</option>
           </UiSelect>
-          <UiButton size="sm" @click="saveCountry">Save</UiButton>
+          <UiButton size="sm" :disabled="fieldSaving" @click="saveCountry">{{ fieldSaving ? "Saving…" : "Save" }}</UiButton>
         </template>
         <template v-else>
           <span class="md-value">{{ (countries.find(c => c.code === holidayCountry)?.name ?? holidayCountry) || "Not set" }}</span>
@@ -429,7 +562,7 @@ async function saveAll() {
         <template v-if="editingWeatherCoords">
           <input v-model.number="weatherLatDraft" type="number" step="any" class="md-input md-input--narrow" placeholder="Latitude" autofocus />
           <input v-model.number="weatherLonDraft" type="number" step="any" class="md-input md-input--narrow" placeholder="Longitude" />
-          <UiButton size="sm" @click="saveWeatherCoords">Save</UiButton>
+          <UiButton size="sm" :disabled="fieldSaving" @click="saveWeatherCoords">{{ fieldSaving ? "Saving…" : "Save" }}</UiButton>
         </template>
         <template v-else>
           <span class="md-value">{{ weatherLat != null ? `${weatherLat.toFixed(4)}, ${weatherLon?.toFixed(4)}` : "Auto (from address)" }}</span>
@@ -472,12 +605,13 @@ async function saveAll() {
     </section>
 
     <!-- Save / Confirmation -->
+    <p v-if="fieldError" class="md-save-error" role="alert">{{ fieldError }}</p>
     <div class="md-footer">
       <div v-if="saved" class="md-confirm">
         <PhCheckCircle :size="16" />
         <span>Changes saved</span>
       </div>
-      <UiButton v-if="hasChanges" class="md-save-btn" @click="handleSaveClick">Save Changes</UiButton>
+      <UiButton v-if="hasChanges" class="md-save-btn" :disabled="fieldSaving" @click="handleSaveClick">Save Changes</UiButton>
     </div>
   </template>
 
@@ -717,6 +851,12 @@ async function saveAll() {
 .member-remove:hover { background: var(--color-bgSubtle); color: var(--color-danger); }
 
 /* Footer / Save */
+.md-save-error {
+  margin: 0;
+  font-size: var(--text-label-size);
+  color: var(--color-danger);
+}
+
 .md-footer {
   display: flex;
   align-items: center;

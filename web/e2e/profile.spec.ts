@@ -78,12 +78,8 @@ test.describe("Profile & Events", () => {
     await page.waitForTimeout(200)
     const input = page.locator(".md-input").first()
     await input.fill("Reloaded Home")
-    await page.getByRole("button", { name: "Save" }).click()
+    await page.getByRole("button", { name: "Save", exact: true }).click()
     await expect(page.locator(".md-value--large")).toContainText("Reloaded Home")
-
-    // Persist all changes via Save Changes
-    await page.locator(".md-save-btn").click()
-    await page.locator(".md-confirm-panel").getByRole("button", { name: "Save" }).click()
     await page.waitForTimeout(500)
     await expect(page.locator(".md-confirm")).toContainText("Changes saved")
     await page.locator(".close-btn").click()
@@ -103,12 +99,8 @@ test.describe("Profile & Events", () => {
     await page.waitForTimeout(200)
     const addrInput = page.locator(".md-input").first()
     await addrInput.fill("789 Pine St")
-    await page.getByRole("button", { name: "Save" }).click()
+    await page.getByRole("button", { name: "Save", exact: true }).click()
     await expect(page.locator(".md-value").nth(1)).toContainText("789 Pine St")
-
-    // Persist all changes via Save Changes
-    await page.locator(".md-save-btn").click()
-    await page.locator(".md-confirm-panel").getByRole("button", { name: "Save" }).click()
     await page.waitForTimeout(500)
     await expect(page.locator(".md-confirm")).toContainText("Changes saved")
     await page.locator(".close-btn").click()
@@ -130,7 +122,7 @@ test.describe("Profile & Events", () => {
 
     const input = page.locator(".md-input").first()
     await input.fill("New House Name")
-    await page.getByRole("button", { name: "Save" }).click()
+    await page.getByRole("button", { name: "Save", exact: true }).click()
 
     await expect(page.locator(".md-value--large")).toContainText("New House Name")
   })
@@ -144,22 +136,25 @@ test.describe("Profile & Events", () => {
 
     const addrInput = page.locator(".md-input").first()
     await addrInput.fill("456 Oak Ave")
-    await page.getByRole("button", { name: "Save" }).click()
+    await page.getByRole("button", { name: "Save", exact: true }).click()
 
     await expect(page.locator(".md-value").nth(1)).toContainText("456 Oak Ave")
   })
 
   // ── Save Changes Button ──
 
-  test("Save Changes button appears when house name edited", async ({ page }) => {
+  test("Save Changes appears for an unsaved inline edit", async ({ page }) => {
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)
     await expect(page.locator(".md-save-btn")).not.toBeVisible()
     await page.locator(".md-edit").first().click()
     await page.waitForTimeout(200)
     await page.locator(".md-input").first().fill("Edited Name")
-    await page.getByRole("button", { name: "Save" }).click()
+    // The typed draft is not saved yet, so the full-save action is offered.
     await expect(page.locator(".md-save-btn")).toBeVisible()
+    // The inline Save persists it immediately and clears the dirty state.
+    await page.getByRole("button", { name: "Save", exact: true }).click()
+    await expect(page.locator(".md-save-btn")).not.toBeVisible()
   })
 
   test("Save Changes button persists member name change", async ({ page }) => {
@@ -206,13 +201,13 @@ test.describe("Profile & Events", () => {
     await expect(page.locator(".md-member-row")).toHaveCount(4)
   })
 
-  test("Save Changes shows confirmation after saving", async ({ page }) => {
+  test("Save Changes commits an inline draft", async ({ page }) => {
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)
     await page.locator(".md-edit").first().click()
     await page.waitForTimeout(200)
     await page.locator(".md-input").first().fill("Confirm Test")
-    await page.getByRole("button", { name: "Save" }).click()
+    // Do not use the inline Save: the full-save path must fold the draft in.
     await page.locator(".md-save-btn").click()
     await page.locator(".md-confirm-panel").getByRole("button", { name: "Save" }).click()
     await page.waitForTimeout(500)

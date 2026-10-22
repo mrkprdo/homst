@@ -97,24 +97,28 @@ describe("MemberDetailPanel (full)", () => {
     await section(wrapper, "Household").find(".md-edit").trigger("click")
     await section(wrapper, "Household").find("input").setValue("New Name")
     await section(wrapper, "Household").findAll("button").find(b => b.text() === "Save")!.trigger("click")
+    await flushPromises()
     expect(wrapper.text()).toContain("New Name")
 
     // ── Edit address ──
     await section(wrapper, "Address").find(".md-edit").trigger("click")
     await section(wrapper, "Address").find("input").setValue("42 Oak Ave")
     await section(wrapper, "Address").findAll("button").find(b => b.text() === "Save")!.trigger("click")
+    await flushPromises()
     expect(wrapper.text()).toContain("42 Oak Ave")
 
     // ── Edit province ──
     await section(wrapper, "State / Province").find(".md-edit").trigger("click")
     await section(wrapper, "State / Province").find("input").setValue("Quebec")
     await section(wrapper, "State / Province").findAll("button").find(b => b.text() === "Save")!.trigger("click")
+    await flushPromises()
     expect(wrapper.text()).toContain("Quebec")
 
     // ── Edit country via select ──
     await section(wrapper, "Country").find(".md-edit").trigger("click")
     await section(wrapper, "Country").find("select").setValue("US")
     await section(wrapper, "Country").findAll("button").find(b => b.text() === "Save")!.trigger("click")
+    await flushPromises()
     expect(wrapper.text()).toContain("United States")
 
     // ── Edit weather coords ──
@@ -123,6 +127,7 @@ describe("MemberDetailPanel (full)", () => {
     await numInputs[0]!.setValue("40.5")
     await numInputs[1]!.setValue("-73.5")
     await section(wrapper, "Weather Coordinates").findAll("button").find(b => b.text() === "Save")!.trigger("click")
+    await flushPromises()
     expect(wrapper.text()).toContain("40.5000")
 
     // ── Member edits: color and name ──
@@ -164,15 +169,21 @@ describe("MemberDetailPanel (full)", () => {
     await wrapper.findAll(".md-add-link").find(b => b.text().includes("Add address"))!.trigger("click")
     await section(wrapper, "Address").find("input").setValue("9 Elm St")
     await section(wrapper, "Address").findAll("button").find(b => b.text() === "Save")!.trigger("click")
+    await flushPromises()
     expect(wrapper.text()).toContain("9 Elm St")
 
     await wrapper.findAll(".md-add-link").find(b => b.text().includes("Add province"))!.trigger("click")
     await section(wrapper, "State / Province").find("input").setValue("BC")
     await section(wrapper, "State / Province").findAll("button").find(b => b.text() === "Save")!.trigger("click")
+    await flushPromises()
 
     await wrapper.findAll(".md-add-link").find(b => b.text().includes("Add country"))!.trigger("click")
     await section(wrapper, "Country").find("select").setValue("US")
     await section(wrapper, "Country").findAll("button").find(b => b.text() === "Save")!.trigger("click")
+    await flushPromises()
+
+    // Leave one local edit unsaved so the close guard has something to protect.
+    await wrapper.findAll(".md-add-link").find(b => b.text().includes("Add member"))!.trigger("click")
 
     // close guard blocks closing when dirty → Discard resets + closes
     const ui = useUi()
@@ -193,9 +204,9 @@ describe("MemberDetailPanel (full)", () => {
     const wrapper = mount(MemberDetailPanel, { global: { stubs: { teleport: true } } })
     await flushPromises()
 
+    // Typing a draft without pressing the inline Save must still be protected.
     await section(wrapper, "Household").find(".md-edit").trigger("click")
     await section(wrapper, "Household").find("input").setValue("Dirty")
-    await section(wrapper, "Household").findAll("button").find(b => b.text() === "Save")!.trigger("click")
 
     const ui = useUi()
     ui.openDrawer("member-detail")
