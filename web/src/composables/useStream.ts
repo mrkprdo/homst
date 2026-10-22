@@ -67,7 +67,8 @@ function notifyUpdateChanged() {
 function connect() {
   disconnect()
   status.value = "connecting"
-  eventSource = new EventSource("/api/stream")
+  const source = new EventSource("/api/stream")
+  eventSource = source
 
   const { upsertEvent, removeEvent } = useEvents()
   const { upsertTask,  removeTask  } = useTasks()
@@ -75,7 +76,8 @@ function connect() {
   const { upsertAnnouncement, removeAnnouncement } = useAnnouncements()
   const { push: pushNotification } = useNotifications()
 
-  eventSource.onopen = () => {
+  source.onopen = () => {
+    if (eventSource !== source) return
     opens++
     connected.value = true
     status.value = "connected"
@@ -86,7 +88,7 @@ function connect() {
   // resync. The first request is the page's initial connect (already covered by
   // the mount-time fetches); anything after that means we were disconnected —
   // server restart, network blip — and may have missed events.
-  eventSource.addEventListener("sync.required", () => {
+  source.addEventListener("sync.required", () => {
     syncFrames++
     if (opens > 1 || syncFrames > 1) {
       notifyUpdateChanged()
@@ -94,34 +96,34 @@ function connect() {
     }
   })
 
-  eventSource.addEventListener("event.created", (e) => {
+  source.addEventListener("event.created", (e) => {
     try { upsertEvent(mapEvent(JSON.parse(e.data))) } catch {}
   })
-  eventSource.addEventListener("event.updated", (e) => {
+  source.addEventListener("event.updated", (e) => {
     try { upsertEvent(mapEvent(JSON.parse(e.data))) } catch {}
   })
-  eventSource.addEventListener("event.deleted", (e) => {
+  source.addEventListener("event.deleted", (e) => {
     try { const { id } = JSON.parse(e.data); removeEvent(id) } catch {}
   })
-  eventSource.addEventListener("task.created", (e) => {
+  source.addEventListener("task.created", (e) => {
     try { upsertTask(mapTask(JSON.parse(e.data))) } catch {}
   })
-  eventSource.addEventListener("task.updated", (e) => {
+  source.addEventListener("task.updated", (e) => {
     try { upsertTask(mapTask(JSON.parse(e.data))) } catch {}
   })
-  eventSource.addEventListener("task.deleted", (e) => {
+  source.addEventListener("task.deleted", (e) => {
     try { const { id } = JSON.parse(e.data); removeTask(id) } catch {}
   })
-  eventSource.addEventListener("member.joined", (e) => {
+  source.addEventListener("member.joined", (e) => {
     try { upsertMember(mapMember(JSON.parse(e.data))) } catch {}
   })
-  eventSource.addEventListener("member.updated", (e) => {
+  source.addEventListener("member.updated", (e) => {
     try { upsertMember(mapMember(JSON.parse(e.data))) } catch {}
   })
-  eventSource.addEventListener("member.removed", (e) => {
+  source.addEventListener("member.removed", (e) => {
     try { const { id } = JSON.parse(e.data); removeMember(id) } catch {}
   })
-  eventSource.addEventListener("settings.updated", (e) => {
+  source.addEventListener("settings.updated", (e) => {
     try {
       const data = JSON.parse(e.data)
       const settings = data.settings
@@ -137,41 +139,43 @@ function connect() {
       if (settings.updates) notifyUpdateChanged()
     } catch {}
   })
-  eventSource.addEventListener("announcement.created", (e) => {
+  source.addEventListener("announcement.created", (e) => {
     try { upsertAnnouncement(mapAnnouncement(JSON.parse(e.data))) } catch {}
   })
-  eventSource.addEventListener("announcement.deleted", (e) => {
+  source.addEventListener("announcement.deleted", (e) => {
     try { const { id } = JSON.parse(e.data); removeAnnouncement(id) } catch {}
   })
-  eventSource.addEventListener("photos.updated", () => {
+  source.addEventListener("photos.updated", () => {
     void refreshPhotos()
   })
-  eventSource.addEventListener("reminder.due", (e) => {
+  source.addEventListener("reminder.due", (e) => {
     try { pushNotification(JSON.parse(e.data)) } catch {}
   })
-  eventSource.addEventListener("system.update.available", (e) => {
+  source.addEventListener("system.update.available", (e) => {
     if (isDisplayClient) {
       try { offerUpdatePrompt(JSON.parse(e.data)) } catch {}
     }
     notifyUpdateChanged()
   })
-  eventSource.addEventListener("system.update.dismissed", (e) => {
+  source.addEventListener("system.update.dismissed", (e) => {
     if (isDisplayClient) {
       try { updatePromptDismissed(JSON.parse(e.data).version) } catch {}
     }
     notifyUpdateChanged()
   })
-  eventSource.addEventListener("system.update.starting", (e) => {
+  source.addEventListener("system.update.starting", (e) => {
     if (isDisplayClient) {
       try { updatePromptStarting(JSON.parse(e.data).version) } catch {}
     }
     notifyUpdateChanged()
   })
 
-  eventSource.onerror = () => {
+  source.onerror = () => {
+    // Ignore late errors from a stream that a newer connect() already replaced.
+    if (eventSource !== source) return
     connected.value = false
     status.value = "disconnected"
-    eventSource?.close()
+    source.close()
     eventSource = null
     scheduleReconnect()
   }

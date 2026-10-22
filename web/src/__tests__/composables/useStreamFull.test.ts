@@ -324,6 +324,25 @@ describe("useStream (full)", () => {
     expect(fetchMock.mock.calls.length).toBe(afterFirst)
   })
 
+  it("ignores a late error from a stream that was already replaced", async () => {
+    let status!: ReturnType<typeof useStream>["status"]
+    mount(defineComponent({ setup() { status = useStream().status; return () => h("div") } }))
+    const first = latestES!
+    first.onopen?.()
+    first.onerror?.()
+    await vi.advanceTimersByTimeAsync(1000)
+
+    const second = latestES!
+    expect(second).not.toBe(first)
+
+    // A delayed error from the old stream must not close the live connection.
+    first.onerror?.()
+    expect(second.closed).toBe(false)
+
+    second.onopen?.()
+    expect(status.value).toBe("connected")
+  })
+
   it("backs off further on repeated failures", async () => {
     mountStream()
     const first = latestES!

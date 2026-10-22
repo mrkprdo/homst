@@ -12,8 +12,8 @@ import { householdApi, type UpdatePreferences } from "@/api/household"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiToggle from "@/components/ui/UiToggle.vue"
 import UiBadge from "@/components/ui/UiBadge.vue"
+import { DISMISSED_UPDATE_JOB_KEY, acknowledgeUpdateJob } from "@/lib/updateJob"
 
-const DISMISSED_KEY = "homst:update:dismissed-job"
 const ACTIVE_STATES = new Set(["queued", "pulling", "restarting", "verifying", "rolling_back"])
 
 const status = ref<SystemStatus | null>(null)
@@ -206,13 +206,23 @@ async function poll() {
   }
 }
 
-function dismissJob() {
+function rememberDismissedJob() {
   if (!job.value) return
   dismissedJob = job.value.id
-  try {
-    localStorage.setItem(DISMISSED_KEY, dismissedJob)
-  } catch { /* private mode */ }
+  acknowledgeUpdateJob(dismissedJob)
+}
+
+function dismissJob() {
+  rememberDismissedJob()
   job.value = null
+}
+
+function reloadPage() {
+  // The server keeps reporting the finished job, so a plain reload would
+  // bring the "update complete" notice straight back. A reload applies the
+  // update — acknowledge the job first, exactly like Dismiss does.
+  rememberDismissedJob()
+  window.location.reload()
 }
 
 function onAutoToggle(enabled: boolean) {
@@ -279,17 +289,13 @@ function jobTitle(next: SystemJob): string {
   return titles[next.state] ?? "Update"
 }
 
-function reloadPage() {
-  window.location.reload()
-}
-
 function onUpdateChanged() {
   // Another display started, dismissed or finished an update; mirror it here.
   void load()
 }
 
 onMounted(() => {
-  try { dismissedJob = localStorage.getItem(DISMISSED_KEY) ?? "" } catch { /* ignore */ }
+  try { dismissedJob = localStorage.getItem(DISMISSED_UPDATE_JOB_KEY) ?? "" } catch { /* ignore */ }
   window.addEventListener("homst:update-changed", onUpdateChanged)
   load()
 })

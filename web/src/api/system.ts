@@ -77,52 +77,77 @@ export interface SystemStatus {
   [key: string]: unknown
 }
 
-async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${BASE_URL}${url}`, {
-    credentials: "include",
-    ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
-  })
+async function request<T>(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 0,
+): Promise<T> {
+  // Update polling must never wedge on a half-open connection while the app
+  // restarts; abort and let the caller retry against the new container.
+  const controller = timeoutMs > 0 ? new AbortController() : null
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
+  try {
+    const response = await fetch(`${BASE_URL}${url}`, {
+      credentials: "include",
+      ...options,
+      signal: controller?.signal ?? options.signal,
+      headers: {
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
+      },
+    })
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(body.detail ?? `Request failed: ${response.status}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      throw new Error(body.detail ?? `Request failed: ${response.status}`)
+    }
+    return response.json() as Promise<T>
+  } finally {
+    if (timer) clearTimeout(timer)
   }
-  return response.json() as Promise<T>
 }
 
 export const systemApi = {
   getStatus(refresh = false): Promise<SystemStatus> {
-    return request<SystemStatus>(`/system/status${refresh ? "?refresh=true" : ""}`)
+    return request<SystemStatus>(`/system/status${refresh ? "?refresh=true" : ""}`, {}, 20000)
   },
 
   getJob(): Promise<{ job: SystemJob | null } & Record<string, unknown>> {
-    return request("/system/job")
+    return request("/system/job", {}, 10000)
   },
 
   install(version: string, retry = false): Promise<SystemJob> {
-    return request<SystemJob>("/system/install", {
-      method: "POST",
-      headers: { "X-HOMST-Update": "1" },
-      body: JSON.stringify({ version, retry }),
-    })
+    return request<SystemJob>(
+      "/system/install",
+      {
+        method: "POST",
+        headers: { "X-HOMST-Update": "1" },
+        body: JSON.stringify({ version, retry }),
+      },
+      15000,
+    )
   },
 
   dismissPrompt(version: string): Promise<{ dismissed: string }> {
-    return request<{ dismissed: string }>("/system/prompt/dismiss", {
-      method: "POST",
-      headers: { "X-HOMST-Update": "1" },
-      body: JSON.stringify({ version }),
-    })
+    return request<{ dismissed: string }>(
+      "/system/prompt/dismiss",
+      {
+        method: "POST",
+        headers: { "X-HOMST-Update": "1" },
+        body: JSON.stringify({ version }),
+      },
+      15000,
+    )
   },
 
   retryRollback(): Promise<SystemJob> {
-    return request<SystemJob>("/system/recovery/retry-rollback", {
-      method: "POST",
-      headers: { "X-HOMST-Update": "1" },
-    })
+    return request<SystemJob>(
+      "/system/recovery/retry-rollback",
+      {
+        method: "POST",
+        headers: { "X-HOMST-Update": "1" },
+      },
+      15000,
+    )
   },
 }

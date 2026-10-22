@@ -176,6 +176,68 @@ describe("SoftwareUpdateCard", () => {
     wrapper.unmount()
   })
 
+  it("acknowledges a finished job when the user reloads", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    const DISMISSED_KEY = "homst:update:dismissed-job"
+    localStorage.removeItem(DISMISSED_KEY)
+
+    const finished = status({
+      update_available: false,
+      latest: null,
+      job: {
+        id: "job-9",
+        state: "success",
+        version: "0.3.0",
+        latest: true,
+        message: "Updated to 0.3.0.",
+        progress: { percent: 100, bytes: 1, total: 1 },
+        error: null,
+        from_version: "0.2.0",
+        to_version: "0.3.0",
+        started_at: "2026-10-19T12:00:00Z",
+        finished_at: new Date(Date.now() - 60_000).toISOString(),
+      },
+    })
+    fetchMock.mockResolvedValueOnce(json(finished))
+
+    const reload = vi.fn()
+    const realLocation = window.location
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { reload },
+    })
+
+    try {
+      const wrapper = mount(SoftwareUpdateCard)
+      await flushPromises()
+      expect(wrapper.text()).toContain("Update complete")
+
+      const reloadButton = wrapper.findAll("button").find((button) => button.text() === "Reload")
+      expect(reloadButton).toBeTruthy()
+      await reloadButton!.trigger("click")
+
+      expect(reload).toHaveBeenCalledTimes(1)
+      expect(localStorage.getItem(DISMISSED_KEY)).toBe("job-9")
+      wrapper.unmount()
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: realLocation,
+      })
+    }
+
+    // The reloaded page reads the same finished job from the server, but the
+    // acknowledgement keeps the "update complete" notice from coming back.
+    fetchMock.mockResolvedValueOnce(json(finished))
+    const reloaded = mount(SoftwareUpdateCard)
+    await flushPromises()
+    expect(reloaded.text()).not.toContain("Update complete")
+    reloaded.unmount()
+    localStorage.removeItem(DISMISSED_KEY)
+  })
+
   it("shows manual instructions for nightly builds", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
     fetchMock.mockResolvedValueOnce(json(status({
