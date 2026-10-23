@@ -170,6 +170,51 @@ describe("MobileQuickAdd (event form)", () => {
     await flushPromises()
     expect(useEvents().events.value).toHaveLength(0)
   })
+
+  it("submits recurrence rules with a date and a count", async () => {
+    const wrapper = mount(MobileQuickAdd)
+    await flushPromises()
+    await wrapper.find('input[placeholder="Event title"]').setValue("Weekly date")
+    await selectWithOption(wrapper, "Does not repeat").setValue("weekly")
+    await selectWithOption(wrapper, "Forever").setValue("date")
+    await wrapper.find('.mqa-recur-end input[type="date"]').setValue("2026-09-30")
+    await wrapper.find(".mqa-submit").trigger("click")
+    await flushPromises()
+    const dated = useEvents().events.value.find(e => e.title === "Weekly date")!
+    expect(dated.recurrence).toMatchObject({ freq: "weekly" })
+    expect((dated.recurrence as any)?.until).toBeTruthy()
+
+    await wrapper.findAll(".mqa-tab")[0]!.trigger("click")
+    await nextTick()
+    await wrapper.find('input[placeholder="Event title"]').setValue("Weekly count")
+    await selectWithOption(wrapper, "Does not repeat").setValue("daily")
+    await selectWithOption(wrapper, "Forever").setValue("count")
+    await wrapper.find('.mqa-recur-end input[type="number"]').setValue("3")
+    await selectWithOption(wrapper, "No reminder").setValue("15")
+    await wrapper.find(".mqa-submit").trigger("click")
+    await flushPromises()
+    const counted = useEvents().events.value.find(e => e.title === "Weekly count")!
+    expect(counted.recurrence).toMatchObject({ freq: "daily", count: 3 })
+
+    await wrapper.find('input[placeholder="Event title"]').setValue("Weekly forever")
+    await selectWithOption(wrapper, "Forever").setValue("forever")
+    await wrapper.find(".mqa-submit").trigger("click")
+    await flushPromises()
+    const forever = useEvents().events.value.find(e => e.title === "Weekly forever")!
+    expect(forever.recurrence).toMatchObject({ freq: "daily" })
+    expect(forever.recurrence).not.toHaveProperty("count")
+    expect(forever.recurrence).not.toHaveProperty("until")  })
+
+  it("keeps the end date on or after the start date", async () => {
+    const wrapper = mount(MobileQuickAdd)
+    await flushPromises()
+    const dates = wrapper.findAll('input[type="date"]')
+    await wrapper.find('input[placeholder="Same day"]').setValue("2026-09-10")
+    await dates[0]!.setValue("2026-09-20")
+    await nextTick()
+    const end = wrapper.find('input[placeholder="Same day"]').element as HTMLInputElement
+    expect(end.value).toBe("2026-09-20")
+  })
 })
 
 describe("MobileQuickAdd (task form)", () => {

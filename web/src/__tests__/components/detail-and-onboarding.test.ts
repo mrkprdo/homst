@@ -6,7 +6,8 @@ import { useEvents } from "@/composables/useEvents"
 import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
 import { useUi } from "@/composables/useUi"
-import router, { markComplete } from "@/router"
+import router, { invalidateSettings } from "@/router"
+import { HOUSEHOLD_COMPLETE_KEY } from "@/lib/householdCache"
 import EventDetailPanel from "@/components/events/EventDetailPanel.vue"
 import TaskDetailPanel from "@/components/tasks/TaskDetailPanel.vue"
 import OnboardingWizard from "@/components/onboarding/OnboardingWizard.vue"
@@ -203,7 +204,8 @@ describe("TaskDetailPanel", () => {
 describe("OnboardingWizard & MobileOnboardingGate", () => {
   beforeEach(() => {
     setLowPower(true)
-    markComplete()
+    localStorage.setItem(HOUSEHOLD_COMPLETE_KEY, "true")
+    invalidateSettings()
   })
 
   it("MobileOnboardingGate renders message", () => {

@@ -233,42 +233,6 @@ class _SessionCtx:
 
 
 @pytest.mark.asyncio
-async def test_worker_sync_calendar_branches(monkeypatch, db_session, capsys):
-    from app.workers import settings as worker_mod
-
-    monkeypatch.setattr(worker_mod, "async_session", lambda: _SessionCtx(db_session))
-
-    if await db_session.get(Household, DEFAULT_HOUSEHOLD_ID) is None:
-        db_session.add(Household(id=DEFAULT_HOUSEHOLD_ID, name="Home", settings={}))
-
-    ical = Calendar(
-        household_id=DEFAULT_HOUSEHOLD_ID, name="iCal", color="sage",
-        source="ical", feed_url="https://example.com/f.ics",
-    )
-    google = Calendar(
-        household_id=DEFAULT_HOUSEHOLD_ID, name="Google", color="sky", source="google"
-    )
-    apple = Calendar(
-        household_id=DEFAULT_HOUSEHOLD_ID, name="Apple", color="peach", source="apple"
-    )
-    db_session.add_all([ical, google, apple])
-    await db_session.commit()
-
-    await worker_mod.sync_calendar(None, ical.id)
-    await worker_mod.sync_calendar(None, google.id)
-    await worker_mod.sync_calendar(None, apple.id)
-    await worker_mod.sync_calendar(None, "00000000-0000-0000-0000-000000000099")
-
-    out = capsys.readouterr().out
-    assert "Would fetch iCal" in out
-    assert "Would sync Google Calendar" in out
-    assert "Unsupported source" in out
-    assert "not found" in out
-
-    await worker_mod.sync_all_external_calendars(None)
-
-
-@pytest.mark.asyncio
 async def test_worker_dispatch_reminders_and_misc(monkeypatch, db_session, capsys):
     from app.workers import settings as worker_mod
 

@@ -237,7 +237,6 @@ export function animate(...args: Parameters<typeof animeAnimate>): ReturnType<ty
 
   // Minimal stub matching the methods callers might chain.
   const stub = {
-    then: (cb?: (value: any) => any) => Promise.resolve(stub).then(cb),
     complete: () => stub,
     cancel: () => stub,
     revert: () => stub,

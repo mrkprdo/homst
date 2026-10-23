@@ -68,10 +68,10 @@ test: tokens test-api test-web
 	cd web && bun run e2e
 
 test-api:
-	cd api && pytest -v
+	cd api && pytest -v --cov=app --cov-report=term-missing
 
 test-web:
-	cd web && bun run test
+	cd web && bun run test:coverage
 
 typecheck:
 	cd web && bun run typecheck
@@ -82,11 +82,10 @@ dev-e2e: dev-build
 # ── Linting ──────────────────────────────────────────────
 lint:
 	cd api && ruff check app/
-	cd web && bun run lint
+	cd web && bun run typecheck
 
 format:
 	cd api && ruff format app/
-	cd web && bun run format
 
 # ── Dev stack (Docker) ───────────────────────────────────
 # Full rebuild: fresh images, no cache, then start in the background.

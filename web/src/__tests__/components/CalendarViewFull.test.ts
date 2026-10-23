@@ -384,4 +384,45 @@ describe("CalendarView (lifecycle)", () => {
     await nextTick()
     expect(wrapper.find(".skeleton-grid").exists()).toBe(true)
   })
+
+  it("opens event details from week and day event blocks", async () => {
+    seedCalendar()
+    const now = new Date()
+    seedEvent({
+      id: "evt-click",
+      title: "Clickable",
+      startAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0).toISOString(),
+      endAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0).toISOString(),
+    })
+    const ui = useUi()
+    const wrapper = mount(CalendarView)
+
+    await switchView(wrapper, 1)
+    await wrapper.find(".week-event-block").trigger("click")
+    expect(ui.drawer.value.type).toBe("event-detail")
+    expect(ui.drawer.value.id).toBe("evt-click")
+    ui.closeDrawer()
+    await nextTick()
+
+    await switchView(wrapper, 2)
+    await wrapper.find(".day-event-block").trigger("click")
+    expect(ui.drawer.value.type).toBe("event-detail")
+    expect(ui.drawer.value.id).toBe("evt-click")
+  })
+
+  it("moves both ways when an adjacent month cell is clicked", async () => {
+    const wrapper = mount(CalendarView)
+    // Move to a month that has trailing next-month cells in its grid.
+    await wrapper.findAll(".nav-arrow")[1]!.trigger("click")
+    await nextTick()
+    const nextCell = wrapper.findAll(".day-cell.adjacent").at(-1)!
+    await nextCell.trigger("click")
+    await nextTick()
+    expect(wrapper.find(".month-grid").exists()).toBe(true)
+
+    const backCell = wrapper.findAll(".day-cell.adjacent")[0]!
+    await backCell.trigger("click")
+    await nextTick()
+    expect(wrapper.find(".month-grid").exists()).toBe(true)
+  })
 })

@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { defineComponent, h, nextTick } from "vue"
+import { nextTick } from "vue"
 import { mount } from "@vue/test-utils"
 import { useEvents } from "@/composables/useEvents"
 import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
 import { useUi } from "@/composables/useUi"
 import { useSettings, applyHouseholdSettings, isApplyingRemoteSettings } from "@/composables/useSettings"
-import { useNowIndicator } from "@/composables/useNowIndicator"
 import { useWeather } from "@/composables/useWeather"
 
 describe("useEvents", () => {
@@ -247,34 +246,6 @@ describe("useSettings", () => {
     expect(isApplyingRemoteSettings()).toBe(true)
     await nextTick()
     expect(isApplyingRemoteSettings()).toBe(false)
-  })
-})
-
-describe("useNowIndicator", () => {
-  it("tracks current minute on interval and computes isSameDay / nowFraction", () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date(2026, 4, 15, 14, 30, 45, 0))
-    try {
-      let api!: ReturnType<typeof useNowIndicator>
-      const Comp = defineComponent({
-        setup() {
-          api = useNowIndicator()
-          return () => h("div")
-        },
-      })
-      const wrapper = mount(Comp)
-      expect(api.isSameDay(new Date(2026, 4, 15, 8, 0))).toBe(true)
-      expect(api.isSameDay(new Date(2026, 4, 16, 8, 0))).toBe(false)
-      expect(api.nowFraction(new Date(2026, 4, 15), 14)).toBeCloseTo(0.5)
-      expect(api.nowFraction(new Date(2026, 4, 15), 10)).toBeNull()
-      expect(api.nowFraction(new Date(2026, 4, 16), 14)).toBeNull()
-
-      // Advance past initial tick (15s) + one 60s interval
-      vi.advanceTimersByTime(76_000)
-      wrapper.unmount()
-    } finally {
-      vi.useRealTimers()
-    }
   })
 })
 

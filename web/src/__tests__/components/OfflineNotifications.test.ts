@@ -44,4 +44,17 @@ describe("OfflineNotifications", () => {
     await wrapper.find(".offline-push").trigger("click")
     expect(wrapper.emitted("close")).toHaveLength(2)
   })
+
+  it("follows the selected prop and closes from the header button", async () => {
+    const wrapper = mount(OfflineNotifications, {
+      props: { items, selected: null },
+    })
+    expect(wrapper.find(".offline-push__title").text()).toBe("Announcement from Mark")
+
+    await wrapper.setProps({ selected: items[1]! })
+    expect(wrapper.find(".offline-push__title").text()).toBe("Soccer practice")
+
+    await wrapper.find(".offline-push__close").trigger("click")
+    expect(wrapper.emitted("close")).toHaveLength(1)
+  })
 })

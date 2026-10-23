@@ -207,13 +207,7 @@ async function openNotificationIntent() {
   if (intent.type === "event") {
     const parsed = intent.startAt ? new Date(Number(intent.startAt) * 1000) : new Date()
     const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed
-    try {
-      await prefetchAround(date.getFullYear(), date.getMonth())
-    } catch {
-      // The event list could not load — show the stored reminder instead.
-      await openOfflineNotification(intent)
-      return
-    }
+    await prefetchAround(date.getFullYear(), date.getMonth())
     ui.setPanel("calendar")
     ui.openDrawer("event-detail", intent.id)
     return

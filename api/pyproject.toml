@@ -33,6 +33,7 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
     "httpx>=0.26.0",
     "ruff>=0.1.0",
     "aiosqlite>=0.20.0",
@@ -58,3 +59,6 @@ testpaths = ["tests"]
 # database, so router bodies look untested even when they run.
 concurrency = ["greenlet", "thread"]
 source = ["app"]
+
+[tool.coverage.report]
+fail_under = 100

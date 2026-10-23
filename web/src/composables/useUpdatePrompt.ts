@@ -302,10 +302,6 @@ export function refreshUpdatePrompt() {
   return refresh()
 }
 
-export function clearUpdatePrompt() {
-  clear()
-}
-
 export function stopUpdatePromptPolling() {
   stopPolling()
 }

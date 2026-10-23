@@ -103,4 +103,19 @@ describe("useNotifications", () => {
       vi.useRealTimers()
     }
   })
+
+  it("clears every reminder and its timer", () => {
+    vi.useFakeTimers()
+    try {
+      const { notifications, push, clear } = useNotifications()
+      push({ event_id: "a", title: "A", start_at: new Date(Date.now() + 60000).toISOString() })
+      push({ event_id: "b", title: "B", start_at: new Date(Date.now() + 120000).toISOString() })
+      clear()
+      expect(notifications.value).toEqual([])
+      vi.advanceTimersByTime(200000)
+      expect(notifications.value).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

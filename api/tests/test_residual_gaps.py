@@ -87,22 +87,6 @@ async def test_close_redis_without_a_client_is_a_noop(monkeypatch):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# app/routers/sync.py
-# ══════════════════════════════════════════════════════════════════════
-
-
-@pytest.mark.asyncio
-async def test_sync_endpoints(client):
-    r = await client.post("/api/v1/sync")
-    assert r.status_code == 200
-    assert r.json() == {"message": "Sync started"}
-
-    r = await client.get("/api/v1/sync/status")
-    assert r.status_code == 200
-    assert r.json() == {"status": "idle"}
-
-
-# ══════════════════════════════════════════════════════════════════════
 # app/notifications/reminders.py
 # ══════════════════════════════════════════════════════════════════════
 

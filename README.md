@@ -263,11 +263,13 @@ make worker   # ARQ background worker
 Tests and checks:
 
 ```bash
-make test-web     # Vitest unit tests
-make test-api     # pytest backend tests
+make test-web     # Vitest unit tests (100% line coverage gate)
+make test-api     # pytest backend tests (100% line coverage gate)
 make typecheck    # vue-tsc + TypeScript
 make test         # unit tests + Playwright e2e
 ```
+
+Both unit suites fail when an executable line has no test.
 
 To test the production image that you build from source, run `make prod-build`.
 

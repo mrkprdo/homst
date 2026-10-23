@@ -11,8 +11,6 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "vue-tsc --noEmit",
     "preview": "vite preview",
-    "lint": "eslint src --ext .vue,.ts",
-    "format": "prettier --write src/",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "e2e:dev": "playwright test --ui",

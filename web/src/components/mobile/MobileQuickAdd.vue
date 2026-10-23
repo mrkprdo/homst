@@ -242,19 +242,6 @@ function handleSubmit() {
   else createTask()
 }
 
-function resetForm() {
-  eventTitle.value = ""; eventDate.value = ""; eventEndDate.value = ""
-  eventStartTime.value = ""; eventEndTime.value = ""
-  eventAllDay.value = false; eventDescription.value = ""
-  eventAssigneeId.value = ""
-  eventRecurrence.value = "none"
-  eventReminder.value = defaultReminderValue()
-  eventRecurEnd.value = "forever"
-  eventRecurEndDate.value = ""
-  eventRecurCount.value = 10
-  taskTitle.value = ""; taskPriority.value = "medium"; taskDueDate.value = ""; taskAssigneeId.value = ""; taskDescription.value = ""
-}
-
 const canSubmit = computed(() => {
   const t = tab.value === "event" ? eventTitle.value : taskTitle.value
   return t.trim().length > 0 && !submitting.value && (tab.value !== "event" || !eventTimeError.value)

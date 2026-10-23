@@ -3,7 +3,6 @@ import { nextTick } from "vue"
 import { mount } from "@vue/test-utils"
 import { setLowPower } from "@/lib/motion"
 import { useSettings } from "@/composables/useSettings"
-import UiAvatar from "@/components/ui/UiAvatar.vue"
 import UiBadge from "@/components/ui/UiBadge.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiCard from "@/components/ui/UiCard.vue"
@@ -20,17 +19,6 @@ import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
 describe("UI primitives", () => {
   beforeEach(() => {
     setLowPower(true)
-  })
-
-  it("UiAvatar renders size and color variants", () => {
-    const w1 = mount(UiAvatar, { slots: { default: "AB" } })
-    expect(w1.classes()).toContain("ui-avatar--md")
-    expect(w1.classes()).toContain("ui-avatar--sage")
-    expect(w1.text()).toBe("AB")
-
-    const w2 = mount(UiAvatar, { props: { size: "lg", color: "plum" } })
-    expect(w2.classes()).toContain("ui-avatar--lg")
-    expect(w2.classes()).toContain("ui-avatar--plum")
   })
 
   it("UiBadge renders variants", () => {

@@ -238,4 +238,21 @@ describe("KanbanView", () => {
     expect(doing.value).toHaveLength(0)
     expect(todos.value.some(t => t.id === "t-todo")).toBe(true)
   })
+
+  it("opens task details from the Doing and Done columns", async () => {
+    const { upsertTask } = useTasks()
+    const ui = useUi()
+    upsertTask(makeTask("doing-1", "doing"))
+    upsertTask(makeTask("done-1", "done"))
+    const wrapper = mount(KanbanView)
+    const columns = wrapper.findAll(".tasks-column")
+    await columns[1]!.findComponent({ name: "TaskCard" }).trigger("click")
+    expect(ui.drawer.value.type).toBe("task-detail")
+    expect(ui.drawer.value.id).toBe("doing-1")
+    ui.closeDrawer()
+    await nextTick()
+
+    await columns[2]!.findComponent({ name: "TaskCard" }).trigger("click")
+    expect(ui.drawer.value.id).toBe("done-1")
+  })
 })

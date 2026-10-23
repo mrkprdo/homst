@@ -9,7 +9,7 @@ from app.auto_theme import auto_theme_state
 from app.config import settings as app_settings
 from app.db import async_session
 from app.events.publisher import publish_event
-from app.models.all import Calendar, Household
+from app.models.all import Household
 from app.notifications.reminders import dispatch_due_reminders
 from app.system_state import (
     ACTIVE_JOB_STATES,
@@ -26,17 +26,6 @@ DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 # The worker cron ticks every minute; this gate keeps the actual release check
 # at the household's configured interval (5 minutes by default).
 _last_update_check = 0.0
-
-
-async def sync_all_external_calendars(ctx):
-    """Periodic job: fetch all external calendar feeds and upsert events."""
-    async with async_session() as session:
-        result = await session.execute(
-            select(Calendar).where(Calendar.source != "internal")
-        )
-        calendars = result.scalars().all()
-    for cal in calendars:
-        await sync_calendar(ctx, cal.id)
 
 
 async def dispatch_reminders(ctx):
@@ -171,28 +160,6 @@ async def apply_auto_theme(ctx, now=None):
     print(f"[worker] auto theme → {'dark' if state['autoThemeDark'] else 'light'}")
 
 
-async def sync_calendar(ctx, calendar_id: str):
-    """Sync a single external calendar by ID."""
-    async with async_session() as session:
-        result = await session.execute(
-            select(Calendar).where(Calendar.id == calendar_id)
-        )
-        cal = result.scalar_one_or_none()
-    if cal is None:
-        print(f"[worker] Calendar {calendar_id} not found")
-        return
-    if cal.source == "ical" and cal.feed_url:
-        # TODO: fetch iCal feed via httpx, parse with icalendar library,
-        #       upsert events matched on external_uid
-        print(f"[worker] Would fetch iCal from {cal.feed_url}")
-    elif cal.source == "google":
-        # TODO: fetch via Google Calendar API using stored credentials,
-        #       upsert events matched on external_uid
-        print(f"[worker] Would sync Google Calendar {cal.name}")
-    else:
-        print(f"[worker] Unsupported source {cal.source} for calendar {calendar_id}")
-
-
 async def startup(ctx):
     print("[worker] ARQ worker started")
 
@@ -203,8 +170,6 @@ async def shutdown(ctx):
 
 class WorkerSettings:
     functions = [
-        sync_all_external_calendars,
-        sync_calendar,
         dispatch_reminders,
         check_auto_update,
         apply_auto_theme,
@@ -216,7 +181,6 @@ class WorkerSettings:
         cron(apply_auto_theme),
         # Update availability check; the configured interval is enforced in code.
         cron(check_auto_update),
-        # cron(sync_all_external_calendars, hour={*range(24)}, minute={0, 15, 30, 45})
     ]
     redis_settings = RedisSettings.from_dsn(app_settings.redis_url)
     on_startup = startup

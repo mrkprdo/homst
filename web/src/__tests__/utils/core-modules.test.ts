@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { REMINDER_OPTIONS, reminderLabel, reminderMinutesFromValue } from "@/utils/reminders"
 import { uid } from "@/utils/uid"
-import { generateHolidayEvents } from "@/data/holidays"
 import { photosApi } from "@/api/photos"
 import { holidaysApi } from "@/api/holidays"
 import { api } from "@/api/client"
-import router, { invalidateSettings, markComplete } from "@/router"
+import router, { invalidateSettings } from "@/router"
 import { HOUSEHOLD_COMPLETE_KEY } from "@/lib/householdCache"
 import {
   setLowPower,
@@ -55,24 +54,6 @@ describe("utils/uid", () => {
     } finally {
       crypto.randomUUID = orig
     }
-  })
-})
-
-describe("data/holidays", () => {
-  it("generates US government + religious + cultural events for 2 years", () => {
-    const all = generateHolidayEvents("cal-1", { government: true, religious: true, country: "US" })
-    expect(all.length).toBeGreaterThan(20)
-    expect(all.every(e => e.allDay && e.startAt === e.endAt)).toBe(true)
-
-    const noneGovRel = generateHolidayEvents("cal-1", { government: false, religious: false, country: "US" })
-    expect(noneGovRel.length).toBeLessThan(all.length)
-    expect(noneGovRel.some(e => e.title === "Halloween")).toBe(true)
-    expect(noneGovRel.some(e => e.title === "Christmas Day")).toBe(false)
-    expect(noneGovRel.some(e => e.title === "Easter Sunday")).toBe(false)
-
-    const nonUS = generateHolidayEvents("cal-1", { government: true, religious: true, country: "CA" })
-    expect(nonUS.every(e => e.title === "New Year's Eve")).toBe(true)
-    expect(nonUS).toHaveLength(2)
   })
 })
 
@@ -148,6 +129,15 @@ function installMemoryStorage() {
 }
 installMemoryStorage()
 
+describe("router lazy routes", () => {
+  it("imports the onboarding view only when its route is used", async () => {
+    const route = router.getRoutes().find((item) => item.name === "onboarding")!
+    const loader = route.components!.default as () => Promise<{ default: unknown }>
+    const module = await loader()
+    expect(module.default).toBeTruthy()
+  })
+})
+
 describe("router", () => {
   beforeEach(() => {
     invalidateSettings()
@@ -181,7 +171,7 @@ describe("router", () => {
     expect(router.currentRoute.value.path).toBe("/")
   })
 
-  it("redirects /onboarding to / when complete via API or markComplete()", async () => {
+  it("redirects /onboarding to / when complete via API or the cached flag", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ isComplete: true }), { status: 200 }),
     )
@@ -192,8 +182,8 @@ describe("router", () => {
     await router.push("/onboarding?attempt=2")
     expect(router.currentRoute.value.path).toBe("/")
 
+    localStorage.setItem(HOUSEHOLD_COMPLETE_KEY, "true")
     invalidateSettings()
-    markComplete()
     await router.push("/onboarding?attempt=3")
     expect(router.currentRoute.value.path).toBe("/")
   })

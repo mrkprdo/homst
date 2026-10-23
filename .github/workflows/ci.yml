@@ -49,7 +49,7 @@ jobs:
         run: bun run typecheck
 
       - name: Unit tests
-        run: bun run test
+        run: bun run test:coverage
 
   api:
     name: API — lint + tests
@@ -74,7 +74,7 @@ jobs:
         run: ruff check app/
 
       - name: Tests
-        run: pytest -v
+        run: pytest -v --cov=app --cov-report=term-missing
 
   image:
     name: Image — build (amd64)

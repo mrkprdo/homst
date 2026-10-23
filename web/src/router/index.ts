@@ -27,12 +27,6 @@ export function invalidateSettings() {
   isComplete = readHouseholdComplete()
 }
 
-export function markComplete() {
-  isComplete = true
-  fetched = true
-  writeHouseholdComplete(true)
-}
-
 /** Fetch the authoritative flag, but never hang on an unreachable host. */
 async function fetchSettings(): Promise<boolean> {
   const controller = new AbortController()

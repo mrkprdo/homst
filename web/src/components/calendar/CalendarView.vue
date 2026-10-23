@@ -262,35 +262,6 @@ const expandedEvents = computed<Event[]>(() =>
   events.value.flatMap(ev => ev.recurrence ? expandRecurring(ev, RECUR_FROM, RECUR_TO) : [ev])
 )
 
-// Pre-bucket events by date+hour key for O(1) lookup per cell
-const eventsByHourKey = computed(() => {
-  const map = new Map<string, Event[]>()
-  for (const ev of expandedEvents.value) {
-    const s = new Date(ev.startAt)
-    const e = ev.endAt ? new Date(ev.endAt) : s
-    if (e <= s) continue
-    const cursor = new Date(s)
-    while (cursor < e) {
-      const key = dateHourKey(cursor)
-      const bucket = map.get(key)
-      if (bucket) bucket.push(ev)
-      else map.set(key, [ev])
-      cursor.setHours(cursor.getHours() + 1)
-    }
-  }
-  return map
-})
-
-function dateHourKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}|${d.getHours()}`
-}
-
-function eventsForHour(date: Date, hour: number) {
-  const d = new Date(date)
-  d.setHours(hour, 0, 0, 0)
-  return eventsByHourKey.value.get(dateHourKey(d)) ?? []
-}
-
 // Auto-scroll to 6am when switching to week view
 function scrollTo6am() {
   nextTick(() => {
@@ -406,11 +377,6 @@ watch(viewMode, (v) => { if (v === "day") scrollDayTo6am() })
 
 function onEventClick(eventId: string) {
   ui.openDrawer("event-detail", eventId.split("::")[0])
-}
-
-function handleMonthNavigate(month: number, year: number, day?: number) {
-  navigateToMonth(month, year, day)
-  handleNavChange(year, month)
 }
 </script>
 
