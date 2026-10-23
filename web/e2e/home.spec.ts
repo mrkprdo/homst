@@ -90,8 +90,8 @@ test.describe("Home dashboard", () => {
     await toggle.click()
     await expect(toggle).toHaveAttribute("aria-label", "Lock layout")
     await expect(page.locator(".widget-canvas")).toHaveClass(/is-editing/)
-    // 4 columns × 5 rows of helper cells, one handle set per widget
-    await expect(page.locator(".grid-cell-bg")).toHaveCount(20)
+    // 6 columns × 6 rows of helper cells, one handle set per widget
+    await expect(page.locator(".grid-cell-bg")).toHaveCount(36)
     await expect(page.locator(".drag-handle")).toHaveCount(7)
     await expect(page.locator(".resize-handle")).toHaveCount(7)
 

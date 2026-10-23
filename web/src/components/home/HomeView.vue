@@ -7,6 +7,8 @@ import { useUi } from "@/composables/useUi"
 import { useWeather } from "@/composables/useWeather"
 import { useSpotify } from "@/composables/useSpotify"
 import { useSettings } from "@/composables/useSettings"
+import { useFittedList } from "@/composables/useFittedList"
+import type { Task } from "@/composables/useTasks"
 import { householdApi } from "@/api/household"
 import { PhArrowRight, PhCircle, PhCheckCircle, PhClock, PhCalendarBlank, PhLock, PhLockOpen, PhDotsSix, PhSun, PhCloud, PhCloudRain, PhCloudSnow, PhCloudFog, PhLightning, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
@@ -45,8 +47,8 @@ function submitClientId() {
 const today = ref(new Date())
 
 // ── Grid config ──────────────────────────────────────────────────────────────
-const GRID_COLS = 4
-const GRID_ROWS = 5
+const GRID_COLS = 6
+const GRID_ROWS = 6
 const GAP = 12
 
 interface WidgetDef {
@@ -57,7 +59,50 @@ interface WidgetDef {
   h: number
 }
 
+/**
+ * Every content widget has a minimum footprint it can render cleanly at. The
+ * resize handle stops here, so a card can never be shrunk into clipping its
+ * header or its first row of content.
+ */
+const WIDGET_LIMITS: Record<string, { minW: number; minH: number }> = {
+  datetime: { minW: 2, minH: 2 },
+  weather:  { minW: 2, minH: 2 },
+  schedule: { minW: 2, minH: 2 },
+  todos:    { minW: 2, minH: 2 },
+  spotify:  { minW: 2, minH: 1 },
+  calendar: { minW: 2, minH: 2 },
+  photos:   { minW: 2, minH: 1 },
+}
+
+function limitsFor(id: string) {
+  return WIDGET_LIMITS[id] ?? { minW: 1, minH: 1 }
+}
+
 const DEFAULT_LAYOUT: WidgetDef[] = [
+  { id: "datetime", col: 0, row: 0, w: 3, h: 2 },
+  { id: "weather",  col: 3, row: 0, w: 3, h: 2 },
+  { id: "schedule", col: 0, row: 2, w: 2, h: 2 },
+  { id: "todos",   col: 2, row: 2, w: 2, h: 2 },
+  { id: "spotify", col: 4, row: 2, w: 2, h: 2 },
+  { id: "calendar", col: 0, row: 4, w: 4, h: 2 },
+  { id: "photos",   col: 4, row: 4, w: 2, h: 2 },
+]
+
+/**
+ * The 4-column layouts shipped before the 6×6 dashboard. Untouched installs
+ * are migrated to the roomier default; hand-arranged layouts are left alone.
+ */
+const FOUR_COLUMN_DEFAULT_LAYOUT: WidgetDef[] = [
+  { id: "datetime", col: 0, row: 0, w: 2, h: 1 },
+  { id: "weather",  col: 2, row: 0, w: 2, h: 1 },
+  { id: "schedule", col: 0, row: 1, w: 2, h: 1 },
+  { id: "todos",   col: 2, row: 1, w: 2, h: 1 },
+  { id: "calendar", col: 0, row: 2, w: 4, h: 2 },
+  { id: "photos",   col: 2, row: 4, w: 2, h: 1 },
+  { id: "spotify", col: 0, row: 4, w: 2, h: 1 },
+]
+
+const ORIGINAL_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 0, row: 0, w: 2, h: 1 },
   { id: "weather",  col: 2, row: 0, w: 2, h: 1 },
   { id: "schedule", col: 0, row: 1, w: 1, h: 1 },
@@ -69,8 +114,7 @@ const DEFAULT_LAYOUT: WidgetDef[] = [
 
 /**
  * The layout shipped before the Spotify widget existed put the player on top of
- * the full-width calendar (cols 2–3, rows 1–2). Untouched installs are migrated
- * to the corrected default; hand-arranged layouts are left alone.
+ * the full-width calendar (cols 2–3, rows 1–2).
  */
 const LEGACY_OVERLAPPING_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 0, row: 0, w: 2, h: 1 },
@@ -82,12 +126,22 @@ const LEGACY_OVERLAPPING_LAYOUT: WidgetDef[] = [
   { id: "photos",   col: 0, row: 4, w: 4, h: 1 },
 ]
 
-function isLegacyOverlappingLayout(layout: WidgetDef[]): boolean {
-  if (layout.length !== LEGACY_OVERLAPPING_LAYOUT.length) return false
-  return LEGACY_OVERLAPPING_LAYOUT.every(def => {
+const OUTDATED_DEFAULT_LAYOUTS = [
+  FOUR_COLUMN_DEFAULT_LAYOUT,
+  ORIGINAL_DEFAULT_LAYOUT,
+  LEGACY_OVERLAPPING_LAYOUT,
+]
+
+function matchesLayout(layout: WidgetDef[], reference: WidgetDef[]): boolean {
+  if (layout.length !== reference.length) return false
+  return reference.every(def => {
     const w = layout.find(x => x.id === def.id)
     return !!w && w.col === def.col && w.row === def.row && w.w === def.w && w.h === def.h
   })
+}
+
+function isOutdatedDefaultLayout(layout: WidgetDef[]): boolean {
+  return OUTDATED_DEFAULT_LAYOUTS.some(reference => matchesLayout(layout, reference))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -107,7 +161,7 @@ function readCachedLayout(): WidgetDef[] | null {
       [w?.col, w?.row, w?.w, w?.h].some(n => typeof n !== 'number')
     )) return null
     const layout = parsed as WidgetDef[]
-    return isLegacyOverlappingLayout(layout)
+    return isOutdatedDefaultLayout(layout)
       ? DEFAULT_LAYOUT.map(w => ({ ...w }))
       : layout
   } catch {
@@ -140,7 +194,7 @@ function findFreeSlot(w: number, h: number, existing: WidgetDef[]): { col: numbe
 }
 
 function applyLayout(layout: WidgetDef[]) {
-  const migrated = isLegacyOverlappingLayout(layout)
+  const migrated = isOutdatedDefaultLayout(layout)
   const source = migrated ? DEFAULT_LAYOUT : layout
   const ids = source.map(w => w.id)
   const required = ["datetime", "schedule", "weather", "calendar", "todos"]
@@ -275,6 +329,60 @@ function weatherIcon(code: number): any {
 const homeTodos = computed(() => todos.value.slice(0, 8))
 const homeDoing = computed(() => doing.value.slice(0, 3))
 
+// ── Fitted widget lists ───────────────────────────────────────────────────────
+// Cards trim to the rows that fit instead of clipping them or scrolling.
+const scheduleEntries = computed(() =>
+  todayEvents.value.map(event => ({ kind: "row" as const, event })),
+)
+const scheduleListEl = ref<HTMLElement | null>(null)
+const {
+  visible: visibleScheduleEvents,
+  hiddenCount: hiddenScheduleCount,
+} = useFittedList({
+  container: scheduleListEl,
+  entries: () => scheduleEntries.value,
+  measureKey: () => settings.fontSize.value,
+})
+
+interface HomeTodoEntry {
+  kind: "label" | "task"
+  key: string
+  text?: string
+  task?: Task
+  doing?: boolean
+}
+
+// Group labels are useful breathing room on taller tiles, but waste a row on
+// the 1-row minimum. Short tiers drop them and let the icons carry the meaning.
+const showTodoLabels = computed(() => (getWidget("todos")?.h ?? 1) >= 2)
+
+const todoEntries = computed<HomeTodoEntry[]>(() => {
+  const entries: HomeTodoEntry[] = []
+  if (showTodoLabels.value && homeDoing.value.length) {
+    entries.push({ kind: "label", key: "label-doing", text: "In progress" })
+  }
+  for (const task of homeDoing.value) {
+    entries.push({ kind: "task", key: `doing-${task.id}`, task, doing: true })
+  }
+  if (showTodoLabels.value && homeDoing.value.length && homeTodos.value.length) {
+    entries.push({ kind: "label", key: "label-next", text: "Up next" })
+  }
+  for (const task of homeTodos.value) {
+    entries.push({ kind: "task", key: `todo-${task.id}`, task, doing: false })
+  }
+  return entries
+})
+
+const todoListEl = ref<HTMLElement | null>(null)
+const {
+  visible: visibleTodoEntries,
+  hiddenCount: hiddenTodoCount,
+} = useFittedList({
+  container: todoListEl,
+  entries: () => todoEntries.value,
+  measureKey: () => settings.fontSize.value,
+})
+
 // ── Photos slideshow ──────────────────────────────────────────────────────────
 const activePhotos = computed(() =>
   (Array.isArray(settings.photos.value) ? settings.photos.value : [])
@@ -360,8 +468,13 @@ function onWindowPointerMove(e: PointerEvent) {
   } else if (dragType === "resize") {
     const colDelta = Math.round(dx / colUnit.value)
     const rowDelta = Math.round(dy / rowUnit.value)
-    const newW = Math.max(1, Math.min(GRID_COLS - w.col, dragStartW + colDelta))
-    const newH = Math.max(1, Math.min(GRID_ROWS - w.row, dragStartH + rowDelta))
+    const limits = limitsFor(w.id)
+    const maxW = GRID_COLS - w.col
+    const maxH = GRID_ROWS - w.row
+    const minW = Math.min(limits.minW, maxW)
+    const minH = Math.min(limits.minH, maxH)
+    const newW = Math.min(maxW, Math.max(minW, dragStartW + colDelta))
+    const newH = Math.min(maxH, Math.max(minH, dragStartH + rowDelta))
 
     if ((newW !== dragLastW || newH !== dragLastH) && !checkCollision(w, w.col, w.row, newW, newH)) {
       w.w = newW
@@ -559,7 +672,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         <UiCard class="home-block" :padding="false">
           <div class="block-header">
             <span class="block-title">
-              <PhClock :size="18" /> Date &amp; Time
+              <PhClock :size="18" /><span class="block-title-text">Date &amp; Time</span>
             </span>
           </div>
           <div class="datetime-display" aria-hidden="true">
@@ -581,23 +694,24 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         <UiCard class="home-block" :padding="false">
           <div class="block-header">
             <span class="block-title">
-              <PhCalendarBlank :size="18" /> Today's Schedule
+              <PhCalendarBlank :size="18" /><span class="block-title-text">Today's Schedule</span>
             </span>
             <UiButton variant="link" size="sm" @click="ui.setPanel('calendar')">
               Calendar
               <PhArrowRight :size="13" />
             </UiButton>
           </div>
-          <div v-if="todayEvents.length" class="schedule-list">
-            <div v-for="ev in todayEvents" :key="ev.id" class="schedule-row">
-              <span class="schedule-time">{{ formatEventTime(ev.startAt) }}</span>
-              <span class="schedule-title">{{ ev.title }}</span>
-              <span v-if="ev.assigneeId && members.find(m => m.id === ev.assigneeId)" class="schedule-assignee">
-                {{ members.find(m => m.id === ev.assigneeId)!.name }}
+          <div v-if="todayEvents.length" ref="scheduleListEl" class="schedule-list">
+            <div v-for="entry in visibleScheduleEvents" :key="entry.event.id" class="schedule-row">
+              <span class="schedule-time">{{ formatEventTime(entry.event.startAt) }}</span>
+              <span class="schedule-title">{{ entry.event.title }}</span>
+              <span v-if="entry.event.assigneeId && members.find(m => m.id === entry.event.assigneeId)" class="schedule-assignee">
+                {{ members.find(m => m.id === entry.event.assigneeId)!.name }}
               </span>
             </div>
+            <p v-if="hiddenScheduleCount > 0" class="list-more">+{{ hiddenScheduleCount }} more</p>
           </div>
-          <UiEmptyState v-else message="No events today">
+          <UiEmptyState v-else class="widget-empty" message="No events today">
             <template #icon>
               <PhCheckCircle :size="28" />
             </template>
@@ -615,7 +729,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         :style="{ ...widgetStyle(getWidget('weather')!), '--wobble-delay': '120ms' }">
         <UiCard class="home-block" :padding="false">
           <div class="block-header">
-            <span class="block-title"><PhSun :size="18" /> Weather</span>
+            <span class="block-title"><PhSun :size="18" /><span class="block-title-text">Weather</span></span>
             <span v-if="weather" class="weather-location-header">{{ weather.location }}</span>
           </div>
           <div v-if="weatherLoading" class="weather-body weather-body--center">
@@ -668,7 +782,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         :style="{ ...widgetStyle(getWidget('calendar')!), '--wobble-delay': '100ms' }">
         <UiCard class="home-block" :padding="false">
           <div class="block-header">
-            <span class="block-title">{{ monthName }}</span>
+            <span class="block-title"><span class="block-title-text">{{ monthName }}</span></span>
             <UiButton variant="link" size="sm" @click="ui.setPanel('calendar')">
               Open
               <PhArrowRight :size="13" />
@@ -700,33 +814,27 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         :style="{ ...widgetStyle(getWidget('todos')!), '--wobble-delay': '340ms' }">
         <UiCard class="home-block" :padding="false">
           <div class="block-header">
-            <span class="block-title">To Do</span>
+            <span class="block-title"><span class="block-title-text">To Do</span></span>
             <UiButton variant="link" size="sm" @click="ui.setPanel('tasks')">
               All
               <PhArrowRight :size="13" />
             </UiButton>
           </div>
-          <div v-if="homeDoing.length || homeTodos.length" class="task-scroll">
-            <div v-if="homeDoing.length" class="task-group">
-              <span class="task-group-label">In progress</span>
-              <div v-for="task in homeDoing" :key="task.id" class="task-row task-row--doing">
-                <PhCircle :size="16" weight="bold" class="task-icon task-icon--doing" />
-                <span class="task-title">{{ task.title }}</span>
-              </div>
-            </div>
-            <div v-if="homeTodos.length" class="task-group">
-              <span v-if="homeDoing.length" class="task-group-label">Up next</span>
-              <div v-for="task in homeTodos" :key="task.id" class="task-row">
-                <PhCircle :size="16" class="task-icon" />
-                <span class="task-title">{{ task.title }}</span>
-                <span v-if="task.startAt" class="task-due"
-                  :class="{ 'task-due--overdue': new Date(task.startAt) < today }">
-                  {{ new Date(task.startAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }}
+          <div v-if="todoEntries.length" ref="todoListEl" class="todo-list">
+            <template v-for="entry in visibleTodoEntries" :key="entry.key">
+              <span v-if="entry.kind === 'label'" class="task-group-label">{{ entry.text }}</span>
+              <div v-else class="task-row" :class="{ 'task-row--doing': entry.doing }">
+                <PhCircle :size="16" weight="bold" class="task-icon" :class="{ 'task-icon--doing': entry.doing }" />
+                <span class="task-title">{{ entry.task!.title }}</span>
+                <span v-if="entry.task!.startAt" class="task-due"
+                  :class="{ 'task-due--overdue': new Date(entry.task!.startAt) < today }">
+                  {{ new Date(entry.task!.startAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }}
                 </span>
               </div>
-            </div>
+            </template>
+            <p v-if="hiddenTodoCount > 0" class="list-more">+{{ hiddenTodoCount }} more</p>
           </div>
-          <UiEmptyState v-if="!homeTodos.length && !homeDoing.length" message="All clear">
+          <UiEmptyState v-if="!todoEntries.length" class="widget-empty" message="All clear">
             <template #icon>
               <PhCheckCircle :size="28" />
             </template>
@@ -744,14 +852,14 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         :style="{ ...widgetStyle(getWidget('photos')!), '--wobble-delay': '160ms' }">
         <UiCard class="home-block" :padding="false">
           <div class="block-header">
-            <span class="block-title"><PhImage :size="18" /> Photos</span>
+            <span class="block-title"><PhImage :size="18" /><span class="block-title-text">Photos</span></span>
           </div>
           <div v-if="activePhotos.length" class="photos-body">
             <Transition name="photo-fade">
               <img :key="currentPhotoIndex" :src="activePhotos[currentPhotoIndex]?.url" class="photos-img" />
             </Transition>
           </div>
-          <UiEmptyState v-else message="No photos selected">
+          <UiEmptyState v-else class="widget-empty" message="No photos selected">
             <template #icon><PhImage :size="28" /></template>
           </UiEmptyState>
         </UiCard>
@@ -768,7 +876,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         <UiCard class="home-block spotify-card" :padding="false">
           <div class="block-header">
             <span class="block-title">
-              <PhMusicNote :size="18" weight="bold" /> Spotify
+              <PhMusicNote :size="18" weight="bold" /><span class="block-title-text">Spotify</span>
             </span>
             <span v-if="spotifyConnected && currentTrack?.isPlaying" class="spotify-equalizer">
               <span /><span /><span />
@@ -943,14 +1051,29 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   height: 100%;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 
-/* UiCard slot content — ensure children fill height and don't overflow */
-.home-block :deep(.ui-card) {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+/* Empty states are padded for full pages; keep them within small tiles. */
+.home-block :deep(.widget-empty) {
+  flex: 1;
+  min-height: 0;
+  gap: clamp(2px, 2cqh, var(--space-3));
+  padding: clamp(4px, 4cqh, var(--space-10)) var(--space-3);
   overflow: hidden;
+}
+
+.home-block :deep(.widget-empty .ui-empty__message) {
+  font-size: var(--text-label-size);
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+@container w (max-height: 12em) {
+  .home-block :deep(.widget-empty .ui-empty__icon) {
+    display: none;
+  }
 }
 
 /* ── Drag handle ─────────────────────────────────────────────────────────────── */
@@ -1128,139 +1251,160 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   opacity: 0;
 }
 
-/* ── Container-query adaptive content ───────────────────────────────────────── */
+/* ── Shared widget chrome + size tiers ──────────────────────────────────────── */
+/* Container font-size follows the household text setting, so em breakpoints
+   tighten the layout when text grows — not only when the tile shrinks. */
 
-
-/* Short widget (1 row tall): collapse calendar to just the month name */
-@container w (max-height: 260px) {
-
-  .mini-cal-weekdays,
-  .mini-cal-grid {
-    display: none;
-  }
-
-  .mini-cal {
-    padding-bottom: var(--space-2);
-  }
-}
-
-/* Very narrow (1 col): tighter day cells, smaller text */
-@container w (max-width: 240px) {
-  .mini-cal-weekdays span {
-    font-size: 8px;
-    letter-spacing: 0;
-  }
-
-  .mini-cal-day {
-    font-size: 9px;
-  }
-
-  .block-title {
-    font-size: 13px;
-  }
-
-  .schedule-time {
-    min-width: 44px;
-    font-size: 11px;
-  }
-
-  .datetime-time {
-    font-size: 22px;
-  }
-}
-
-/* Compact header when short */
-@container w (max-height: 180px) {
-  .block-header {
-    margin-bottom: var(--space-1);
-    padding-top: var(--space-2);
-  }
-
-  .datetime-display {
-    padding: var(--space-1) 0;
-  }
-
-  .datetime-time {
-    font-size: 20px;
-  }
-
-  .schedule-list {
-    gap: 0;
-  }
-
-  .schedule-row {
-    padding: 2px var(--space-2);
-  }
-
-  .task-row {
-    padding: 2px var(--space-2);
-  }
-}
-
-/* ── Block header ────────────────────────────────────────────────────────────── */
 .block-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-3);
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  min-width: 0;
   padding: var(--space-3) var(--space-4) 0;
+  margin-bottom: var(--space-3);
 }
 
 .block-title {
-  font-size: var(--text-heading-size);
-  font-weight: var(--font-weight-medium);
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-heading-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.block-title svg {
+  flex-shrink: 0;
+}
+
+.block-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-header :deep(.ui-btn--sm) {
+  flex-shrink: 0;
+  padding: 2px var(--space-2);
+}
+
+.block-header :deep(.ui-btn--sm .ui-btn__inner) {
+  gap: 2px;
+  font-size: var(--text-label-size);
+}
+
+/* One-row tiles: compact chrome, smaller title, tighter shortcut. */
+@container w (max-height: 12em) {
+  .block-header {
+    padding-top: var(--space-2);
+    margin-bottom: var(--space-1);
+  }
+
+  .block-title {
+    gap: var(--space-1);
+    font-size: var(--text-label-size);
+  }
+
+  .block-title svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .block-header :deep(.ui-btn--sm) {
+    padding: 0 var(--space-1);
+  }
+}
+
+@container w (max-height: 8em) {
+  .block-header {
+    padding-top: var(--space-1);
+  }
+}
+
+/* Narrow tiles: drop the header shortcut instead of truncating the title. */
+@container w (max-width: 16em) {
+  .block-header :deep(.ui-btn--sm) {
+    display: none;
+  }
 }
 
 /* ── Date & Time ─────────────────────────────────────────────────────────────── */
 .datetime-display {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: var(--space-2);
+  gap: clamp(0px, 1cqh, var(--space-2));
+  padding: 0 var(--space-3) clamp(2px, 1.5cqh, var(--space-3));
+  overflow: hidden;
+}
+
+.datetime-house,
+.datetime-date,
+.datetime-time {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .datetime-house {
-  font-size: clamp(16px, 4cqw, 28px);
+  font-size: clamp(12px, 3.6cqh, 28px);
+  line-height: 1.15;
   font-weight: var(--font-weight-large);
   color: var(--color-primary);
 }
 
 .datetime-date {
-  font-size: clamp(24px, 12cqh, 80px);
+  font-size: clamp(11px, 5.2cqh, 26px);
+  line-height: 1.2;
   font-weight: var(--font-weight-thin);
   color: var(--color-textMuted);
 }
 
 .datetime-time {
-  font-size: clamp(24px, 12cqh, 80px);
+  font-size: clamp(24px, 20cqh, 104px);
   font-weight: var(--font-weight-thin);
   color: var(--color-textPrimary);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  line-height: 1;
+  line-height: 0.95;
 }
 
 /* ── Weather ──────────────────────────────────────────────────────────────────── */
 .weather-location-header {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 45%;
+  margin-left: auto;
   font-size: var(--text-label-size);
   color: var(--color-textMuted);
-  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .weather-body {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4) var(--space-3);
+  gap: clamp(2px, 1.4cqh, var(--space-3));
+  padding: 0 clamp(8px, 3cqw, var(--space-6)) clamp(4px, 2cqh, var(--space-3));
+  overflow: hidden;
+  text-align: center;
 }
 
 .weather-body--center {
@@ -1270,26 +1414,33 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 .weather-primary {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  justify-content: center;
+  gap: clamp(4px, 2cqw, var(--space-4));
+  max-width: 100%;
+  min-height: 0;
 }
 
 .weather-icon {
   color: var(--color-accent);
   flex-shrink: 0;
+  width: clamp(24px, 30cqh, 76px);
+  height: auto;
 }
 
 .weather-temps {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .weather-temp {
-  font-size: clamp(28px, 8cqh, 48px);
+  font-size: clamp(24px, 13cqh, 64px);
   font-weight: var(--font-weight-thin);
   line-height: 1;
   color: var(--color-textPrimary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .weather-hilo {
@@ -1298,6 +1449,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   gap: var(--space-1);
   font-size: var(--text-label-size);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .weather-hi { color: var(--color-textPrimary); }
@@ -1307,18 +1459,24 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 .weather-secondary {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .weather-label {
   font-size: var(--text-body-size);
   font-weight: var(--font-weight-medium);
   color: var(--color-textPrimary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .weather-feels {
   font-size: var(--text-label-size);
   color: var(--color-textMuted);
+  white-space: nowrap;
 }
 
 .weather-coords {
@@ -1326,6 +1484,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   color: var(--color-textMuted);
   opacity: 0.5;
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .weather-stats {
@@ -1341,6 +1500,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   font-size: var(--text-label-size);
   color: var(--color-textMuted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .weather-stat-icon {
@@ -1351,29 +1511,103 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 .weather-error {
   font-size: var(--text-body-size);
   color: var(--color-textMuted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .weather-error {
   color: var(--color-danger);
 }
 
+/* Roomy tile: use the width instead of stacking everything in the middle. */
+@container w (min-width: 28em) and (min-height: 11em) {
+  .weather-body {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "primary details"
+      "primary stats";
+    align-content: center;
+    align-items: center;
+    justify-items: start;
+    column-gap: clamp(12px, 4cqw, var(--space-8));
+    text-align: left;
+  }
+
+  .weather-primary { grid-area: primary; justify-content: flex-start; }
+  .weather-secondary { grid-area: details; justify-content: flex-start; flex-wrap: wrap; }
+  .weather-stats { grid-area: stats; justify-content: flex-start; }
+}
+
+/* One-row tile: lay the reading out horizontally and drop extras. */
+@container w (max-height: 10em) {
+  .weather-body {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: clamp(6px, 2cqw, var(--space-4));
+    padding-bottom: 4px;
+  }
+
+  .weather-primary {
+    flex-shrink: 0;
+  }
+
+  .weather-secondary {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+    text-align: left;
+    min-width: 0;
+  }
+
+  .weather-coords,
+  .weather-stats {
+    display: none;
+  }
+
+  .weather-feels {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@container w (max-height: 7.5em) {
+  .weather-feels {
+    display: none;
+  }
+
+  .weather-icon {
+    width: clamp(22px, 26cqh, 44px);
+  }
+
+  .weather-temp {
+    font-size: clamp(22px, 12cqh, 34px);
+  }
+}
+
 /* ── Today's Schedule ────────────────────────────────────────────────────────── */
 .schedule-list {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 0 var(--space-3);
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
+  padding: 0 0 var(--space-1);
+  overflow: hidden;
 }
 
 .schedule-row {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2);
+  gap: clamp(4px, 1.5cqw, var(--space-3));
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
+  flex-shrink: 0;
   transition: background var(--duration-fast);
 }
 
@@ -1387,12 +1621,13 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   color: var(--color-textMuted);
   font-variant-numeric: tabular-nums;
   width: auto;
-  min-width: 58px;
+  min-width: 3.9em;
   white-space: nowrap;
 }
 
 .schedule-title {
   flex: 1;
+  min-width: 0;
   font-size: var(--text-body-size);
   color: var(--color-textPrimary);
   white-space: nowrap;
@@ -1402,14 +1637,46 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .schedule-assignee {
   flex-shrink: 0;
+  max-width: 30%;
   font-size: var(--text-label-size);
   color: var(--color-textMuted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "+N more" is a designed end to the list, not clipped content. */
+.list-more {
+  flex-shrink: 0;
+  padding: 2px var(--space-3);
+  font-size: var(--text-micro-size);
+  line-height: 1.3;
+  color: var(--color-textMuted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+@container w (max-width: 16em) {
+  .schedule-assignee,
+  .task-due {
+    display: none;
+  }
+
+  .schedule-time {
+    min-width: 0;
+  }
+}
+
+@container w (max-height: 9em) {
+  .schedule-row,
+  .task-row {
+    padding-block: 2px;
+  }
 }
 
 /* ── Mini calendar ───────────────────────────────────────────────────────────── */
 .mini-cal {
-  padding: 0 var(--space-3) var(--space-3);
+  padding: 0 var(--space-3) var(--space-2);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1419,7 +1686,8 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 .mini-cal-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  margin-bottom: var(--space-1);
+  gap: clamp(1px, 0.5cqh, 4px);
+  flex-shrink: 0;
 }
 
 .mini-cal-weekdays span {
@@ -1429,14 +1697,15 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   color: var(--color-textMuted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding-bottom: var(--space-1);
+  line-height: 1.2;
+  padding-bottom: 2px;
 }
 
 .mini-cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: 1fr;
-  gap: var(--space-1);
+  grid-auto-rows: minmax(0, 1fr);
+  gap: clamp(1px, 0.5cqh, 4px);
   flex: 1;
   min-height: 0;
 }
@@ -1447,17 +1716,17 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  /* aspect-ratio: 1 removed — flex grid fills available height */
   border: none;
   background: none;
   border-radius: var(--radius-sm);
-  font-size: var(--text-label-size);
+  font-size: clamp(9px, 2.6cqh, var(--text-label-size));
   color: var(--color-textSecondary);
   cursor: pointer;
   min-width: unset;
   min-height: unset;
   padding: 0;
   line-height: 1;
+  overflow: hidden;
   transition: background var(--duration-fast);
 }
 
@@ -1480,8 +1749,8 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   bottom: 2px;
   left: 50%;
   transform: translateX(-50%);
-  width: var(--space-2);
-  height: var(--space-2);
+  width: clamp(3px, 0.5cqh, var(--space-2));
+  height: clamp(3px, 0.5cqh, var(--space-2));
   border-radius: 50%;
   background: var(--color-primary);
   opacity: 0.5;
@@ -1492,42 +1761,67 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   opacity: 0.7;
 }
 
-/* ── Tasks ───────────────────────────────────────────────────────────────────── */
-.task-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-bottom: var(--space-2);
+/* Shorter tiles drop the weekday strip so the month keeps every date. */
+@container w (max-height: 12em) {
+  .mini-cal-weekdays {
+    display: none;
+  }
+
+  .mini-cal {
+    padding-bottom: var(--space-1);
+  }
 }
 
-.task-group {
+@container w (max-width: 16em) {
+  .mini-cal-weekdays span {
+    letter-spacing: 0;
+  }
+}
+
+/* Very short tiles keep the month title instead of squashing the date grid. */
+@container w (max-height: 7em) {
+  .mini-cal-weekdays,
+  .mini-cal-grid {
+    display: none;
+  }
+
+  .mini-cal {
+    padding-bottom: var(--space-1);
+  }
+}
+
+/* ── Tasks ───────────────────────────────────────────────────────────────────── */
+.todo-list {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: var(--space-3);
-  padding: 0 var(--space-3);
-}
-
-.task-group:last-child {
-  margin-bottom: 0;
+  padding: 0 0 var(--space-1);
+  overflow: hidden;
 }
 
 .task-group-label {
-  font-size: 10px;
+  flex-shrink: 0;
+  padding: 2px var(--space-3) 0;
+  font-size: var(--text-micro-size);
   font-weight: var(--font-weight-medium);
+  line-height: 1.3;
   color: var(--color-textMuted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: var(--space-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
+  flex-shrink: 0;
   transition: background var(--duration-fast);
 }
 
@@ -1550,6 +1844,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .task-title {
   flex: 1;
+  min-width: 0;
   font-size: var(--text-body-size);
   color: var(--color-textPrimary);
   white-space: nowrap;
@@ -1561,6 +1856,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   flex-shrink: 0;
   font-size: var(--text-label-size);
   color: var(--color-textMuted);
+  white-space: nowrap;
 }
 
 .task-due--overdue {
@@ -1588,8 +1884,8 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-1) var(--space-4) var(--space-3);
+  gap: clamp(4px, 2cqh, var(--space-3));
+  padding: 0 var(--space-4) clamp(4px, 2cqh, var(--space-3));
   min-height: 0;
   overflow: hidden;
 }
@@ -1625,7 +1921,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 /* ── Vinyl disc ──────────────────────────────────────────────── */
 .spotify-vinyl {
-  width: clamp(80px, 60%, 160px);
+  width: clamp(40px, 32cqh, 160px);
   aspect-ratio: 1;
   flex-shrink: 0;
 }
@@ -1650,6 +1946,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 .spotify-body--playing .spotify-vinyl {
+  width: min(70cqh, 70cqw, 320px);
   max-width: 100%;
   max-height: 100%;
   aspect-ratio: 1;
@@ -1833,7 +2130,9 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) 0;
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
 }
 
 .spotify-setup-icon {
@@ -1900,6 +2199,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .spotify-setup-input {
   flex: 1;
+  min-width: 0;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -1978,61 +2278,137 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   max-width: 340px;
 }
 
-/* ── Compact narrow ──────────────────────────────────────────── */
-@container w (max-width: 240px) {
-  .spotify-vinyl {
-    width: clamp(60px, 50%, 100px);
-  }
-
+/* ── Short / narrow responsive states ────────────────────────── */
+@container w (max-width: 16em) {
   .spotify-song {
     font-size: var(--text-label-size);
   }
 
   .spotify-artist {
-    font-size: 10px;
+    font-size: var(--text-micro-size);
   }
 }
 
-@container w (max-height: 280px) {
-  .spotify-vinyl {
-    width: clamp(50px, 35%, 80px);
-  }
-
+/* One-row tiles: vinyl + copy side by side, controls stay reachable. */
+@container w (max-height: 16em) {
   .spotify-body {
     flex-direction: row;
-    flex-wrap: wrap;
-    gap: var(--space-2);
+    gap: var(--space-3);
+    padding-bottom: 4px;
   }
 
-  .spotify-info {
+  .spotify-body--playing {
+    justify-content: flex-start;
+  }
+
+  .spotify-body--playing .spotify-vinyl {
+    width: clamp(44px, 62cqh, 96px);
+  }
+
+  .spotify-body--playing .spotify-info {
+    position: static;
     flex: 1;
     min-width: 0;
+    padding: 0;
+    background: none;
+    text-align: left;
+    pointer-events: auto;
   }
 
-  /* Short cards: vinyl opens to the left so the message and action stay visible */
+  .spotify-body--playing .spotify-progress {
+    margin-top: 2px;
+  }
+
   .spotify-idle {
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
-    justify-content: center;
-    gap: var(--space-1) var(--space-4);
+    justify-content: flex-start;
+    gap: var(--space-3);
     width: 100%;
     min-height: 0;
   }
 
+  .spotify-vinyl--idle {
+    width: clamp(36px, 42cqh, 64px);
+  }
+
   .spotify-idle-text {
     flex: 1;
-    min-width: 120px;
+    min-width: 0;
     text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .spotify-redir-hint {
-    flex-basis: 100%;
-    order: 9;
+    display: none;
   }
 
   .spotify-connect-btn {
     flex-shrink: 0;
+  }
+
+  .spotify-setup {
+    width: 100%;
+  }
+
+  .spotify-error {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+}
+
+/* Setup needs the most room: progressively trim prose, keep the form. */
+@container w (max-height: 20em) {
+  .spotify-setup-icon {
+    display: none;
+  }
+
+  .spotify-setup {
+    padding: 0;
+  }
+
+  .spotify-setup-details {
+    display: none;
+  }
+}
+
+@container w (max-height: 13em) {
+  .spotify-setup-title {
+    display: none;
+  }
+
+  .spotify-setup-desc {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .spotify-setup-input-row {
+    max-width: none;
+  }
+}
+
+@container w (max-height: 9em) {
+  .spotify-setup-desc {
+    display: none;
+  }
+
+  .spotify-error {
+    -webkit-line-clamp: 1;
+  }
+}
+
+/* Tiny one-row tiles: keep the track title, drop the rest of the details. */
+@container w (max-height: 4.5em) {
+  .spotify-body--playing .spotify-artist,
+  .spotify-body--playing .spotify-progress {
+    display: none;
   }
 }
 </style>

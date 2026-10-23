@@ -199,15 +199,17 @@ describe("HomeView", () => {
     await flushPromises()
 
     // Spotify no longer covers the full-width calendar below it
-    expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-row: 2 / span 1")
+    expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-row: 3 / span 2")
+    expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-column: 5 / span 2")
     expect(calendarWidget(wrapper)!.attributes("style")).toContain("grid-column: 1 / span 4")
+    expect(calendarWidget(wrapper)!.attributes("style")).toContain("grid-row: 5 / span 2")
 
     // The corrected layout is written back so the kiosk keeps it
     const patch = settingsPatch()
     expect(patch).toBeTruthy()
     const body = JSON.parse((patch![1] as RequestInit).body as string)
     const spotify = body.settings.widgetLayout.find((w: any) => w.id === "spotify")
-    expect(spotify.h).toBe(1)
+    expect(spotify.h).toBe(2)
     wrapper.unmount()
   })
 

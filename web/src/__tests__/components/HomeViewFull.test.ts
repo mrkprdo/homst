@@ -133,13 +133,13 @@ describe("HomeView — layout engine & edit mode", () => {
     await nextTick()
     expect(wrapper.findAll(".widget")[4].attributes("style")).toContain("grid-column: 4 / span 1")
 
-    // Resize "photos" (handle 5) one row taller into the free row 3
-    expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-row: 3 / span 1")
-    resizeHandles[5].element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
+    // Resize "spotify" (handle 6) one row taller into the free row below
+    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-row: 1 / span 2")
+    resizeHandles[6].element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: 10, clientY: 210 }))
     window.dispatchEvent(new MouseEvent("pointerup"))
     await nextTick()
-    expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-row: 3 / span 2")
+    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-row: 1 / span 3")
 
     // Header shortcut links
     await wrapper.findAll(".widget")[1].find("button").trigger("click")
@@ -154,6 +154,22 @@ describe("HomeView — layout engine & edit mode", () => {
     wrapper.unmount()
   })
 
+  it("stops a widget at its minimum footprint when resized smaller", async () => {
+    const { wrapper } = await freshMount({ body: { houseName: "Minimums" } })
+    await wrapper.find(".lock-toggle").trigger("click")
+
+    // Date & Time ships 3 columns wide; dragging left stops at the 2-column minimum.
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 1 / span 3")
+    const handle = wrapper.findAll(".resize-handle")[0]
+    handle.element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: -390, clientY: 10 }))
+    window.dispatchEvent(new MouseEvent("pointerup"))
+    await nextTick()
+
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 1 / span 2")
+    wrapper.unmount()
+  })
+
   it("ignores a layout whose coordinates are not numeric", async () => {
     const { wrapper } = await freshMount({
       body: {
@@ -163,9 +179,9 @@ describe("HomeView — layout engine & edit mode", () => {
         ],
       },
     })
-    // Rejected → the default layout survives (datetime spans two columns)
+    // Rejected → the default layout survives (datetime spans three columns)
     expect(wrapper.findAll(".widget").length).toBe(7)
-    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 1 / span 2")
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 1 / span 3")
     wrapper.unmount()
   })
 
@@ -173,18 +189,18 @@ describe("HomeView — layout engine & edit mode", () => {
     const { wrapper } = await freshMount({
       body: {
         widgetLayout: [
-          { id: "datetime", col: 0, row: 0, w: 4, h: 1 },
-          { id: "schedule", col: 0, row: 1, w: 4, h: 1 },
-          { id: "weather", col: 0, row: 2, w: 4, h: 1 },
-          { id: "calendar", col: 0, row: 3, w: 4, h: 1 },
-          { id: "todos", col: 0, row: 4, w: 4, h: 1 },
+          { id: "datetime", col: 0, row: 0, w: 6, h: 2 },
+          { id: "schedule", col: 0, row: 2, w: 6, h: 1 },
+          { id: "weather", col: 0, row: 3, w: 6, h: 1 },
+          { id: "calendar", col: 0, row: 4, w: 6, h: 1 },
+          { id: "todos", col: 0, row: 5, w: 6, h: 1 },
         ],
       },
     })
     // spotify & photos were appended with their *default* coords (no slot found)
     expect(wrapper.findAll(".widget").length).toBe(7)
-    expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-column: 1 / span 4")
-    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-column: 3 / span 2")
+    expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-column: 5 / span 2")
+    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-column: 5 / span 2")
     wrapper.unmount()
   })
 
@@ -279,7 +295,7 @@ describe("HomeView — cached layout (import time)", () => {
       await wrapper.find(".lock-toggle").trigger("click")
       const handle = wrapper.findAll(".drag-handle")[0]
       handle.element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
-      // rowUnit = (700 + 12) / 5 ≈ 142.4 → 285px is two rows down
+      // rowUnit = (700 + 12) / 6 ≈ 118.7 → 285px is two rows down
       window.dispatchEvent(new MouseEvent("pointermove", { clientX: 10, clientY: 295 }))
       window.dispatchEvent(new MouseEvent("pointerup"))
       await nextTick()
@@ -303,6 +319,21 @@ describe("HomeView — cached layout (import time)", () => {
       expect(wrapper.findAll(".widget").length).toBe(7)
       wrapper.unmount()
     }
+  })
+
+  it("migrates the legacy overlapping layout back to the default", async () => {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify([
+      { id: "datetime", col: 0, row: 0, w: 2, h: 1 },
+      { id: "weather", col: 2, row: 0, w: 2, h: 1 },
+      { id: "schedule", col: 0, row: 1, w: 1, h: 1 },
+      { id: "todos", col: 1, row: 1, w: 1, h: 1 },
+      { id: "spotify", col: 2, row: 1, w: 2, h: 2 },
+      { id: "calendar", col: 0, row: 2, w: 4, h: 2 },
+      { id: "photos", col: 0, row: 4, w: 4, h: 1 },
+    ]))
+    const { wrapper } = await freshMount({ body: {} })
+    expect(wrapper.findAll(".widget")[0]!.attributes("style")).toContain("grid-column: 1 / span 3")
+    wrapper.unmount()
   })
 })
 
@@ -355,6 +386,37 @@ describe("HomeView — widget data edge cases", () => {
     expect(wrapper.findAll(".task-row").length).toBe(2)
     expect(wrapper.findAll(".task-due").length).toBe(1)
     expect(wrapper.text()).not.toContain("Up next")
+    wrapper.unmount()
+  })
+
+  it("groups in-progress and upcoming tasks when the todo tile is tall enough", async () => {
+    const { wrapper } = await freshMount({
+      body: {
+        houseName: "Grouped",
+        widgetLayout: [
+          { id: "datetime", col: 0, row: 0, w: 2, h: 1 },
+          { id: "schedule", col: 2, row: 0, w: 2, h: 1 },
+          { id: "weather",  col: 0, row: 1, w: 2, h: 1 },
+          { id: "calendar", col: 2, row: 1, w: 2, h: 2 },
+          { id: "todos",    col: 0, row: 2, w: 2, h: 2 },
+          { id: "photos",   col: 0, row: 4, w: 2, h: 1 },
+          { id: "spotify",  col: 2, row: 4, w: 2, h: 1 },
+        ],
+      },
+      seed: ({ tasks }) => {
+        const base = {
+          listId: "l1", description: "", assigneeId: null, startAt: null,
+          endAt: null, priority: "medium" as const,
+          createdBy: null, createdAt: "", updatedAt: "",
+        }
+        tasks.upsertTask({ ...base, id: "t1", title: "Doing now", status: "doing", position: 0 })
+        tasks.upsertTask({ ...base, id: "t2", title: "Later", status: "todo", position: 0 })
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.findAll(".task-group-label").map(label => label.text())).toEqual(["In progress", "Up next"])
+    expect(wrapper.findAll(".task-row").length).toBe(2)
     wrapper.unmount()
   })
 
@@ -413,6 +475,16 @@ describe("HomeView — Spotify widget", () => {
     expect(localStorage.getItem(CLIENT_ID_KEY)).toBe("0123456789abcdef0123456789abcdef")
     // the PKCE flow starts (verifier stored synchronously before the redirect)
     expect(localStorage.getItem("homst:spotify-code-verifier")).toBeTruthy()
+    wrapper.unmount()
+  })
+
+  it("rejects a malformed Spotify client id", async () => {
+    stubLocation()
+    const { wrapper } = await freshMount({ body: {} })
+    await wrapper.find(".spotify-setup-input").setValue("not-a-client-id")
+    await wrapper.find(".spotify-connect-btn").trigger("click")
+    expect(wrapper.find(".spotify-error").text()).toContain("32 letters/digits")
+    expect(localStorage.getItem(CLIENT_ID_KEY)).toBeNull()
     wrapper.unmount()
   })
 
