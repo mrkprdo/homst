@@ -3,24 +3,41 @@
 #   dev  → nightly images (:dev, :dev-<sha>)
 #   other branch/tag → release images (:x.y.z, :x.y, and :latest for stable)
 #
-# Run it from Actions → Build and choose the branch in the "Use workflow from"
-# selector. A release branch should be named like `0.2.0` (or its HEAD should be
-# tagged `v0.2.0`). If the tag does not exist, the workflow creates and pushes
-# it automatically.
+# Runs on a schedule (dev), on a pushed release tag, from the Release workflow,
+# or manually from Actions → Build with a branch in the "Use workflow from"
+# selector. A manual release branch should be named like `0.2.0` (or its HEAD
+# should be tagged `v0.2.0`). If the tag does not exist, the workflow creates
+# and pushes it automatically.
 name: Build
 
 on:
   schedule:
     # Nightly dev build at 03:00 UTC (uses the default branch).
     - cron: "0 3 * * *"
+  push:
+    # A pushed release tag builds that tag.
+    tags:
+      - "v*"
+      - "*.*.*"
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or tag to build (defaults to the selected branch)"
+        type: string
+        required: false
+  workflow_call:
+    inputs:
+      ref:
+        description: "Branch or tag to build"
+        type: string
+        required: false
 
 permissions:
   contents: write
   packages: write
 
 concurrency:
-  group: build-${{ github.event_name == 'schedule' && 'dev' || github.ref_name }}
+  group: build-${{ inputs.ref || (github.event_name == 'schedule' && 'dev' || github.ref_name) }}
   cancel-in-progress: false
 
 jobs:
@@ -37,14 +54,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref_name }}
+          ref: ${{ inputs.ref || (github.event_name == 'schedule' && 'dev' || github.ref_name) }}
           fetch-depth: 0
           fetch-tags: true
 
       - name: Resolve dev or release
         id: resolve
         env:
-          INPUT_REF: ${{ github.event_name == 'schedule' && 'dev' || github.ref_name }}
+          INPUT_REF: ${{ inputs.ref || (github.event_name == 'schedule' && 'dev' || github.ref_name) }}
         run: |
           set -eu
           ref="${INPUT_REF:-dev}"
@@ -82,7 +99,7 @@ jobs:
           fi
 
           if [ -z "$tag" ]; then
-            echo "::error::No git tag found on '$ref'. Tag the commit first (e.g. git tag v0.2.0 && git push origin v0.2.0) or use a branch named like 0.2.0."
+            echo "::error::No git tag found on '$ref'. Use the Release workflow, push a tag (e.g. git tag 0.2.0 && git push origin 0.2.0), or use a branch named like 0.2.0."
             exit 1
           fi
 

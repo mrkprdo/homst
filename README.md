@@ -273,22 +273,33 @@ To test the production image that you build from source, run `make prod-build`.
 
 ## Release
 
-The Build workflow does all release operations:
+Releases are one click: open **Actions > Release > Run workflow**, then run it.
+
+1. Leave **bump** at `patch`, or choose `minor` or `major`. The workflow reads the newest tag, increments that part, tags the head of `dev`, and starts Build for the new tag.
+2. To set the version yourself, type it into **version** (`0.3.0` or `0.3.0-rc.1`). It overrides **bump**.
+3. To release a different branch, change **ref** from `dev`.
+
+You can also start it from the command line:
+
+```bash
+gh workflow run release.yml -f bump=minor
+gh workflow run release.yml -f version=0.3.0-rc.1
+```
+
+Build then does the rest:
 
 - **`dev`** produces nightly images `:dev` and `:dev-<sha>`.
-- **A tag** produces release images `:x.y.z`, `:x.y`, and `:latest` for stable tags.
+- **A tag** produces release images `:x.y.z`, `:x.y`, and `:latest` for stable tags. It runs the test suite, builds `linux/amd64` and `linux/arm64`, pushes the tags, and creates or updates the GitHub Release for the tag with the compose file and the environment template attached.
 
-1. Open **Actions > Build > Run workflow**. Select `dev` or the release branch in the **Use workflow from** list.
-2. For a release, create a version branch and run Build on the branch. You do not need a version input:
-   ```bash
-   git checkout dev
-   git checkout -b 0.2.0
-   git push origin 0.2.0
-   ```
-   Select `0.2.0` in the Build workflow. The workflow creates and pushes the `v0.2.0` tag, builds the release image, and publishes the GitHub Release. You can also use a branch with a different name. The HEAD of the branch must have a semantic-version tag such as `v0.2.0`.
-3. The workflow runs the test suite. It builds images for `linux/amd64` and `linux/arm64`. It pushes the image tags. It creates or updates the GitHub Release for the tag. It attaches the compose file and the environment template.
+Build also runs when you push a release tag, so this is equivalent to the button:
 
-Prerelease tags such as `v0.2.0-rc.1` are prereleases. They do not move the `:latest` tag.
+```bash
+git checkout dev
+git tag 0.3.0
+git push origin 0.3.0
+```
+
+Prerelease tags such as `0.3.0-rc.1` are prereleases. They do not move the `:latest` tag. The Release workflow creates the tag before the checks run, so if a run fails you can delete the tag (`git push --delete origin 0.3.0`) and run Release again.
 
 The nightly schedule builds `dev` at 03:00 UTC. It publishes `:dev` and `:dev-<sha>`. To use a nightly build, set `HOMST_VERSION=dev` in `.env`. Then run `docker compose -f docker-compose.prod.yml pull` and `docker compose -f docker-compose.prod.yml up -d`.
 

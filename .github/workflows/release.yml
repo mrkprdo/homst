@@ -1,0 +1,120 @@
+# One-click release.
+#
+# Actions → Release → Run workflow:
+#   bump    – patch / minor / major, computed from the newest tag (default)
+#   version – explicit version, e.g. 0.3.0 or 0.3.0-rc.1 (overrides bump)
+#   ref     – branch to release (default: dev)
+#
+# The workflow computes the version, tags the chosen commit, pushes the tag,
+# and then runs the Build workflow for that tag. Build runs the checks, pushes
+# the multi-arch image, and creates or updates the GitHub Release.
+name: Release
+
+run-name: Release (${{ inputs.version || inputs.bump }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (ignored when version is set)"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      version:
+        description: "Explicit version, e.g. 0.3.0 or 0.3.0-rc.1. Leave empty to bump."
+        type: string
+        required: false
+      ref:
+        description: "Branch to release"
+        type: string
+        default: dev
+        required: false
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || 'dev' }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Compute next version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          INPUT_REF: ${{ inputs.ref || 'dev' }}
+        run: |
+          set -euo pipefail
+
+          # Existing tags may or may not carry a "v" prefix. Keep whichever
+          # prefix the newest release tag uses so history stays consistent.
+          latest="$(git tag -l | sed -E 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)"
+          latest="${latest:-0.0.0}"
+          prefix=""
+          if git rev-parse -q --verify "refs/tags/v$latest" >/dev/null 2>&1; then
+            prefix="v"
+          fi
+
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            version="${INPUT_VERSION#v}"
+            case "$INPUT_VERSION" in v*) prefix="v" ;; esac
+          else
+            IFS=. read -r major minor patch <<< "$latest"
+            case "${INPUT_BUMP:-patch}" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+              *)
+                echo "::error::Unknown bump '${INPUT_BUMP}'."
+                exit 1
+                ;;
+            esac
+            version="$major.$minor.$patch"
+          fi
+
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+            echo "::error::'$version' is not a semantic version (expected 1.2.3 or 1.2.3-rc.1)."
+            exit 1
+          fi
+
+          tag="$prefix$version"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Tag '$tag' already exists. Bump the version or pass an explicit one."
+            exit 1
+          fi
+
+          git tag "$tag"
+          git push origin "refs/tags/$tag"
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "### Tagged \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Building release \`$version\` from \`$INPUT_REF\`." >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build release
+    needs: tag
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.tag.outputs.tag }}
