@@ -5,6 +5,8 @@ import {
   PhCheckCircle,
   PhClock,
   PhArrowCounterClockwise,
+  PhCaretDown,
+  PhCaretRight,
   PhWarningCircle,
 } from "@phosphor-icons/vue"
 import { systemApi, type SystemJob, type SystemRelease, type SystemStatus } from "@/api/system"
@@ -30,6 +32,7 @@ const auto = ref<UpdatePreferences>({
   checkIntervalMinutes: 5,
 })
 const restarting = ref(false)
+const historyOpen = ref(false)
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let pollFailures = 0
@@ -385,35 +388,46 @@ onUnmounted(() => {
         </div>
 
         <div v-if="history.length" class="update-history">
-          <p class="section-label">Version history</p>
-          <div v-for="release in history" :key="release.version" class="release-row">
-            <div class="release-main">
-              <span class="release-version">HOMST {{ release.version }}</span>
-              <UiBadge :variant="badgeVariant(release)">{{ releaseBadge(release) }}</UiBadge>
-              <span class="release-date">{{ formatDate(release.published_at) }}</span>
-            </div>
-            <div class="release-actions">
-              <UiButton
-                v-if="release.held"
-                size="sm"
-                variant="ghost"
-                :disabled="busy"
-                @click="startInstall(release.version, true)"
-              >
-                Retry
-              </UiButton>
-              <UiButton
-                v-else-if="!release.current"
-                size="sm"
-                variant="ghost"
-                :disabled="busy"
-                @click="pendingVersion = release.version"
-              >
-                {{ release.newer ? "Update" : "Roll back" }}
-              </UiButton>
-              <a v-if="release.html_url" class="release-link" :href="release.html_url" target="_blank" rel="noreferrer">
-                Notes
-              </a>
+          <button
+            class="history-toggle"
+            type="button"
+            :aria-expanded="historyOpen"
+            @click="historyOpen = !historyOpen"
+          >
+            <component :is="historyOpen ? PhCaretDown : PhCaretRight" :size="14" />
+            <span class="section-label">Version history</span>
+            <span class="history-count">{{ history.length }}</span>
+          </button>
+          <div v-if="historyOpen" class="release-list">
+            <div v-for="release in history" :key="release.version" class="release-row">
+              <div class="release-main">
+                <span class="release-version">HOMST {{ release.version }}</span>
+                <UiBadge :variant="badgeVariant(release)">{{ releaseBadge(release) }}</UiBadge>
+                <span class="release-date">{{ formatDate(release.published_at) }}</span>
+              </div>
+              <div class="release-actions">
+                <UiButton
+                  v-if="release.held"
+                  size="sm"
+                  variant="ghost"
+                  :disabled="busy"
+                  @click="startInstall(release.version, true)"
+                >
+                  Retry
+                </UiButton>
+                <UiButton
+                  v-else-if="!release.current"
+                  size="sm"
+                  variant="ghost"
+                  :disabled="busy"
+                  @click="pendingVersion = release.version"
+                >
+                  {{ release.newer ? "Update" : "Roll back" }}
+                </UiButton>
+                <a v-if="release.html_url" class="release-link" :href="release.html_url" target="_blank" rel="noreferrer">
+                  Notes
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -652,13 +666,46 @@ onUnmounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--color-textMuted);
-  margin-bottom: var(--space-2);
 }
 
 .update-history {
   border-top: 1px solid var(--color-border);
   padding-top: var(--space-3);
 }
+
+.history-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-textMuted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.history-toggle:hover .section-label,
+.history-toggle:focus-visible .section-label {
+  color: var(--color-textPrimary);
+}
+
+.history-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.history-count {
+  font-size: var(--text-micro-size);
+  color: var(--color-textMuted);
+  background: var(--color-bgSubtle);
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+}
+
+.release-list { margin-top: var(--space-2); }
 
 .release-row {
   display: flex;

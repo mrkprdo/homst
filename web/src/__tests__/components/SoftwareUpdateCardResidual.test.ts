@@ -123,6 +123,7 @@ describe("SoftwareUpdateCard residual", () => {
       latest: null,
     }))
     const wrapper = await mountCard()
+    await wrapper.find(".history-toggle").trigger("click")
     expect(wrapper.text()).toContain("HOMST 0.1.0")
     expect(wrapper.text()).toContain("Held")
   })
@@ -143,6 +144,11 @@ describe("SoftwareUpdateCard residual", () => {
       }),
     }))
     const wrapper = await mountCard()
+    expect(wrapper.find(".history-toggle").attributes("aria-expanded")).toBe("false")
+    expect(wrapper.findAll(".release-row")).toHaveLength(0)
+    await wrapper.find(".history-toggle").trigger("click")
+    expect(wrapper.find(".history-toggle").attributes("aria-expanded")).toBe("true")
+    expect(wrapper.findAll(".release-row").length).toBeGreaterThan(0)
     expect(wrapper.find(".job-percent").text()).toBe("100%")
     expect(wrapper.text()).toContain("Previous")
     expect(wrapper.text()).toContain("Older")
@@ -233,6 +239,7 @@ describe("SoftwareUpdateCard residual", () => {
       ],
     }))
     const retryWrapper = await mountCard()
+    await retryWrapper.find(".history-toggle").trigger("click")
     await retryWrapper.findAll("button").find(b => b.text() === "Retry")!.trigger("click")
     await flushPromises()
     expect(install).toHaveBeenCalledWith("0.3.0", true)
@@ -248,6 +255,7 @@ describe("SoftwareUpdateCard residual", () => {
       ],
     }))
     const wrapper = await mountCard()
+    await wrapper.find(".history-toggle").trigger("click")
     await wrapper.findAll("button").find(b => b.text() === "Roll back")!.trigger("click")
     await flushPromises()
     expect(wrapper.text()).toContain("Roll back to HOMST 0.1.0?")
