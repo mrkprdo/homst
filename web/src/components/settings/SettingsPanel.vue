@@ -12,6 +12,7 @@ import {
 } from "@/composables/useSettings"
 import { getAnimationEnabled, setAnimationEnabled } from "@/lib/motion"
 import { householdApi } from "@/api/household"
+import { DEFAULT_LAYOUT, writeCachedHomeLayout } from "@/lib/homeLayout"
 import { notificationsApi } from "@/api/notifications"
 import { isServerUnreachable } from "@/api/client"
 import { usePush } from "@/composables/usePush"
@@ -21,7 +22,7 @@ import {
   useServerReachability,
 } from "@/composables/useServerReachability"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
-import { PhSun, PhMoon, PhSunHorizon, PhDesktop, PhCheck, PhBell, PhDeviceMobile, PhDownloadSimple } from "@phosphor-icons/vue"
+import { PhSun, PhMoon, PhSunHorizon, PhDesktop, PhCheck, PhBell, PhDeviceMobile, PhDownloadSimple, PhWarningCircle } from "@phosphor-icons/vue"
 import PageHeader from "@/components/ui/PageHeader.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
 import UiToggle from "@/components/ui/UiToggle.vue"
@@ -164,6 +165,37 @@ const fontSizeOptions: { label: string; value: FontSize }[] = [
 ]
 
 const selectedColorName = computed(() => colorNames[settings.accentColor.value] ?? "Custom")
+
+// ── Home layout ──
+const confirmingLayoutReset = ref(false)
+const resettingLayout = ref(false)
+const resetLayoutMessage = ref("")
+const resetLayoutError = ref("")
+
+function askToResetLayout() {
+  resetLayoutMessage.value = ""
+  resetLayoutError.value = ""
+  confirmingLayoutReset.value = true
+}
+
+async function resetHomeLayout() {
+  resettingLayout.value = true
+  resetLayoutError.value = ""
+  resetLayoutMessage.value = ""
+  // Paint the default immediately on the next home visit, even before the
+  // server round-trip completes.
+  const layout = DEFAULT_LAYOUT.map(card => ({ ...card }))
+  writeCachedHomeLayout(layout)
+  try {
+    await householdApi.updateSettings({ widgetLayout: layout })
+    resetLayoutMessage.value = "Home layout reset to the default."
+    confirmingLayoutReset.value = false
+  } catch {
+    resetLayoutError.value = "Could not save the layout. Check the connection and try again."
+  } finally {
+    resettingLayout.value = false
+  }
+}
 
 const animationsEnabled = ref(getAnimationEnabled())
 const systemReducedMotion = typeof window !== 'undefined'
@@ -516,6 +548,38 @@ async function sendTest() {
       </p>
     </div>
 
+    <!-- ── Home screen ── -->
+    <div class="settings-card settings-card--home">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title">Home Screen</h3>
+          <p class="card-desc">Restore the default card arrangement and sizes</p>
+        </div>
+        <UiButton size="sm" variant="ghost" :disabled="resettingLayout" @click="askToResetLayout">
+          Reset layout
+        </UiButton>
+      </div>
+
+      <div v-if="confirmingLayoutReset" class="confirm-box">
+        <PhWarningCircle :size="20" class="confirm-icon" />
+        <div class="confirm-copy">
+          <p class="confirm-title">Reset the home screen layout?</p>
+          <p class="card-desc">All cards will move back to their default positions and sizes.</p>
+        </div>
+        <div class="confirm-actions">
+          <UiButton size="sm" variant="ghost" :disabled="resettingLayout" @click="confirmingLayoutReset = false">
+            Cancel
+          </UiButton>
+          <UiButton size="sm" :disabled="resettingLayout" @click="resetHomeLayout">
+            {{ resettingLayout ? "Resetting…" : "Reset" }}
+          </UiButton>
+        </div>
+      </div>
+
+      <p v-if="resetLayoutMessage" class="card-desc reset-message" role="status">{{ resetLayoutMessage }}</p>
+      <p v-if="resetLayoutError" class="card-desc reset-error" role="alert">{{ resetLayoutError }}</p>
+    </div>
+
     <!-- ── Software update ── -->
     <SoftwareUpdateCard class="settings-card--software" />
 
@@ -553,6 +617,7 @@ async function sendTest() {
   .settings-card--reminders  { grid-column: span 4; }
   .settings-card--devices    { grid-column: span 4; }
   .settings-card--motion     { grid-column: span 2; }
+  .settings-card--home       { grid-column: 1 / -1; }
   .settings-card--software   { grid-column: 1 / -1; }
 }
 
@@ -568,6 +633,7 @@ async function sendTest() {
   .settings-card--reminders  { grid-column: span 8; }
   .settings-card--devices    { grid-column: span 8; }
   .settings-card--motion     { grid-column: span 4; }
+  .settings-card--home       { grid-column: 1 / -1; }
   .settings-card--software   { grid-column: 1 / -1; }
 }
 
@@ -582,6 +648,50 @@ async function sendTest() {
 
 .settings-card--motion {
   justify-content: center;
+}
+
+/* ── Layout reset confirmation ── */
+.confirm-box {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bgSubtle);
+}
+
+.confirm-icon {
+  color: var(--color-warning);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.confirm-copy {
+  flex: 1;
+  min-width: 200px;
+}
+
+.confirm-title {
+  font-size: var(--text-body-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textPrimary);
+}
+
+.confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.reset-message {
+  color: var(--color-success);
+}
+
+.reset-error {
+  color: var(--color-danger);
 }
 
 /* ── Card ── */

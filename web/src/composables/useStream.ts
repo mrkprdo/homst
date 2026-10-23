@@ -5,6 +5,7 @@ import { useMembers } from "@/composables/useMembers"
 import { useAnnouncements } from "@/composables/useAnnouncements"
 import { useNotifications } from "@/composables/useNotifications"
 import { useSettings, applyHouseholdSettings, refreshPhotos } from "@/composables/useSettings"
+import { HOME_LAYOUT_EVENT } from "@/lib/homeLayout"
 import {
   offerUpdatePrompt,
   refreshUpdatePrompt,
@@ -133,7 +134,7 @@ function connect() {
       // fleet follows a change made on any other client.
       applyHouseholdSettings(settings)
       if (settings.widgetLayout) {
-        window.dispatchEvent(new CustomEvent("homst:widget-layout-updated", { detail: settings.widgetLayout }))
+        window.dispatchEvent(new CustomEvent(HOME_LAYOUT_EVENT, { detail: settings.widgetLayout }))
       }
       // Update-check preferences changed on another screen; refresh the card.
       if (settings.updates) notifyUpdateChanged()

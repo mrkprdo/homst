@@ -105,7 +105,18 @@ afterEach(() => {
 describe("HomeView — layout engine & edit mode", () => {
   it("wires every edit handle and applies move/resize into free cells", async () => {
     const { wrapper, ui } = await freshMount({
-      body: { houseName: "Full Home", widgetLayout: required() },
+      body: {
+        houseName: "Full Home",
+        widgetLayout: [
+          { id: "calendar", col: 0, row: 0, w: 2, h: 2 },
+          { id: "datetime", col: 2, row: 0, w: 2, h: 1 },
+          { id: "weather",  col: 4, row: 0, w: 2, h: 1 },
+          { id: "schedule", col: 2, row: 1, w: 2, h: 1 },
+          { id: "todos",    col: 0, row: 4, w: 1, h: 1 },
+          { id: "photos",   col: 4, row: 2, w: 2, h: 2 },
+          { id: "spotify",  col: 3, row: 2, w: 1, h: 1 },
+        ],
+      },
     })
     expect(wrapper.text()).toContain("Full Home")
 
@@ -125,8 +136,8 @@ describe("HomeView — layout engine & edit mode", () => {
       window.dispatchEvent(new MouseEvent("pointerup"))
     }
 
-    // Move "todos" (handle 4) three columns right into the free cell at (3, 1)
-    expect(wrapper.findAll(".widget")[4].attributes("style")).toContain("grid-row: 2 / span 1")
+    // Move "todos" (handle 4) three columns right into a free row-5 cell
+    expect(wrapper.findAll(".widget")[4].attributes("style")).toContain("grid-row: 5 / span 1")
     dragHandles[4].element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: 610, clientY: 10 }))
     window.dispatchEvent(new MouseEvent("pointerup"))
@@ -134,12 +145,12 @@ describe("HomeView — layout engine & edit mode", () => {
     expect(wrapper.findAll(".widget")[4].attributes("style")).toContain("grid-column: 4 / span 1")
 
     // Resize "spotify" (handle 6) one row taller into the free row below
-    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-row: 1 / span 2")
+    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-row: 3 / span 1")
     resizeHandles[6].element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: 10, clientY: 210 }))
     window.dispatchEvent(new MouseEvent("pointerup"))
     await nextTick()
-    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-row: 1 / span 3")
+    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-row: 3 / span 2")
 
     // Header shortcut links
     await wrapper.findAll(".widget")[1].find("button").trigger("click")
@@ -154,19 +165,20 @@ describe("HomeView — layout engine & edit mode", () => {
     wrapper.unmount()
   })
 
-  it("stops a widget at its minimum footprint when resized smaller", async () => {
+  it("lets any widget shrink to a single grid cell", async () => {
     const { wrapper } = await freshMount({ body: { houseName: "Minimums" } })
     await wrapper.find(".lock-toggle").trigger("click")
 
-    // Date & Time ships 3 columns wide; dragging left stops at the 2-column minimum.
-    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 1 / span 3")
+    // Date & Time ships 1×2; drag both axes in until the card is 1×1.
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 4 / span 1")
     const handle = wrapper.findAll(".resize-handle")[0]
     handle.element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
-    window.dispatchEvent(new MouseEvent("pointermove", { clientX: -390, clientY: 10 }))
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: -390, clientY: -210 }))
     window.dispatchEvent(new MouseEvent("pointerup"))
     await nextTick()
 
-    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 1 / span 2")
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 4 / span 1")
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-row: 1 / span 1")
     wrapper.unmount()
   })
 
@@ -179,9 +191,9 @@ describe("HomeView — layout engine & edit mode", () => {
         ],
       },
     })
-    // Rejected → the default layout survives (datetime spans three columns)
+    // Rejected → the default layout survives (Date & Time is one column wide)
     expect(wrapper.findAll(".widget").length).toBe(7)
-    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 1 / span 3")
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 4 / span 1")
     wrapper.unmount()
   })
 
@@ -199,8 +211,8 @@ describe("HomeView — layout engine & edit mode", () => {
     })
     // spotify & photos were appended with their *default* coords (no slot found)
     expect(wrapper.findAll(".widget").length).toBe(7)
-    expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-column: 5 / span 2")
-    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-column: 5 / span 2")
+    expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-column: 3 / span 4")
+    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-column: 5 / span 1")
     wrapper.unmount()
   })
 
@@ -332,7 +344,7 @@ describe("HomeView — cached layout (import time)", () => {
       { id: "photos", col: 0, row: 4, w: 4, h: 1 },
     ]))
     const { wrapper } = await freshMount({ body: {} })
-    expect(wrapper.findAll(".widget")[0]!.attributes("style")).toContain("grid-column: 1 / span 3")
+    expect(wrapper.findAll(".widget")[0]!.attributes("style")).toContain("grid-column: 4 / span 1")
     wrapper.unmount()
   })
 })

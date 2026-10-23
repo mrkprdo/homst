@@ -5,6 +5,12 @@ import SettingsPanel from "@/components/settings/SettingsPanel.vue"
 import { useSettings } from "@/composables/useSettings"
 import { COLORS, THEMES } from "@/__tests__/constants"
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  })
+
 describe("SettingsPanel", () => {
   it("renders settings title", () => {
     const wrapper = mount(SettingsPanel)
@@ -227,5 +233,91 @@ describe("SettingsPanel", () => {
     const body = JSON.parse((patchCall![1] as RequestInit).body as string)
     expect(body.settings.notifications.defaultReminderMinutes).toBe(30)
     expect(useSettings().defaultReminderMinutes.value).toBe(30)
+  })
+
+  it("keeps auto selected when the server cannot resolve the sun", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockImplementation(async (_url, init) => {
+      if ((init as RequestInit)?.method === "PATCH") throw new TypeError("Failed to fetch")
+      return json({})
+    })
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+    await wrapper.findAll(".theme-card")[2]!.trigger("click")
+    await flushPromises()
+    expect(useSettings().theme.value).toBe("auto")
+  })
+
+  it("toggles phone push and reports a generic test failure", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail: "nope" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    }))
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+
+    const pushToggle = wrapper.findAllComponents({ name: "UiToggle" })
+      .find((toggle) => toggle.element.closest(".settings-row")?.textContent?.includes("Phone & browser"))
+      ?? wrapper.findAllComponents({ name: "UiToggle" })[2]!
+    pushToggle.vm.$emit("update:modelValue", true)
+    await flushPromises()
+    pushToggle.vm.$emit("update:modelValue", false)
+    await flushPromises()
+
+    await wrapper.findAll("button").find(b => b.text().includes("Send test to all clients"))!.trigger("click")
+    await flushPromises()
+    expect(wrapper.find(".reminder-result").text()).toContain("could not send the test")
+  })
+
+  it("confirms before resetting the home layout and restores the default", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockImplementation(async (_url, init) => {
+      if ((init as RequestInit)?.method === "PATCH") return json({ message: "ok" })
+      return json({})
+    })
+    localStorage.removeItem("homst-widget-layout")
+
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+
+    await wrapper.findAll("button").find(b => b.text() === "Reset layout")!.trigger("click")
+    expect(wrapper.text()).toContain("Reset the home screen layout?")
+
+    // Cancel closes the prompt without touching the stored layout.
+    await wrapper.findAll("button").find(b => b.text() === "Cancel")!.trigger("click")
+    expect(wrapper.text()).not.toContain("Reset the home screen layout?")
+    expect(localStorage.getItem("homst-widget-layout")).toBeNull()
+
+    await wrapper.findAll("button").find(b => b.text() === "Reset layout")!.trigger("click")
+    await wrapper.findAll("button").find(b => b.text() === "Reset")!.trigger("click")
+    await flushPromises()
+
+    const stored = JSON.parse(localStorage.getItem("homst-widget-layout")!)
+    expect(stored).toHaveLength(7)
+    expect(stored.find((card: any) => card.id === "photos")).toMatchObject({ col: 2, row: 2, w: 4, h: 4 })
+    expect(stored.find((card: any) => card.id === "datetime")).toMatchObject({ col: 3, row: 0, w: 1, h: 2 })
+
+    const patch = fetchMock.mock.calls.find(c => (c[1] as RequestInit)?.method === "PATCH")!
+    const body = JSON.parse((patch[1] as RequestInit).body as string)
+    expect(body.settings.widgetLayout).toHaveLength(7)
+    expect(wrapper.text()).toContain("Home layout reset to the default.")
+  })
+
+  it("reports when the home layout reset cannot be saved", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockImplementation(async (_url, init) => {
+      if ((init as RequestInit)?.method === "PATCH") throw new TypeError("Failed to fetch")
+      return json({})
+    })
+
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+
+    await wrapper.findAll("button").find(b => b.text() === "Reset layout")!.trigger("click")
+    await wrapper.findAll("button").find(b => b.text() === "Reset")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Could not save the layout")
   })
 })

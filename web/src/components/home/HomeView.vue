@@ -15,6 +15,13 @@ import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
 import { animate, stagger, springs, ease } from "@/lib/motion"
+import {
+  DEFAULT_LAYOUT,
+  HOME_LAYOUT_EVENT,
+  HOME_LAYOUT_STORAGE_KEY,
+  writeCachedHomeLayout,
+  type WidgetDef,
+} from "@/lib/homeLayout"
 
 const { events, prefetchAround } = useEvents()
 const { todos, doing, ensureLoaded } = useTasks()
@@ -51,34 +58,11 @@ const GRID_COLS = 6
 const GRID_ROWS = 6
 const GAP = 12
 
-interface WidgetDef {
-  id: string
-  col: number
-  row: number
-  w: number
-  h: number
-}
+// Grid cells are the floor: every card can be arranged down to 1×1.
+const MIN_SPAN = 1
 
-/**
- * Every content widget has a minimum footprint it can render cleanly at. The
- * resize handle stops here, so a card can never be shrunk into clipping its
- * header or its first row of content.
- */
-const WIDGET_LIMITS: Record<string, { minW: number; minH: number }> = {
-  datetime: { minW: 2, minH: 2 },
-  weather:  { minW: 2, minH: 2 },
-  schedule: { minW: 2, minH: 2 },
-  todos:    { minW: 2, minH: 2 },
-  spotify:  { minW: 2, minH: 1 },
-  calendar: { minW: 2, minH: 2 },
-  photos:   { minW: 2, minH: 1 },
-}
-
-function limitsFor(id: string) {
-  return WIDGET_LIMITS[id] ?? { minW: 1, minH: 1 }
-}
-
-const DEFAULT_LAYOUT: WidgetDef[] = [
+/** The 6×6 layout we shipped before adopting the live dashboard arrangement. */
+const BALANCED_SIX_COLUMN_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 0, row: 0, w: 3, h: 2 },
   { id: "weather",  col: 3, row: 0, w: 3, h: 2 },
   { id: "schedule", col: 0, row: 2, w: 2, h: 2 },
@@ -127,6 +111,7 @@ const LEGACY_OVERLAPPING_LAYOUT: WidgetDef[] = [
 ]
 
 const OUTDATED_DEFAULT_LAYOUTS = [
+  BALANCED_SIX_COLUMN_LAYOUT,
   FOUR_COLUMN_DEFAULT_LAYOUT,
   ORIGINAL_DEFAULT_LAYOUT,
   LEGACY_OVERLAPPING_LAYOUT,
@@ -148,11 +133,9 @@ function isOutdatedDefaultLayout(layout: WidgetDef[]): boolean {
 // Layout cache — read synchronously so refresh doesn't flash default positions
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const LAYOUT_STORAGE_KEY = 'homst-widget-layout'
-
 function readCachedLayout(): WidgetDef[] | null {
   try {
-    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY)
+    const raw = localStorage.getItem(HOME_LAYOUT_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return null
@@ -167,12 +150,6 @@ function readCachedLayout(): WidgetDef[] | null {
   } catch {
     return null
   }
-}
-
-function writeCachedLayout(layout: WidgetDef[]) {
-  try {
-    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout))
-  } catch {}
 }
 
 const cachedLayout = readCachedLayout()
@@ -214,13 +191,13 @@ function applyLayout(layout: WidgetDef[]) {
     }
   }
   widgets.splice(0, widgets.length, ...merged)
-  writeCachedLayout(widgets.map(({ id, col, row, w, h }) => ({ id, col, row, w, h })))
+  writeCachedHomeLayout(widgets.map(({ id, col, row, w, h }) => ({ id, col, row, w, h })))
   if (changed) saveLayout()
 }
 
 function saveLayout() {
   const layout = widgets.map(({ id, col, row, w, h }) => ({ id, col, row, w, h }))
-  writeCachedLayout(layout)
+  writeCachedHomeLayout(layout)
   householdApi.updateSettings({ widgetLayout: layout }).catch(() => { })
 }
 
@@ -468,13 +445,10 @@ function onWindowPointerMove(e: PointerEvent) {
   } else if (dragType === "resize") {
     const colDelta = Math.round(dx / colUnit.value)
     const rowDelta = Math.round(dy / rowUnit.value)
-    const limits = limitsFor(w.id)
     const maxW = GRID_COLS - w.col
     const maxH = GRID_ROWS - w.row
-    const minW = Math.min(limits.minW, maxW)
-    const minH = Math.min(limits.minH, maxH)
-    const newW = Math.min(maxW, Math.max(minW, dragStartW + colDelta))
-    const newH = Math.min(maxH, Math.max(minH, dragStartH + rowDelta))
+    const newW = Math.min(maxW, Math.max(MIN_SPAN, dragStartW + colDelta))
+    const newH = Math.min(maxH, Math.max(MIN_SPAN, dragStartH + rowDelta))
 
     if ((newW !== dragLastW || newH !== dragLastH) && !checkCollision(w, w.col, w.row, newW, newH)) {
       w.w = newW
@@ -585,7 +559,7 @@ onMounted(async () => {
   }
   layoutReady.value = true
 
-  window.addEventListener("homst:widget-layout-updated", onLayoutUpdated)
+  window.addEventListener(HOME_LAYOUT_EVENT, onLayoutUpdated)
 
   const weatherOpts = {
     address: stored?.address,
@@ -631,7 +605,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener("homst:widget-layout-updated", onLayoutUpdated)
+  window.removeEventListener(HOME_LAYOUT_EVENT, onLayoutUpdated)
   clearInterval(photoTimer)
   clearInterval(clockTimer)
   ro?.disconnect()
@@ -669,7 +643,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
       <div :ref="(el) => registerWidgetEl('datetime', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'datetime' }"
         :style="{ ...widgetStyle(getWidget('datetime')!), '--wobble-delay': '0ms' }">
-        <UiCard class="home-block" :padding="false">
+        <UiCard class="home-block datetime-card" :padding="false">
           <div class="block-header">
             <span class="block-title">
               <PhClock :size="18" /><span class="block-title-text">Date &amp; Time</span>
@@ -727,7 +701,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
       <div :ref="(el) => registerWidgetEl('weather', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'weather' }"
         :style="{ ...widgetStyle(getWidget('weather')!), '--wobble-delay': '120ms' }">
-        <UiCard class="home-block" :padding="false">
+        <UiCard class="home-block weather-card" :padding="false">
           <div class="block-header">
             <span class="block-title"><PhSun :size="18" /><span class="block-title-text">Weather</span></span>
             <span v-if="weather" class="weather-location-header">{{ weather.location }}</span>
@@ -850,7 +824,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
       <div :ref="(el) => registerWidgetEl('photos', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'photos' }"
         :style="{ ...widgetStyle(getWidget('photos')!), '--wobble-delay': '160ms' }">
-        <UiCard class="home-block" :padding="false">
+        <UiCard class="home-block photos-card" :padding="false">
           <div class="block-header">
             <span class="block-title"><PhImage :size="18" /><span class="block-title-text">Photos</span></span>
           </div>
@@ -1335,7 +1309,26 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
+/* Single-cell tiles: reclaim header padding for the title. */
+@container w (max-width: 9em) {
+  .block-header {
+    padding-inline: var(--space-2);
+  }
+}
+
+/* Tiny tiles: drop the chrome so the content keeps the whole cell. */
+@container w (max-height: 6em) {
+
+  .datetime-card .block-header,
+  .weather-card .block-header,
+  .spotify-card .block-header,
+  .photos-card .block-header {
+    display: none;
+  }
+}
+
 /* ── Date & Time ─────────────────────────────────────────────────────────────── */
+/* One type size for the whole tile: emphasis comes from weight and colour. */
 .datetime-display {
   flex: 1;
   min-height: 0;
@@ -1344,41 +1337,109 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: clamp(0px, 1cqh, var(--space-2));
-  padding: 0 var(--space-3) clamp(2px, 1.5cqh, var(--space-3));
+  gap: clamp(0px, 1.2cqh, var(--space-2));
+  padding: 0 clamp(6px, 2cqw, var(--space-4)) clamp(2px, 1.5cqh, var(--space-3));
   overflow: hidden;
+  font-size: clamp(var(--text-body-size), 11cqh, calc(var(--text-body-size) * 2.4));
 }
 
 .datetime-house,
 .datetime-date,
 .datetime-time {
   max-width: 100%;
+  min-width: 0;
+  font-size: inherit;
+  line-height: 1.05;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .datetime-house {
-  font-size: clamp(12px, 3.6cqh, 28px);
-  line-height: 1.15;
   font-weight: var(--font-weight-large);
   color: var(--color-primary);
 }
 
 .datetime-date {
-  font-size: clamp(11px, 5.2cqh, 26px);
-  line-height: 1.2;
-  font-weight: var(--font-weight-thin);
-  color: var(--color-textMuted);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-textSecondary);
 }
 
 .datetime-time {
-  font-size: clamp(24px, 20cqh, 104px);
-  font-weight: var(--font-weight-thin);
+  font-weight: var(--font-weight-large);
   color: var(--color-textPrimary);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  line-height: 0.95;
+}
+
+/* Very narrow tiles: cap the shared size by width so the clock never ellipsizes. */
+@container w (max-width: 12em) {
+  .datetime-display {
+    font-size: min(var(--text-body-size), 11cqw);
+  }
+}
+
+@container w (max-width: 9em) {
+  .datetime-display {
+    font-size: min(var(--text-body-size), 9.5cqw);
+  }
+}
+
+/* Wide, short tiles: one line — house · date · time. */
+@container w (min-width: 26em) and (max-height: 9em) {
+  .datetime-display {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: center;
+    gap: clamp(6px, 2cqw, var(--space-6));
+    font-size: clamp(var(--text-body-size), 9cqh, calc(var(--text-body-size) * 1.9));
+  }
+
+  .datetime-house,
+  .datetime-date,
+  .datetime-time {
+    flex: 0 1 auto;
+  }
+
+  .datetime-date::before,
+  .datetime-time::before {
+    content: "·";
+    margin-right: clamp(6px, 2cqw, var(--space-6));
+    color: var(--color-textMuted);
+    font-weight: var(--font-weight-regular);
+  }
+}
+
+/* Roomy tiles: house/date on the left, time as the hero on the right. */
+@container w (min-width: 26em) and (min-height: 9em) {
+  .datetime-display {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "house time"
+      "date time";
+    align-items: center;
+    align-content: center;
+    justify-items: start;
+    text-align: left;
+    column-gap: clamp(12px, 3cqw, var(--space-8));
+    row-gap: clamp(2px, 1.5cqh, var(--space-2));
+    font-size: clamp(var(--text-body-size), 9cqh, calc(var(--text-body-size) * 2.6));
+  }
+
+  .datetime-house {
+    grid-area: house;
+  }
+
+  .datetime-date {
+    grid-area: date;
+  }
+
+  .datetime-time {
+    grid-area: time;
+    justify-self: end;
+    text-align: right;
+  }
 }
 
 /* ── Weather ──────────────────────────────────────────────────────────────────── */
@@ -1587,6 +1648,28 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
   .weather-temp {
     font-size: clamp(22px, 12cqh, 34px);
+  }
+}
+
+/* Single-cell tiles: icon + temperature + high/low is all that fits. */
+@container w (max-width: 12em) and (max-height: 10em) {
+  .weather-secondary {
+    display: none;
+  }
+}
+
+@container w (max-width: 12em) {
+  .weather-secondary {
+    flex-wrap: wrap;
+  }
+
+  .weather-coords {
+    display: none;
+  }
+
+  .weather-label,
+  .weather-feels {
+    min-width: 0;
   }
 }
 
@@ -2408,6 +2491,24 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 @container w (max-height: 4.5em) {
   .spotify-body--playing .spotify-artist,
   .spotify-body--playing .spotify-progress {
+    display: none;
+  }
+}
+
+/* Single-column tiles: stack the setup form so the button stays reachable. */
+@container w (max-width: 12em) {
+  .spotify-setup-input-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .spotify-setup-input,
+  .spotify-connect-btn {
+    width: 100%;
+    padding: 4px var(--space-2);
+  }
+
+  .spotify-error {
     display: none;
   }
 }

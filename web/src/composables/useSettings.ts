@@ -2,6 +2,7 @@ import { nextTick, ref } from "vue"
 import { householdApi } from "@/api/household"
 import type { HouseholdSettings } from "@/api/household"
 import { photosApi } from "@/api/photos"
+import { HOME_LAYOUT_EVENT } from "@/lib/homeLayout"
 
 export type Theme = "light" | "dark" | "system" | "auto"
 export type ThemePreset = "default" | "futur"
@@ -246,7 +247,7 @@ export async function refreshFromServer() {
   const s = await householdApi.getSettings()
   applyHouseholdSettings(s)
   if (s.widgetLayout) {
-    window.dispatchEvent(new CustomEvent("homst:widget-layout-updated", { detail: s.widgetLayout }))
+    window.dispatchEvent(new CustomEvent(HOME_LAYOUT_EVENT, { detail: s.widgetLayout }))
   }
   await refreshPhotos()
 }
