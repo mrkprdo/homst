@@ -150,7 +150,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   background: var(--color-bgSurface);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   overflow: hidden;
   opacity: 0;
 }

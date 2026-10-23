@@ -229,7 +229,8 @@
 .futur .settings-card,
 .futur .font-preview,
 .futur .announcement-compose,
-.futur .announcement-live--pane {
+.futur .announcement-live--pane,
+.futur .tasks-column {
   background: var(--color-bgSurface) !important;
   border: 2px solid var(--color-ink) !important;
   border-radius: var(--radius-md) !important;

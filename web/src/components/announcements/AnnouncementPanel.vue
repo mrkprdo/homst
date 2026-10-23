@@ -2,10 +2,13 @@
 import { PhMegaphone } from "@phosphor-icons/vue"
 import AnnouncementComposer from "@/components/shared/AnnouncementComposer.vue"
 import AnnouncementLiveList from "@/components/shared/AnnouncementLiveList.vue"
+import PageHeader from "@/components/ui/PageHeader.vue"
 </script>
 
 <template>
   <div class="announcement-console">
+    <PageHeader title="Announcements" />
+
     <section class="announcement-compose" aria-labelledby="announcement-compose-title">
       <header class="announcement-compose__head">
         <div>
@@ -87,7 +90,13 @@ import AnnouncementLiveList from "@/components/shared/AnnouncementLiveList.vue"
     height: 100%;
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     align-items: stretch;
+  }
+
+  /* The page title spans both panes, like the other screens. */
+  .announcement-console > .page-header {
+    grid-column: 1 / -1;
   }
 
   .announcement-compose {

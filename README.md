@@ -29,6 +29,14 @@ HOMST is a self-hosted dashboard for shared households. You can install it on a 
   <img width="300" alt="Mobile agenda view" src="docs/screenshots/mobile-agenda.png" />
 </p>
 
+### Reminder
+
+![Reminder heads-up display](docs/screenshots/desktop-reminder.png)
+
+### Announcement
+
+![Announcement toast](docs/screenshots/desktop-announcement.png)
+
 ## Install
 
 HOMST is one container image and a PostgreSQL sidecar. The image contains nginx, the single-page application, the API (application programming interface), the worker, and Redis. The first start configures the system. You do not need a configuration file.

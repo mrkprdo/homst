@@ -119,14 +119,14 @@ function timeLabel(a: Announcement): string {
 
 .announcement-stack {
   position: fixed;
-  top: var(--space-8);
+  top: 50%;
   left: 50%;
   z-index: 350;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   width: min(680px, calc(100vw - 2 * var(--space-4)));
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
@@ -300,7 +300,6 @@ function timeLabel(a: Announcement): string {
 
 @media (max-width: 700px) {
   .announcement-stack {
-    top: calc(env(safe-area-inset-top, 0px) + 84px);
     width: calc(100vw - 2 * var(--space-3));
   }
 
