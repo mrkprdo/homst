@@ -1,12 +1,12 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.events.publisher import publish_event
-from app.models.all import Announcement, Event, Household, Member, Task
+from app.models.all import Announcement, Calendar, Event, Household, Member, Task
 from app.schemas.all import MemberCreate, MemberResponse, MemberUpdate
 
 router = APIRouter()
@@ -93,16 +93,25 @@ async def delete_member(member_id: UUID, db: AsyncSession = Depends(get_db)):
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Member not found")
     member_id_str = str(member_id)
+    # Null every reference before deleting. PostgreSQL enforces these foreign
+    # keys, so a member cannot be removed while any row still points at them.
     await db.execute(
-        Task.__table__.update().where(Task.assignee_id == member_id_str).values(assignee_id=None)
+        update(Calendar).where(Calendar.created_by == member_id_str).values(created_by=None)
     )
     await db.execute(
-        Event.__table__.update().where(Event.assignee_id == member_id_str).values(assignee_id=None)
+        update(Event).where(Event.assignee_id == member_id_str).values(assignee_id=None)
     )
     await db.execute(
-        Announcement.__table__.update()
-        .where(Announcement.created_by == member_id_str)
-        .values(created_by=None)
+        update(Event).where(Event.created_by == member_id_str).values(created_by=None)
+    )
+    await db.execute(
+        update(Task).where(Task.assignee_id == member_id_str).values(assignee_id=None)
+    )
+    await db.execute(
+        update(Task).where(Task.created_by == member_id_str).values(created_by=None)
+    )
+    await db.execute(
+        update(Announcement).where(Announcement.created_by == member_id_str).values(created_by=None)
     )
     await db.execute(delete(Member).where(Member.id == member_id_str))
     await db.commit()

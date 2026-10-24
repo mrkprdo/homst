@@ -93,7 +93,11 @@ class Event(Base):
         nullable=False, default="internal",
     )
     external_uid = Column(Text, nullable=True)
-    assignee_id = Column(Uuid(as_uuid=False), ForeignKey("members.id"), nullable=True)
+    # Migration 0002 and the startup shim create this column as VARCHAR(36),
+    # not UUID. Keep the model in step with the schema: comparing a UUID bind
+    # parameter against a varchar column fails on PostgreSQL (member deletion
+    # nulls this column first), while strings compare cleanly everywhere.
+    assignee_id = Column(String(36), nullable=True)
     created_by = Column(Uuid(as_uuid=False), ForeignKey("members.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

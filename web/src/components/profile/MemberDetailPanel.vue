@@ -299,8 +299,9 @@ function addMember() {
 
 function removeMember(id: string) {
   if (localMembers.value.length <= 1) return
-  // If member came from API (real UUID format), track for backend delete
-  if (!id.startsWith("m-") && !id.startsWith("t-") && !id.startsWith("ev-")) {
+  // Only members that already exist on the server need a DELETE. Compare
+  // against the loaded snapshot rather than guessing from the id's shape.
+  if (originalMembers.value.some((m) => m.id === id)) {
     removedMemberIds.value.push(id)
   }
   localMembers.value = localMembers.value.filter((m) => m.id !== id)
@@ -405,6 +406,22 @@ async function saveAll(): Promise<boolean> {
   commitDrafts()
   fieldError.value = ""
   try {
+    // Remove deleted members from backend first. Fail fast: reporting "saved"
+    // while a DELETE failed is how members reappeared after reopening.
+    const failedDeletes: string[] = []
+    for (const id of removedMemberIds.value) {
+      try {
+        await usersApi.removeMember(id)
+      } catch {
+        failedDeletes.push(id)
+      }
+    }
+    if (failedDeletes.length) {
+      removedMemberIds.value = failedDeletes
+      fieldError.value = "Couldn't remove that member. Check the connection and try again."
+      return false
+    }
+
     // Persist house name if changed
     if (houseName.value !== originalHouseName.value) {
       await householdApi.updateSettings({ houseName: houseName.value })
@@ -429,11 +446,6 @@ async function saveAll(): Promise<boolean> {
         lat: weatherLat.value ?? undefined,
         lon: weatherLon.value ?? undefined,
       })
-    }
-
-    // Remove deleted members from backend
-    for (const id of removedMemberIds.value) {
-      await usersApi.removeMember(id).catch(() => {})
     }
 
     // Sync current members: create new, update existing

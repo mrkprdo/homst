@@ -181,7 +181,7 @@ export async function setupApiMocks(page: Page) {
       await route.fulfill(json([...mockMembers]))
     } else if (method === "POST") {
       const body = JSON.parse(route.request().postData() || "{}")
-      const newMember = { id: "m-" + Date.now(), household_id: "hh-mock", name: body.name, avatar_url: null, role: body.role || "member", joined_at: new Date().toISOString() }
+      const newMember = { id: "m-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), household_id: "hh-mock", name: body.name, avatar_url: null, role: body.role || "member", joined_at: new Date().toISOString() }
       mockMembers.push(newMember as any)
       await route.fulfill(json(newMember))
     } else if (method === "PATCH" && memberId) {

@@ -201,6 +201,33 @@ test.describe("Profile & Events", () => {
     await expect(page.locator(".md-member-row")).toHaveCount(4)
   })
 
+  test("Save Changes button deletes a member for good", async ({ page }) => {
+    await page.locator(".nav-item--profile").click()
+    await page.waitForTimeout(500)
+    await expect(page.locator(".md-member-row")).toHaveCount(3)
+
+    // Remove the middle member (Bob) and save.
+    await page.locator(".md-member-row").nth(1).locator(".member-remove").click()
+    await expect(page.locator(".md-member-row")).toHaveCount(2)
+    await page.locator(".md-save-btn").click()
+    await page.locator(".md-confirm-panel").getByRole("button", { name: "Save" }).click()
+    await page.waitForTimeout(500)
+    await expect(page.locator(".md-confirm")).toContainText("Changes saved")
+    await page.locator(".close-btn").click()
+    await page.waitForTimeout(400)
+
+    // Reopening the drawer refetches; the deleted member must stay gone.
+    await page.reload()
+    await page.waitForTimeout(500)
+    await page.locator(".nav-item--profile").click()
+    await page.waitForTimeout(500)
+    await expect(page.locator(".md-member-row")).toHaveCount(2)
+    const names = await page.locator(".md-member-row input").evaluateAll(
+      (els) => els.map((el) => (el as HTMLInputElement).value),
+    )
+    expect(names).toEqual(["Alice", "Carol"])
+  })
+
   test("Save Changes commits an inline draft", async ({ page }) => {
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)

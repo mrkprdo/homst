@@ -1,5 +1,8 @@
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import String, select, update
+
+from app.models.all import Calendar, Event, Task
 
 
 # ── Health ──────────────────────────────────────────────────────────────────
@@ -479,6 +482,58 @@ async def test_delete_member_nullifies_assignee_id(client):
 
     r = await client.get("/api/v1/events")
     assert all(e["assignee_id"] is None for e in r.json())
+
+
+def test_event_assignee_column_matches_the_deployed_schema():
+    """``events.assignee_id`` is VARCHAR(36), not UUID.
+
+    Migration 0002 and the startup shim create the column as VARCHAR(36). A
+    UUID bind parameter against it crashes PostgreSQL with
+    ``character varying = uuid`` — exactly what broke member deletion. Pin the
+    model to the deployed type so this cannot regress silently.
+    """
+    column = Event.__table__.c.assignee_id
+    assert isinstance(column.type, String)
+    assert column.type.length == 36
+
+
+@pytest.mark.asyncio
+async def test_delete_member_clears_every_creator_reference(client, db_session):
+    """Rows authored by the member must survive with a null creator."""
+    member = (await client.post("/api/v1/household/members", json={"name": "Author"})).json()
+    member_id = member["id"]
+
+    cal_id = await _make_calendar(client)
+    list_id = await _make_list(client)
+    event = (await client.post("/api/v1/events", json={
+        "calendar_id": cal_id, "title": "Authored event",
+        "start_at": "2026-05-03T10:00:00Z",
+    })).json()
+    task = (await client.post("/api/v1/tasks", json={
+        "list_id": list_id, "title": "Authored task",
+    })).json()
+
+    await db_session.execute(
+        update(Calendar).where(Calendar.id == cal_id).values(created_by=member_id)
+    )
+    await db_session.execute(
+        update(Event).where(Event.id == event["id"]).values(created_by=member_id)
+    )
+    await db_session.execute(
+        update(Task).where(Task.id == task["id"]).values(created_by=member_id)
+    )
+    await db_session.commit()
+
+    r = await client.delete(f"/api/v1/household/members/{member_id}")
+    assert r.status_code == 200
+
+    db_session.expire_all()
+    for model, row_id in ((Calendar, cal_id), (Event, event["id"]), (Task, task["id"])):
+        row = (await db_session.execute(
+            select(model).where(model.id == row_id)
+        )).scalar_one_or_none()
+        assert row is not None, f"{model.__name__} disappeared with its author"
+        assert row.created_by is None
 
 
 @pytest.mark.asyncio
