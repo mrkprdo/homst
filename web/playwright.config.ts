@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test"
 
+// Point the same suite at a built image with E2E_BASE_URL, e.g.
+//   E2E_BASE_URL=https://localhost:18443 bun run e2e
+// When set, Playwright skips the Vite dev server and ignores the local CA.
+const baseURL = process.env.E2E_BASE_URL || "http://localhost:5173"
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -10,7 +15,11 @@ export default defineConfig({
   timeout: 60000,
 
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL,
+    // The suite mocks the API with page.route; a live service worker would
+    // bypass those routes, so keep it out of UI tests.
+    serviceWorkers: "block",
+    ignoreHTTPSErrors: Boolean(process.env.E2E_BASE_URL),
     trace: "on-first-retry",
   },
 
@@ -21,10 +30,12 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: "bun run dev",
-    url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: "bun run dev",
+        url: "http://localhost:5173",
+        reuseExistingServer: !process.env.CI,
+        timeout: 120000,
+      },
 })

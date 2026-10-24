@@ -14,6 +14,7 @@ test("a notification tap is readable while the server is unreachable", async ({ 
 
   // Establish the origin, then seed the offline copy.
   await page.goto("/")
+  const homeUrl = new URL("/", page.url()).href
   await page.evaluate(async () => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("homst-push", 1)
@@ -47,7 +48,7 @@ test("a notification tap is readable while the server is unreachable", async ({ 
   await expect(sheet).toBeVisible()
   await expect(sheet.locator(".offline-push__title")).toHaveText("Announcement from Mark")
   await expect(sheet.locator(".offline-push__body")).toContainText("Dinner is ready")
-  await expect(page).toHaveURL("http://localhost:5173/")
+  await expect(page).toHaveURL(homeUrl)
 
   // Closing the sheet leaves a banner that can reopen the stored copy.
   await page.locator(".offline-push__done").click()
