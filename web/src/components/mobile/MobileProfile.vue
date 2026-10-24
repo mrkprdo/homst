@@ -5,7 +5,6 @@ import { usePush } from "@/composables/usePush"
 import { notificationsApi } from "@/api/notifications"
 import { isServerUnreachable } from "@/api/client"
 import {
-  SERVER_UNREACHABLE_DETAIL,
   SERVER_UNREACHABLE_TITLE,
   useServerReachability,
 } from "@/composables/useServerReachability"
@@ -155,7 +154,6 @@ function formatDate(iso: string) {
           </div>
           <p v-if="testUnreachable || !serverReachable" class="mp-notice" role="status">
             <strong>{{ SERVER_UNREACHABLE_TITLE }}.</strong>
-            {{ SERVER_UNREACHABLE_DETAIL }}
           </p>
         </div>
 

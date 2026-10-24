@@ -1,7 +1,7 @@
 import {
   markServerReachable,
   markServerUnreachable,
-  SERVER_UNREACHABLE_DETAIL,
+  SERVER_UNREACHABLE_TITLE,
 } from "@/composables/useServerReachability"
 
 const BASE_URL = "/api/v1"
@@ -9,7 +9,7 @@ const BASE_URL = "/api/v1"
 /** The browser could not open a connection to the HOMST server at all. */
 export class ServerUnreachableError extends Error {
   constructor() {
-    super(SERVER_UNREACHABLE_DETAIL)
+    super(SERVER_UNREACHABLE_TITLE)
     this.name = "ServerUnreachableError"
   }
 }

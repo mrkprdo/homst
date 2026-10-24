@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, reactive, watch, onMounted, onUnmounted } from "vue"
+import { ref, computed, reactive, watch, nextTick, onMounted, onUnmounted, type ComponentPublicInstance } from "vue"
 import { useEvents } from "@/composables/useEvents"
 import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
@@ -15,6 +15,7 @@ import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
 import { animate, stagger, springs, ease } from "@/lib/motion"
+import { syncVinyl } from "@/lib/vinyl"
 import {
   DEFAULT_LAYOUT,
   HOME_LAYOUT_EVENT,
@@ -33,6 +34,22 @@ const { weather, loading: weatherLoading, error: weatherError, refresh: refreshW
 const { currentTrack, connected: spotifyConnected, error: spotifyError, needsConfig: spotifyNeedsConfig, setClientId, connect: connectSpotify, init: initSpotify, disconnect: disconnectSpotify, formatTime } = useSpotify()
 const setupClientId = ref("")
 const setupError = ref("")
+const vinylDiscEl = ref<HTMLElement | null>(null)
+
+// Keep the card's record on the same phase as the full-app backdrop.
+watch(
+  () => [currentTrack.value?.id, currentTrack.value?.isPlaying],
+  () => nextTick(() => syncVinyl(vinylDiscEl.value)),
+)
+
+/**
+ * Ref callback, not onMounted: the disc appears after the layout has loaded
+ * (and after a track arrives), long after the view itself mounted.
+ */
+function bindVinylDisc(el: Element | ComponentPublicInstance | null) {
+  vinylDiscEl.value = (el as HTMLElement | null) ?? null
+  syncVinyl(el as Element | null)
+}
 const spotifyRedirectUri = (() => {
   const { protocol, hostname, port } = window.location
   if (protocol === "http:" && !port) return `${protocol}//${hostname}:80`
@@ -908,7 +925,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
           <!-- Now playing -->
           <div v-else class="spotify-body spotify-body--playing">
             <div class="spotify-vinyl" :class="{ 'spotify-vinyl--paused': !currentTrack.isPlaying }">
-              <div class="spotify-disc">
+              <div :ref="bindVinylDisc" class="spotify-disc">
                 <div class="spotify-label-wrap">
                   <img :src="currentTrack.albumArt" class="spotify-label-art" />
                 </div>
@@ -2051,7 +2068,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: spin 20s linear infinite;
+  animation: spin var(--vinyl-spin-duration, 20s) linear infinite;
   animation-play-state: paused;
   position: relative;
 }

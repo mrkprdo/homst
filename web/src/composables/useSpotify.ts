@@ -226,21 +226,28 @@ async function fetchCurrentlyPlaying(): Promise<void> {
 
     const data = await res.json()
 
-    if (data?.item) {
-      lastFetchProgress = data.progress_ms
-      lastFetchTime = Date.now()
-      currentTrack.value = {
-        id: data.item.id,
-        name: data.item.name,
-        artists: data.item.artists.map((a: { name: string }) => a.name).join(", "),
-        albumArt: data.item.album.images[0]?.url || "",
-        progressMs: data.progress_ms,
-        durationMs: data.item.duration_ms,
-        isPlaying: data.is_playing,
-      }
+    if (!data?.item) {
+      // Playback stopped: Spotify answers 200 with no item when the device has
+      // nothing loaded. Drop the stale track so the backdrop (and widget) clear.
+      currentTrack.value = null
       connected.value = true
       error.value = null
+      return
     }
+
+    lastFetchProgress = data.progress_ms
+    lastFetchTime = Date.now()
+    currentTrack.value = {
+      id: data.item.id,
+      name: data.item.name,
+      artists: data.item.artists.map((a: { name: string }) => a.name).join(", "),
+      albumArt: data.item.album.images[0]?.url || "",
+      progressMs: data.progress_ms,
+      durationMs: data.item.duration_ms,
+      isPlaying: data.is_playing,
+    }
+    connected.value = true
+    error.value = null
   } catch (e) {
     error.value = "Could not reach Spotify"
   }

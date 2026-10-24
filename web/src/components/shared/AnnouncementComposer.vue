@@ -5,7 +5,6 @@ import { useMembers } from "@/composables/useMembers"
 import { useAnnouncements } from "@/composables/useAnnouncements"
 import { isServerUnreachable } from "@/api/client"
 import {
-  SERVER_UNREACHABLE_DETAIL,
   SERVER_UNREACHABLE_TITLE,
   useServerReachability,
 } from "@/composables/useServerReachability"
@@ -147,7 +146,6 @@ async function submit() {
 
       <p v-if="unreachable || !serverReachable" class="ac-notice" role="status">
         <strong>{{ SERVER_UNREACHABLE_TITLE }}.</strong>
-        {{ SERVER_UNREACHABLE_DETAIL }}
       </p>
       <p v-if="error" class="ac-error" role="alert">{{ error }}</p>
     </form>

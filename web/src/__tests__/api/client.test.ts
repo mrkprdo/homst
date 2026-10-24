@@ -92,7 +92,7 @@ describe("api client", () => {
     const error = await api.get("/network-error").catch((err) => err)
     expect(isServerUnreachable(error)).toBe(true)
     if (isServerUnreachable(error)) {
-      expect(error.message).toContain("outbound connection")
+      expect(error.message).toContain("HOMST local server is out of reach")
     }
   })
 

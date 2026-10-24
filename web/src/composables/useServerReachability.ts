@@ -12,8 +12,6 @@ import { ref } from "vue"
 const serverReachable = ref(true)
 
 export const SERVER_UNREACHABLE_TITLE = "HOMST local server is out of reach"
-export const SERVER_UNREACHABLE_DETAIL =
-  "An outbound connection to your home network is required. Connect over Wi-Fi or VPN, then try again. Push notifications can still arrive while you are away."
 
 let inFlight: Promise<boolean> | null = null
 

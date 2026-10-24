@@ -99,7 +99,6 @@ describe("SettingsPanel (notifications & motion)", () => {
 
     expect(wrapper.find(".reminder-result").exists()).toBe(false)
     expect(wrapper.find(".reminder-notice").text()).toContain("HOMST local server is out of reach")
-    expect(wrapper.find(".reminder-notice").text()).toContain("outbound connection")
   })
 
   it("the motion toggle flips the runtime animation setting", async () => {

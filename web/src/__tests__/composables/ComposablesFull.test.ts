@@ -261,6 +261,32 @@ describe("useSpotify — storage & auth error paths", () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect(vi.mocked(fetch)).not.toHaveBeenCalled()
   })
+
+  it("clears the current track when playback stops", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] })
+    storeToken(3_600_000)
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json({
+        progress_ms: 1_000, is_playing: true,
+        item: {
+          id: "tr", name: "Song", duration_ms: 60_000, artists: [{ name: "A" }],
+          album: { images: [{ url: "art.jpg" }] },
+        },
+      }))
+      // Stopped: Spotify answers 200 with no item on the device.
+      .mockResolvedValueOnce(json({ is_playing: false, item: null }))
+
+    const sp = (await freshSpotify()).useSpotify()
+    await sp.init()
+    await flushPromises()
+    expect(sp.currentTrack.value?.name).toBe("Song")
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    await flushPromises()
+    expect(sp.currentTrack.value).toBeNull()
+    expect(sp.connected.value).toBe(true)
+    sp.disconnect()
+  })
 })
 
 describe("useEvents — calendar/holiday/event loading", () => {

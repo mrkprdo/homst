@@ -14,7 +14,6 @@ describe("AnnouncementComposer", () => {
     await flushPromises()
 
     expect(wrapper.find(".ac-notice").text()).toContain("HOMST local server is out of reach")
-    expect(wrapper.find(".ac-notice").text()).toContain("outbound connection")
     expect(wrapper.find(".ac-error").exists()).toBe(false)
     expect(useServerReachability().serverReachable.value).toBe(false)
   })
