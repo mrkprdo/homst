@@ -45,6 +45,11 @@ export default defineConfig({
         // API is a sibling service, so compose sets this to http://api-dev:8000.
         target: process.env.VITE_API_PROXY_TARGET || "http://localhost:8000",
         changeOrigin: true,
+        // Keep the browser's host in X-Forwarded-Host. changeOrigin rewrites
+        // Host to the API target (api-dev:8000), and the API rejects writes
+        // whose Origin host does not match the request host — so without this
+        // every POST/PATCH/DELETE through the dev server returned 403.
+        xfwd: true,
       },
     },
   },

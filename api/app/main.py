@@ -34,6 +34,25 @@ _SAFE_MIGRATIONS = [
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS reminder_minutes INTEGER",
     "ALTER TABLE members DROP COLUMN IF EXISTS email",
     "DELETE FROM reminder_log WHERE channel = 'email'",
+    # Databases first created by `create_all` (dev) made events.assignee_id a
+    # UUID with a foreign key, while migration 0002 and production use
+    # VARCHAR(36). The model has always been compared with string ids, so
+    # normalise old dev databases to the deployed shape before queries run.
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'events'
+              AND column_name = 'assignee_id'
+              AND udt_name = 'uuid'
+        ) THEN
+            ALTER TABLE events DROP CONSTRAINT IF EXISTS events_assignee_id_fkey;
+            ALTER TABLE events ALTER COLUMN assignee_id TYPE VARCHAR(36)
+                USING assignee_id::text;
+        END IF;
+    END $$;
+    """,
 ]
 
 # ── Retry settings for database startup ──
