@@ -49,10 +49,11 @@ async def sync_holidays(
     hh = await _get_or_create_household(db)
     current_year = date.today().year
     years = [current_year, current_year + 1]
+    country_code = req.country_code.upper()
 
     all_holidays: list[dict] = []
     for year in years:
-        data = await _fetch_nager_holidays(year, req.country_code)
+        data = await _fetch_nager_holidays(year, country_code)
         for h in data:
             if req.province:
                 counties = h.get("counties") or []
@@ -64,7 +65,7 @@ async def sync_holidays(
                 "date": h["date"],
                 "name": h.get("localName") or h["name"],
                 "local_name": h.get("localName"),
-                "country_code": req.country_code,
+                "country_code": country_code,
                 "province": req.province,
             })
 

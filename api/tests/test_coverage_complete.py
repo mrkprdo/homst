@@ -135,19 +135,19 @@ async def test_deliver_push_prunes_gone_devices_and_reports_failures(
 
     gone = PushSubscription(
         household_id="00000000-0000-0000-0000-000000000000",
-        endpoint="https://push.example/gone",
+        endpoint="https://fcm.googleapis.com/gone",
         p256dh="p",
         auth="a",
     )
     failing = PushSubscription(
         household_id="00000000-0000-0000-0000-000000000000",
-        endpoint="https://push.example/fail",
+        endpoint="https://fcm.googleapis.com/fail",
         p256dh="p",
         auth="a",
     )
     exploding = PushSubscription(
         household_id="00000000-0000-0000-0000-000000000000",
-        endpoint="https://push.example/boom",
+        endpoint="https://fcm.googleapis.com/boom",
         p256dh="p",
         auth="a",
     )

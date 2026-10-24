@@ -648,7 +648,7 @@ async def test_sync_holidays_api_error_returns_502(client, monkeypatch):
         raise HTTPException(status_code=502, detail="Nager.Date API error: 500")
     monkeypatch.setattr("app.routers.holidays._fetch_nager_holidays", mock_fetch)
 
-    r = await client.post("/api/v1/holidays/sync", json={"country_code": "INVALID"})
+    r = await client.post("/api/v1/holidays/sync", json={"country_code": "US"})
     assert r.status_code == 502
 
 

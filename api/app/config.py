@@ -10,8 +10,13 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
 
     # ── CORS ──
-    cors_allow_all: bool = True
+    # Cross-origin access is opt-in: list the exact frontend origins in
+    # ALLOWED_ORIGINS. Set CORS_ALLOW_ALL=true only for trusted dev setups.
+    cors_allow_all: bool = False
     allowed_origins: str = "http://localhost:5173"
+    # Optional comma-separated Host allow-list (TrustedHostMiddleware).
+    # Empty means "allow any Host", which keeps LAN access by IP working.
+    allowed_hosts: str = ""
 
     # ── mDNS ──
     mdns_enabled: bool = True

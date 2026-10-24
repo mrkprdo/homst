@@ -2,21 +2,26 @@ from datetime import date, datetime
 from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# DB-backed text limits (see app/models/all.py).
+NAME_MAX = 255
+COLOR_MAX = 50
+DESCRIPTION_MAX = 20000
 
 
 # ── Members ──
 class MemberCreate(BaseModel):
-    name: str
+    name: str = Field(max_length=NAME_MAX)
     avatar_url: Optional[str] = None
-    color: Optional[str] = None
+    color: Optional[str] = Field(None, max_length=COLOR_MAX)
     role: Literal["member", "admin"] = "member"
 
 
 class MemberUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=NAME_MAX)
     avatar_url: Optional[str] = None
-    color: Optional[str] = None
+    color: Optional[str] = Field(None, max_length=COLOR_MAX)
     role: Optional[Literal["member", "admin"]] = None
 
 
@@ -48,15 +53,15 @@ class HouseholdSettingsUpdate(BaseModel):
 
 # ── Calendar ──
 class CalendarCreate(BaseModel):
-    name: str
-    color: str = "sage"
+    name: str = Field(max_length=NAME_MAX)
+    color: str = Field("sage", max_length=COLOR_MAX)
     source: Literal["internal", "google", "apple", "ical"] = "internal"
     feed_url: Optional[str] = None
 
 
 class CalendarUpdate(BaseModel):
-    name: Optional[str] = None
-    color: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=NAME_MAX)
+    color: Optional[str] = Field(None, max_length=COLOR_MAX)
     is_visible: Optional[bool] = None
 
 
@@ -75,29 +80,45 @@ class CalendarResponse(BaseModel):
 
 class SubscribeCalendarRequest(BaseModel):
     feed_url: str
-    name: Optional[str] = None
-    color: str = "sage"
+    name: Optional[str] = Field(None, max_length=NAME_MAX)
+    color: str = Field("sage", max_length=COLOR_MAX)
+
+
+class Recurrence(BaseModel):
+    """A recurrence rule as stored in ``events.recurrence`` (JSON)."""
+
+    freq: Literal["daily", "weekly", "biweekly", "monthly", "yearly"]
+    until: Optional[str] = None
+    count: Optional[int] = Field(None, ge=1, le=730)
+
+    @field_validator("until")
+    @classmethod
+    def _validate_until(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return value
 
 
 class EventCreate(BaseModel):
     calendar_id: UUID
-    title: str
-    description: str = ""
+    title: str = Field(max_length=NAME_MAX)
+    description: str = Field("", max_length=DESCRIPTION_MAX)
     start_at: datetime
     end_at: Optional[datetime] = None
     all_day: bool = False
-    recurrence: Optional[dict] = None
+    recurrence: Optional[Recurrence] = None
     reminder_minutes: Optional[int] = None
     assignee_id: Optional[UUID] = None
 
 
 class EventUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=NAME_MAX)
+    description: Optional[str] = Field(None, max_length=DESCRIPTION_MAX)
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     all_day: Optional[bool] = None
-    recurrence: Optional[dict] = None
+    recurrence: Optional[Recurrence] = None
     reminder_minutes: Optional[int] = None
     assignee_id: Optional[UUID] = None
 
@@ -124,14 +145,14 @@ class EventResponse(BaseModel):
 
 # ── Tasks ──
 class TaskListCreate(BaseModel):
-    name: str
-    color: str = "sage"
+    name: str = Field(max_length=NAME_MAX)
+    color: str = Field("sage", max_length=COLOR_MAX)
     position: int = 0
 
 
 class TaskListUpdate(BaseModel):
-    name: Optional[str] = None
-    color: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=NAME_MAX)
+    color: Optional[str] = Field(None, max_length=COLOR_MAX)
     position: Optional[int] = None
 
 
@@ -147,8 +168,8 @@ class TaskListResponse(BaseModel):
 
 class TaskCreate(BaseModel):
     list_id: UUID
-    title: str
-    description: str = ""
+    title: str = Field(max_length=NAME_MAX)
+    description: str = Field("", max_length=DESCRIPTION_MAX)
     assignee_id: Optional[UUID] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
@@ -157,8 +178,8 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=NAME_MAX)
+    description: Optional[str] = Field(None, max_length=DESCRIPTION_MAX)
     assignee_id: Optional[UUID] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
@@ -186,8 +207,8 @@ class PhotoResponse(BaseModel):
 
 # ── Holidays ──
 class HolidaySyncRequest(BaseModel):
-    country_code: str
-    province: Optional[str] = None
+    country_code: str = Field(pattern=r"^[A-Za-z]{2}$")
+    province: Optional[str] = Field(None, max_length=100)
 
 
 class HolidayResponse(BaseModel):

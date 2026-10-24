@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -22,38 +22,70 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # stored untouched — we never upscale.
 MAX_PHOTO_EDGE = 1280
 
-# Image formats we re-encode and resize. Anything else (GIF animations,
-# videos, plain text, ...) is stored verbatim.
-_RESIZABLE_FORMATS = {"JPEG", "PNG", "WEBP"}
+# Hard limits enforced by the application rather than the reverse proxy.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_PHOTOS = 200
+# 40 megapixels is far beyond any phone camera but keeps a single request from
+# allocating gigabytes while decoding. Pillow's own bomb guard is the backstop.
+MAX_PIXELS = 40_000_000
+
+# The only formats we decode and re-encode, mapped to the extension we store.
+# Everything else (GIF, SVG, HTML, text, HEIC, ...) is rejected.
+_STORED_EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
+
+
+class _UnsupportedImageError(ValueError):
+    """The payload is not one of the supported raster image formats."""
+
+
+class _ImageTooLargeError(ValueError):
+    """The decoded pixel payload would be unreasonably large."""
+
+
+def _normalize_image(data: bytes) -> tuple[bytes, str]:
+    """Decode an uploaded image, re-encode it, and return ``(bytes, extension)``.
+
+    Applies EXIF orientation, caps the longest edge at MAX_PHOTO_EDGE (never
+    upscaling) and re-encodes the pixels so metadata and any non-image payload
+    are stripped. Raises ``_UnsupportedImageError``/``UnidentifiedImageError``
+    for non-images, and ``_ImageTooLargeError`` for decompression bombs.
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            fmt = img.format
+            ext = _STORED_EXTENSIONS.get(fmt or "")
+            if ext is None:
+                raise _UnsupportedImageError(f"unsupported image format: {fmt}")
+            width, height = img.size
+            if width <= 0 or height <= 0 or width * height > MAX_PIXELS:
+                raise _ImageTooLargeError(f"image too large: {width}x{height}")
+            img = ImageOps.exif_transpose(img) or img
+            if img.width > MAX_PHOTO_EDGE or img.height > MAX_PHOTO_EDGE:
+                scale = MAX_PHOTO_EDGE / max(img.width, img.height)
+                new_size = (round(img.width * scale), round(img.height * scale))
+                img = img.resize(new_size, Image.LANCZOS)
+            out = io.BytesIO()
+            if fmt == "JPEG":
+                if img.mode not in ("RGB", "L"):
+                    img = img.convert("RGB")
+                img.save(out, format="JPEG", quality=85, optimize=True)
+            elif fmt == "WEBP":
+                img.save(out, format="WEBP", quality=80)
+            else:
+                img.save(out, format=fmt, optimize=True)
+            return out.getvalue(), ext
+    except Image.DecompressionBombError as exc:
+        raise _ImageTooLargeError(str(exc)) from exc
 
 
 def _resize_image(data: bytes) -> bytes:
     """Downscale an image so its longest edge is at most MAX_PHOTO_EDGE.
 
     Applies EXIF orientation (so phone photos are not stored rotated) and
-    re-encodes the result. Raises ``UnidentifiedImageError``/``OSError``/
-    ``ValueError`` when the payload is not a resizable image — callers fall
-    back to storing the raw bytes in that case.
+    re-encodes the result, stripping metadata. Raises ``ValueError`` when the
+    payload is not a supported raster image.
     """
-    with Image.open(io.BytesIO(data)) as img:
-        fmt = img.format
-        if fmt not in _RESIZABLE_FORMATS:
-            raise ValueError(f"unsupported image format: {fmt}")
-        img = ImageOps.exif_transpose(img) or img
-        if img.width > MAX_PHOTO_EDGE or img.height > MAX_PHOTO_EDGE:
-            scale = MAX_PHOTO_EDGE / max(img.width, img.height)
-            new_size = (round(img.width * scale), round(img.height * scale))
-            img = img.resize(new_size, Image.LANCZOS)
-        if fmt == "JPEG" and img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
-        out = io.BytesIO()
-        if fmt == "JPEG":
-            img.save(out, format="JPEG", quality=85, optimize=True)
-        elif fmt == "WEBP":
-            img.save(out, format="WEBP", quality=80)
-        else:
-            img.save(out, format=fmt, optimize=True)
-        return out.getvalue()
+    return _normalize_image(data)[0]
 
 
 async def _get_or_create_household(db: AsyncSession) -> Household:
@@ -87,15 +119,22 @@ async def _publish_photos_updated() -> None:
 @router.post("/photos", response_model=PhotoResponse, status_code=201)
 async def upload_photo(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     hh = await _get_or_create_household(db)
-    ext = os.path.splitext(file.filename or ".jpg")[1] or ".jpg"
+    photo_count = await db.scalar(
+        select(func.count()).select_from(Photo).where(Photo.household_id == hh.id)
+    )
+    if (photo_count or 0) >= MAX_PHOTOS:
+        raise HTTPException(status_code=429, detail="Photo limit reached")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Photo is too large")
+    try:
+        data, ext = _normalize_image(data)
+    except _ImageTooLargeError as exc:
+        raise HTTPException(status_code=413, detail="Photo is too large") from exc
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=415, detail="Unsupported or corrupt image") from exc
     filename = f"{uuid.uuid4()}{ext}"
     path = os.path.join(UPLOAD_DIR, filename)
-    data = await file.read()
-    try:
-        data = _resize_image(data)
-    except (UnidentifiedImageError, OSError, ValueError):
-        # Not an image (or unsupported format): store the original bytes.
-        pass
     with open(path, "wb") as f:
         f.write(data)
     photo = Photo(id=new_uuid(), household_id=hh.id, filename=filename)

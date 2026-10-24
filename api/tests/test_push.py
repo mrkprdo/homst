@@ -34,7 +34,7 @@ def test_generate_vapid_keys_are_valid():
     assert _unb64(public)[0] == 4  # uncompressed EC point
 
     headers = Vapid.from_string(private).sign(
-        {"sub": "mailto:a@b.com", "aud": "https://push.example.com"}
+        {"sub": "mailto:a@b.com", "aud": "https://fcm.googleapis.com"}
     )
     assert "Authorization" in headers
 
@@ -71,7 +71,7 @@ def test_push_message_formats_when_and_lead():
 
 async def test_subscribe_vapid_and_unsubscribe(client, db_session):
     payload = {
-        "endpoint": "https://push.example.com/abc",
+        "endpoint": "https://fcm.googleapis.com/abc",
         "keys": {"p256dh": "p1", "auth": "a1"},
         "user_agent": "Test/1.0",
     }
@@ -98,7 +98,7 @@ async def test_subscribe_vapid_and_unsubscribe(client, db_session):
     assert await subscriptions_for(db_session) == []
 
     # Unsubscribing an unknown endpoint is a harmless no-op.
-    r = await client.post("/api/v1/push/unsubscribe", json={"endpoint": "https://gone"})
+    r = await client.post("/api/v1/push/unsubscribe", json={"endpoint": "https://fcm.googleapis.com/unknown-gone"})
     assert r.status_code == 200
 
 
@@ -113,10 +113,10 @@ async def test_deliver_push_sends_and_prunes_dead_endpoints(db_session, monkeypa
     from pywebpush import WebPushException
 
     live = PushSubscription(
-        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://live", p256dh="p", auth="a"
+        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://fcm.googleapis.com/live", p256dh="p", auth="a"
     )
     dead = PushSubscription(
-        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://dead", p256dh="p", auth="a"
+        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://fcm.googleapis.com/dead", p256dh="p", auth="a"
     )
     db_session.add_all([live, dead])
     await db_session.commit()
@@ -124,7 +124,7 @@ async def test_deliver_push_sends_and_prunes_dead_endpoints(db_session, monkeypa
     sent: list[str] = []
 
     async def fake_webpush(**kwargs):
-        if kwargs["subscription_info"]["endpoint"] == "https://dead":
+        if kwargs["subscription_info"]["endpoint"] == "https://fcm.googleapis.com/dead":
             raise WebPushException("gone", response=_Gone())
         sent.append(kwargs["subscription_info"]["endpoint"])
         return None
@@ -135,9 +135,9 @@ async def test_deliver_push_sends_and_prunes_dead_endpoints(db_session, monkeypa
         db_session, [live, dead], {"title": "hi"}, private_key="k", subject="mailto:a@b.com"
     )
     assert ok is True
-    assert sent == ["https://live"]
+    assert sent == ["https://fcm.googleapis.com/live"]
     assert "pruned 1" in detail
-    assert [s.endpoint for s in await subscriptions_for(db_session)] == ["https://live"]
+    assert [s.endpoint for s in await subscriptions_for(db_session)] == ["https://fcm.googleapis.com/live"]
 
 
 async def test_deliver_push_no_subscriptions():
@@ -174,7 +174,7 @@ async def _seed_due_event(db_session):
 async def test_dispatch_sends_push_when_device_subscribed(db_session, monkeypatch):
     await _seed_due_event(db_session)
     db_session.add(PushSubscription(
-        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://d1", p256dh="p", auth="a"
+        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://fcm.googleapis.com/d1", p256dh="p", auth="a"
     ))
     await db_session.commit()
 
@@ -200,7 +200,7 @@ async def test_dispatch_sends_push_when_device_subscribed(db_session, monkeypatc
 
 async def test_test_endpoint_pushes_to_devices(client, db_session, monkeypatch):
     db_session.add(PushSubscription(
-        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://d1", p256dh="p", auth="a"
+        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://fcm.googleapis.com/d1", p256dh="p", auth="a"
     ))
     await db_session.commit()
 
@@ -225,7 +225,7 @@ async def test_deliver_push_prunes_gone_statuses(db_session, monkeypatch, status
     from pywebpush import WebPushException
 
     sub = PushSubscription(
-        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://d", p256dh="p", auth="a"
+        household_id=DEFAULT_HOUSEHOLD_ID, endpoint="https://fcm.googleapis.com/d", p256dh="p", auth="a"
     )
     db_session.add(sub)
     await db_session.commit()

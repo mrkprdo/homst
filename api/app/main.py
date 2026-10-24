@@ -3,12 +3,15 @@ import logging
 import os
 import socket
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
 from app.db import Base, engine
@@ -94,23 +97,73 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS ──
-if settings.cors_allow_all:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.allowed_origins.split(","),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+
+def _csv(value: str) -> list[str]:
+    """Split a comma-separated setting, dropping blanks and stray whitespace."""
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _hostname(value: str | None) -> str | None:
+    """Extract a lower-case hostname from a Host/Origin style value."""
+    if not value:
+        return None
+    raw = value.strip()
+    if "//" not in raw:
+        raw = f"//{raw}"
+    host = urlsplit(raw).hostname
+    return host.lower() if host else None
+
+
+def _request_host(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-host")
+    raw = forwarded.split(",")[0] if forwarded else request.headers.get("host")
+    return _hostname(raw)
+
+
+def _cors_origins() -> list[str]:
+    """Origins allowed to read API responses (never with credentials)."""
+    if settings.cors_allow_all:
+        return ["*"]
+    return _csv(settings.allowed_origins)
+
+
+_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.middleware("http")
+async def block_cross_site_requests(request: Request, call_next):
+    """Reject state-changing requests whose Origin does not match our host.
+
+    Browsers always send Origin on cross-site writes, so this closes
+    CSRF-style access from other websites without any auth cookies.
+    """
+    if request.method in _UNSAFE_METHODS:
+        origin = request.headers.get("origin")
+        if origin and _hostname(origin) != _request_host(request):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Cross-origin request blocked."},
+            )
+        if request.headers.get("sec-fetch-site", "").lower() == "cross-site":
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Cross-origin request blocked."},
+            )
+    return await call_next(request)
+
+
+# ── Host / CORS ──
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=_csv(settings.allowed_hosts) or ["*"],
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Routers ──
 app.include_router(users.router, prefix="/api/v1", tags=["users"])

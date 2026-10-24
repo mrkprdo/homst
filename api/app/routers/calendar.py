@@ -191,7 +191,11 @@ async def create_event(req: EventCreate, db: AsyncSession = Depends(get_db)):
         start_at=req.start_at,
         end_at=req.end_at,
         all_day=req.all_day,
-        recurrence=req.recurrence,
+        recurrence=(
+            req.recurrence.model_dump(mode="json", exclude_none=True)
+            if req.recurrence is not None
+            else None
+        ),
         reminder_minutes=req.reminder_minutes,
         assignee_id=str(req.assignee_id) if req.assignee_id else None,
         source="internal",
@@ -236,7 +240,7 @@ async def update_event(event_id: UUID, req: EventUpdate, db: AsyncSession = Depe
     if req.all_day is not None:
         ev.all_day = req.all_day
     if req.recurrence is not None:
-        ev.recurrence = req.recurrence
+        ev.recurrence = req.recurrence.model_dump(mode="json", exclude_none=True)
     if "reminder_minutes" in req.model_fields_set:
         ev.reminder_minutes = req.reminder_minutes
     if req.assignee_id is not None:

@@ -52,7 +52,7 @@ jobs:
       tags: ${{ steps.resolve.outputs.tags }}
       prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.ref || (github.event_name == 'schedule' && 'dev' || github.ref_name) }}
           fetch-depth: 0
@@ -165,7 +165,7 @@ jobs:
     needs: [version, image]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.version.outputs.ref }}
 
@@ -174,7 +174,7 @@ jobs:
         run: cp .env.example env.example
 
       - name: Create or update release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           name: ${{ needs.version.outputs.tag }}

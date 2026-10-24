@@ -88,10 +88,22 @@ def occurrences_between(ev: Event, from_dt: datetime, to_dt: datetime) -> list[d
     if not freq:
         return [start] if from_dt <= start <= to_dt else []
 
+    # Stored JSON is user/import controlled: a malformed rule must never take
+    # the worker down, so bad values fall back to the plain window / max count.
     until = rec.get("until")
-    end_bound = _as_utc(datetime.fromisoformat(until.replace("Z", "+00:00"))) if until else to_dt
+    end_bound = to_dt
+    if until:
+        try:
+            end_bound = _as_utc(datetime.fromisoformat(str(until).replace("Z", "+00:00")))
+        except (TypeError, ValueError):
+            end_bound = to_dt
     end_bound = min(end_bound, to_dt)
-    max_count = int(rec.get("count") or 730)
+
+    try:
+        max_count = int(rec.get("count"))
+    except (TypeError, ValueError):
+        max_count = 730
+    max_count = max(1, min(730, max_count))
 
     cursor = start
     n = 0

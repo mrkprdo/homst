@@ -137,7 +137,7 @@ async def test_announcement_push_opens_the_message(client, db_session, monkeypat
     db_session.add(
         PushSubscription(
             household_id="00000000-0000-0000-0000-000000000000",
-            endpoint="https://push.example/device",
+            endpoint="https://fcm.googleapis.com/device",
             p256dh="p",
             auth="a",
         )

@@ -60,8 +60,8 @@ services:
     container_name: homst
     restart: unless-stopped
     # Configuration comes from .env when present (see .env.example for every
-    # key); without it the defaults apply — Redis inside this container, SQL
-    # logging off, permissive CORS that only matters cross-origin.
+    # key); without it the safe defaults apply — Redis inside this container,
+    # SQL logging off, and cross-origin API access closed.
     env_file: *homst-env-files
     environment:
       # In-app updates are performed by the optional "updater" service below.
@@ -69,7 +69,10 @@ services:
       # the manual upgrade command instead.
       HOMST_UPDATER_URL: http://updater:9000
     ports:
-      - "8443:8443"
+      # Bind address for the published port. Defaults to all interfaces so
+      # phones on the LAN can connect; set HOMST_BIND_ADDR to the host's LAN
+      # IP in .env to restrict the listener further.
+      - "${HOMST_BIND_ADDR:-0.0.0.0}:8443:8443"
     volumes:
       - photo_uploads:/app/uploads
       # CA + server certificate, generated on first boot (docker/homst-cert)
