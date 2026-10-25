@@ -446,6 +446,21 @@ describe("HomeView — widget data edge cases", () => {
     wrapper.unmount()
   })
 
+  it("keeps the card record still when spinning album art is off", async () => {
+    vi.stubEnv("VITE_SPOTIFY_CLIENT_ID", "configured-client")
+    const { wrapper, spotify } = await freshMount({
+      body: { houseName: "Music" },
+      seed: (c) => c.settings.updateMusicCardSpin(false),
+    })
+    spotify.connected.value = true
+    spotify.currentTrack.value = {
+      id: "tr", name: "Song", artists: "A", albumArt: "", progressMs: 1_000, durationMs: 200_000, isPlaying: true,
+    }
+    await nextTick()
+    expect(wrapper.find(".spotify-vinyl").classes()).toContain("spotify-vinyl--still")
+    wrapper.unmount()
+  })
+
   it("ignores a failed layout save", async () => {
     const { wrapper } = await freshMount({
       body: { houseName: "Save Fail", widgetLayout: required() },

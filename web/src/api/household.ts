@@ -29,7 +29,16 @@ export interface HouseholdSettings {
   autoSunset?: string
   widgetLayout?: WidgetDef[]
   notifications?: NotificationPreferences
+  music?: MusicPreferences
   updates?: UpdatePreferences
+}
+
+/** Now-playing display choices, shared by every screen in the household. */
+export interface MusicPreferences {
+  lyrics?: boolean
+  background?: boolean
+  backgroundSpin?: boolean
+  cardSpin?: boolean
 }
 
 export interface NotificationPreferences {

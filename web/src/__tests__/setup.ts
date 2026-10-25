@@ -13,6 +13,7 @@ import { _resetUpdatePrompt } from "@/composables/useUpdatePrompt"
 import { _resetNotificationIntent } from "@/composables/useNotificationIntent"
 import { _resetServerReachability } from "@/composables/useServerReachability"
 import { _resetOfflineNotifications } from "@/composables/useOfflineNotifications"
+import { _resetLyrics } from "@/composables/useLyrics"
 import { _resetPushStore } from "@/lib/pushStore"
 import { HOUSEHOLD_COMPLETE_KEY } from "@/lib/householdCache"
 
@@ -106,6 +107,7 @@ beforeEach(() => {
   _resetNotificationIntent()
   _resetServerReachability()
   _resetOfflineNotifications()
+  _resetLyrics()
   _resetPushStore()
   localStorage.removeItem(HOUSEHOLD_COMPLETE_KEY)
   vi.clearAllMocks()

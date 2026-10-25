@@ -75,6 +75,11 @@ const autoThemeDark = ref<boolean | null>(null)
 const autoSunrise = ref<string | null>(null)
 const autoSunset = ref<string | null>(null)
 const hudEnabled = ref(true)
+/** Now-playing extras: the lyrics overlay, the full-screen cover, its spin, and the card's spin. */
+const lyricsEnabled = ref(true)
+const musicBackground = ref(true)
+const musicBackgroundSpin = ref(true)
+const musicCardSpin = ref(true)
 const houseName = ref("")
 const photos = ref<PhotoEntry[]>([])
 /** Household default reminder lead (minutes before start); null = no default. */
@@ -177,6 +182,22 @@ function updateHudEnabled(on: boolean) {
   hudEnabled.value = on
 }
 
+function updateLyricsEnabled(on: boolean) {
+  lyricsEnabled.value = on
+}
+
+function updateMusicBackground(on: boolean) {
+  musicBackground.value = on
+}
+
+function updateMusicBackgroundSpin(on: boolean) {
+  musicBackgroundSpin.value = on
+}
+
+function updateMusicCardSpin(on: boolean) {
+  musicCardSpin.value = on
+}
+
 function updateHouseName(name: string) {
   houseName.value = name
 }
@@ -217,6 +238,12 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
       if (s.notifications.hud !== undefined) updateHudEnabled(s.notifications.hud !== false)
       updateDefaultReminderMinutes(s.notifications.defaultReminderMinutes ?? null)
     }
+    if (s.music) {
+      if (s.music.lyrics !== undefined) updateLyricsEnabled(s.music.lyrics !== false)
+      if (s.music.background !== undefined) updateMusicBackground(s.music.background !== false)
+      if (s.music.backgroundSpin !== undefined) updateMusicBackgroundSpin(s.music.backgroundSpin !== false)
+      if (s.music.cardSpin !== undefined) updateMusicCardSpin(s.music.cardSpin !== false)
+    }
     // Keep the accent and preset coherent if an older/partial payload is loaded.
     if (!accentSets[themePreset.value].includes(accentColor.value)) {
       accentColor.value = presetDefaultAccent[themePreset.value]
@@ -254,11 +281,14 @@ export async function refreshFromServer() {
 
 export function useSettings() {
   return {
-    theme, themePreset, accentColor, fontSize, warm, hudEnabled, houseName, photos, defaultReminderMinutes,
+    theme, themePreset, accentColor, fontSize, warm, hudEnabled, houseName, photos,
+    lyricsEnabled, musicBackground, musicBackgroundSpin, musicCardSpin,
+    defaultReminderMinutes,
     autoThemeDark, autoSunrise, autoSunset,
     accentPalette, accentSets, fontSizeScale,
     applyAccentToDOM, applyFontSizeToDOM,
     updateTheme, updateThemePreset, updateAccentColor, updateFontSize, updateWarm, updateHudEnabled,
+    updateLyricsEnabled, updateMusicBackground, updateMusicBackgroundSpin, updateMusicCardSpin,
     updateHouseName, updateDefaultReminderMinutes,
     applyHouseholdSettings, refreshFromServer, refreshPhotos,
   }
@@ -274,6 +304,10 @@ export function _resetSettings() {
   autoSunrise.value = null
   autoSunset.value = null
   hudEnabled.value = true
+  lyricsEnabled.value = true
+  musicBackground.value = true
+  musicBackgroundSpin.value = true
+  musicCardSpin.value = true
   houseName.value = ""
   photos.value = []
   defaultReminderMinutes.value = null

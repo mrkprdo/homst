@@ -923,7 +923,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
           <!-- Now playing -->
           <div v-else class="spotify-body spotify-body--playing">
-            <div class="spotify-vinyl" :class="{ 'spotify-vinyl--paused': !currentTrack.isPlaying }">
+            <div class="spotify-vinyl" :class="{ 'spotify-vinyl--paused': !currentTrack.isPlaying, 'spotify-vinyl--still': !settings.musicCardSpin.value }">
               <div :ref="bindVinylDisc" class="spotify-disc">
                 <div class="spotify-label-wrap">
                   <img :src="currentTrack.albumArt" class="spotify-label-art" />
@@ -2087,7 +2087,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   inset: 3%;
 }
 
-.spotify-vinyl:not(.spotify-vinyl--paused):not(.spotify-vinyl--idle) .spotify-disc {
+.spotify-vinyl:not(.spotify-vinyl--paused):not(.spotify-vinyl--idle):not(.spotify-vinyl--still) .spotify-disc {
   animation-play-state: running;
 }
 

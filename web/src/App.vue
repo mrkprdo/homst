@@ -24,6 +24,7 @@ import { photosApi } from "@/api/photos"
 import AppNav from "@/components/shared/AppNav.vue"
 import AnnouncementBanner from "@/components/shared/AnnouncementBanner.vue"
 import HudAlert from "@/components/shared/HudAlert.vue"
+import LyricsOverlay from "@/components/shared/LyricsOverlay.vue"
 import UpdatePrompt from "@/components/shared/UpdatePrompt.vue"
 import SpotifyBackdrop from "@/components/shared/SpotifyBackdrop.vue"
 import { animate, ease, springs } from "@/lib/motion"
@@ -379,6 +380,9 @@ function panelLeave(el: Element, done: () => void) {
 
       <!-- Reminder heads-up display (kiosk) -->
       <HudAlert :display="true" />
+
+      <!-- Two lines of synced lyrics while Spotify plays -->
+      <LyricsOverlay />
 
       <!-- New-version prompt (display clients only) -->
       <UpdatePrompt />

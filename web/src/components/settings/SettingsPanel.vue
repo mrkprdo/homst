@@ -21,7 +21,7 @@ import {
   useServerReachability,
 } from "@/composables/useServerReachability"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
-import { PhSun, PhMoon, PhSunHorizon, PhDesktop, PhCheck, PhBell, PhDeviceMobile, PhDownloadSimple, PhWarningCircle } from "@phosphor-icons/vue"
+import { PhSun, PhMoon, PhSunHorizon, PhDesktop, PhCheck, PhBell, PhDeviceMobile, PhDownloadSimple, PhMusicNote, PhWarningCircle } from "@phosphor-icons/vue"
 import PageHeader from "@/components/ui/PageHeader.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
 import UiToggle from "@/components/ui/UiToggle.vue"
@@ -267,6 +267,26 @@ function saveNotifications() {
 function onHudToggle(enabled: boolean) {
   settings.updateHudEnabled(!!enabled)
   saveNotifications()
+}
+
+/** Now-playing choices are household-wide: every screen shows the same thing. */
+const musicSetters = {
+  lyrics: settings.updateLyricsEnabled,
+  background: settings.updateMusicBackground,
+  backgroundSpin: settings.updateMusicBackgroundSpin,
+  cardSpin: settings.updateMusicCardSpin,
+} as const
+
+function onMusicToggle(key: keyof typeof musicSetters, value: boolean) {
+  musicSetters[key](!!value)
+  householdApi.updateSettings({
+    music: {
+      lyrics: settings.lyricsEnabled.value,
+      background: settings.musicBackground.value,
+      backgroundSpin: settings.musicBackgroundSpin.value,
+      cardSpin: settings.musicCardSpin.value,
+    },
+  }).catch(() => {})
 }
 
 /** Keep the shared settings store in sync so event forms pre-fill immediately. */
@@ -546,6 +566,65 @@ async function sendTest() {
       </p>
     </div>
 
+    <!-- ── Music ── -->
+    <div class="settings-card settings-card--music">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title">Music</h3>
+          <p class="card-desc">While music plays on a display</p>
+        </div>
+        <PhMusicNote :size="18" class="reminder-bell" />
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <p class="row-title">Synced lyrics</p>
+          <p class="card-desc">Two lines of the song scroll along the bottom of the screen</p>
+        </div>
+        <UiToggle
+          :model-value="settings.lyricsEnabled.value"
+          @update:model-value="(v: boolean) => onMusicToggle('lyrics', v)"
+        />
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <p class="row-title">Album cover background</p>
+          <p class="card-desc">The playing album fills the screen behind the dashboard</p>
+        </div>
+        <UiToggle
+          :model-value="settings.musicBackground.value"
+          @update:model-value="(v: boolean) => onMusicToggle('background', v)"
+        />
+      </div>
+
+      <div v-if="settings.musicBackground.value" class="setting-row setting-row--nested">
+        <div>
+          <p class="row-title">Spin the cover</p>
+          <p class="card-desc">Turn the background like a record on a turntable</p>
+        </div>
+        <UiToggle
+          :model-value="settings.musicBackgroundSpin.value"
+          @update:model-value="(v: boolean) => onMusicToggle('backgroundSpin', v)"
+        />
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <p class="row-title">Spinning album art</p>
+          <p class="card-desc">The cover in the now-playing card turns with the music</p>
+        </div>
+        <UiToggle
+          :model-value="settings.musicCardSpin.value"
+          @update:model-value="(v: boolean) => onMusicToggle('cardSpin', v)"
+        />
+      </div>
+
+      <p class="card-desc">
+        Lyrics come from LRCLIB. A track without synced lyrics shows nothing.
+      </p>
+    </div>
+
     <!-- ── Home screen ── -->
     <div class="settings-card settings-card--home">
       <div class="card-header">
@@ -615,6 +694,7 @@ async function sendTest() {
   .settings-card--reminders  { grid-column: span 4; }
   .settings-card--devices    { grid-column: span 4; }
   .settings-card--motion     { grid-column: span 2; }
+  .settings-card--music      { grid-column: 1 / -1; }
   .settings-card--home       { grid-column: 1 / -1; }
   .settings-card--software   { grid-column: 1 / -1; }
 }
@@ -631,6 +711,7 @@ async function sendTest() {
   .settings-card--reminders  { grid-column: span 8; }
   .settings-card--devices    { grid-column: span 8; }
   .settings-card--motion     { grid-column: span 4; }
+  .settings-card--music      { grid-column: 1 / -1; }
   .settings-card--home       { grid-column: 1 / -1; }
   .settings-card--software   { grid-column: 1 / -1; }
 }
@@ -983,6 +1064,13 @@ async function sendTest() {
   font-size: var(--text-body-size);
   font-weight: var(--font-weight-medium);
   color: var(--color-textPrimary);
+}
+
+/* Sub-option of the row above it (the cover spin follows the cover background). */
+.setting-row--nested {
+  padding-left: var(--space-3);
+  margin-left: var(--space-1);
+  border-left: 2px solid var(--color-border);
 }
 
 /* ── Font preview ── */

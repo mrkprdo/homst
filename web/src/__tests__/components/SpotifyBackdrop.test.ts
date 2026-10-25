@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { mount } from "@vue/test-utils"
 import SpotifyBackdrop from "@/components/shared/SpotifyBackdrop.vue"
 import { useSpotify, type SpotifyTrack } from "@/composables/useSpotify"
+import { useSettings } from "@/composables/useSettings"
 
 const { currentTrack } = useSpotify()
 
@@ -47,6 +48,23 @@ describe("SpotifyBackdrop", () => {
 
     expect(wrapper.find(".vinyl-backdrop").exists()).toBe(false)
     expect(html.classList.contains("vinyl-backdrop")).toBe(false)
+    wrapper.unmount()
+  })
+
+  it("can hide the cover or keep it still", async () => {
+    const { updateMusicBackground, updateMusicBackgroundSpin } = useSettings()
+    currentTrack.value = track()
+
+    updateMusicBackgroundSpin(false)
+    let wrapper = mount(SpotifyBackdrop)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find(".vinyl-disc").classes()).toContain("vinyl-disc--still")
+    wrapper.unmount()
+
+    updateMusicBackground(false)
+    wrapper = mount(SpotifyBackdrop)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find(".vinyl-backdrop").exists()).toBe(false)
     wrapper.unmount()
   })
 

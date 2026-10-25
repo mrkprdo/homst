@@ -229,6 +229,7 @@ describe("useSettings", () => {
       autoSunset: "2026-10-21T22:26:00+00:00",
       houseName: "Cedar",
       notifications: { hud: false, defaultReminderMinutes: 30 },
+      music: { lyrics: false, background: false, backgroundSpin: false, cardSpin: false },
     })
 
     expect(s.theme.value).toBe("dark")
@@ -241,6 +242,10 @@ describe("useSettings", () => {
     expect(s.warm.value).toBe(true)
     expect(s.houseName.value).toBe("Cedar")
     expect(s.hudEnabled.value).toBe(false)
+    expect(s.lyricsEnabled.value).toBe(false)
+    expect(s.musicBackground.value).toBe(false)
+    expect(s.musicBackgroundSpin.value).toBe(false)
+    expect(s.musicCardSpin.value).toBe(false)
     expect(s.defaultReminderMinutes.value).toBe(30)
     // The guard stays up through the watcher flush, then releases.
     expect(isApplyingRemoteSettings()).toBe(true)

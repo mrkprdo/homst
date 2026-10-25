@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onUnmounted, watch, type ComponentPublicInstance } from "vue"
 import { useSpotify } from "@/composables/useSpotify"
+import { useSettings } from "@/composables/useSettings"
 import { syncVinyl } from "@/lib/vinyl"
 
 const { currentTrack } = useSpotify()
+const { musicBackground, musicBackgroundSpin } = useSettings()
 
 /**
  * Bind through a ref callback rather than onMounted: the disc mounts later
@@ -18,7 +20,9 @@ function bindDisc(el: Element | ComponentPublicInstance | null) {
  * record, sized past the viewport diagonal so no corner ever shows while it
  * spins. Only visible while Spotify is actually playing.
  */
-const active = computed(() => !!currentTrack.value?.isPlaying && !!currentTrack.value?.albumArt)
+const active = computed(
+  () => musicBackground.value && !!currentTrack.value?.isPlaying && !!currentTrack.value?.albumArt,
+)
 const art = computed(() => currentTrack.value?.albumArt ?? "")
 
 // The shells drop their opaque backgrounds while this class is present.
@@ -34,7 +38,7 @@ onUnmounted(() => document.documentElement.classList.remove("vinyl-backdrop"))
 <template>
   <Transition name="vinyl-fade">
     <div v-if="active" class="vinyl-backdrop" aria-hidden="true">
-      <div :ref="bindDisc" class="vinyl-disc">
+      <div :ref="bindDisc" class="vinyl-disc" :class="{ 'vinyl-disc--still': !musicBackgroundSpin }">
         <div class="vinyl-art" :style="{ backgroundImage: `url('${art}')` }" />
         <div class="vinyl-grooves" />
         <div class="vinyl-sheen" />
@@ -72,6 +76,12 @@ onUnmounted(() => document.documentElement.classList.remove("vinyl-backdrop"))
   transform: translate(-50%, -50%);
   animation: vinyl-spin var(--vinyl-spin-duration, 20s) linear infinite;
   will-change: transform;
+}
+
+/* "Show the cover, but keep it still" — the shared timeline sync skips paused
+   animations, so the angle just stays where it was. */
+.vinyl-disc--still {
+  animation-play-state: paused;
 }
 
 .vinyl-art {

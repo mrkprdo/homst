@@ -91,6 +91,43 @@ describe("SettingsPanel", () => {
     expect(settings.warm.value).toBe(true)
   })
 
+  it("toggles every now-playing option and saves them together", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    const settings = useSettings()
+
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+
+    const row = (label: string) =>
+      wrapper.findAll(".setting-row").find((r) => r.text().includes(label))!
+
+    await row("Spin the cover").find(".ui-toggle").trigger("click")
+    await flushPromises()
+    await row("Spinning album art").find(".ui-toggle").trigger("click")
+    await flushPromises()
+    await row("Synced lyrics").find(".ui-toggle").trigger("click")
+    await flushPromises()
+
+    expect(settings.musicBackgroundSpin.value).toBe(false)
+    expect(settings.musicCardSpin.value).toBe(false)
+    expect(settings.lyricsEnabled.value).toBe(false)
+
+    // The spin sub-option follows its parent.
+    expect(wrapper.text()).toContain("Spin the cover")
+    await row("Album cover background").find(".ui-toggle").trigger("click")
+    await flushPromises()
+    expect(settings.musicBackground.value).toBe(false)
+    expect(wrapper.text()).not.toContain("Spin the cover")
+
+    const patch = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH").at(-1)!
+    expect(JSON.parse((patch[1] as RequestInit).body as string).settings.music).toEqual({
+      lyrics: false,
+      background: false,
+      backgroundSpin: false,
+      cardSpin: false,
+    })
+  })
+
   it("renders the theme preset cards with Futur active", () => {
     const wrapper = mount(SettingsPanel)
     const cards = wrapper.findAll(".preset-card")
