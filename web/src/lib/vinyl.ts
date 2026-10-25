@@ -23,6 +23,11 @@ export function syncVinyl(el: Element | null | undefined, attempt = 0): void {
   }
 
   for (const animation of animations) {
+    // Assigning startTime to a paused animation resumes it, which would leave
+    // a paused record spinning. Leave paused records alone; the next call on
+    // resume pins them back to the shared timeline origin.
+    if (animation.playState === "paused") continue
+
     try {
       // startTime 0 => progress === document.timeline.currentTime, shared by
       // every element, regardless of when it was inserted.

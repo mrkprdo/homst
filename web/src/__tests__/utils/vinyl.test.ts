@@ -26,6 +26,18 @@ describe("syncVinyl", () => {
     expect(() => syncVinyl(null)).not.toThrow()
   })
 
+  it("leaves paused animations paused so a stopped record stays still", () => {
+    const paused = { playState: "paused", startTime: null as number | null }
+    const running = { playState: "running", startTime: 1234 }
+
+    syncVinyl(fakeEl([paused, running]))
+
+    // Setting startTime on a paused animation resumes it in the browser, so
+    // the paused one must not be touched while the running one is synced.
+    expect(paused.startTime).toBeNull()
+    expect(running.startTime).toBe(0)
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
   })
