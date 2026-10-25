@@ -1,57 +1,66 @@
 # HOMST
 
-HOMST is a self-hosted dashboard for shared households. You can install it on a wall-mounted touch display. The dashboard shows the household calendar, tasks, and schedule. You do not need to ask other persons about the daily schedule.
+HOMST is a self-hosted dashboard for a shared household. It runs on a wall-mounted touch display and shows the calendar, tasks, and daily schedule.
 
-> The display is inactive by default. It becomes active when you touch it.
-
-![HOMST home screen](docs/screenshots/desktop-home.png)
+<p align="center">
+  <img width="640" alt="HOMST home screen" src="docs/screenshots/desktop-home.png" />
+</p>
 
 ## Features
 
-- **Shared calendar**: The calendar has month, week, and day views. You can create events, assign persons, and set recurrence. The calendar shows public holidays for each country.
-- **Task board**: The task board has To Do, Doing, and Done columns. Tasks have priorities, due dates, and assignees.
-- **Today**: The home screen shows the daily schedule, current weather, and tasks that are due soon.
-- **Household members**: Household members have color-coded profiles. All members have the same permissions.
-- **Real-time updates**: Server-sent events send each change to all connected screens immediately.
-- **Announcements**: Send a short broadcast from a display or a phone. On a display, open **Announcements** in the navigation. On a phone, tap the megaphone button. The message appears on every screen and can also arrive as a Web Push notification. Choose when it expires or keep it until removed. Tap a reminder or announcement notification on a phone to open the related event or message.
-- **Reminders**: HOMST sends Web Push notifications to phones and displays. You do not need a third-party push account.
-- **Other functions**: HOMST also has Spotify now playing with synced lyrics, a household photo frame, ICS export, dark and light mode with automatic sunrise/sunset switching, and a mobile view.
+- **Shared calendar**: Month, week, and day views. Create events, assign persons, and set recurrence. Includes public holidays.
+- **Task board**: To Do, Doing, and Done columns. Tasks have priorities, due dates, and assignees.
+- **Today**: Daily schedule, current weather, and upcoming tasks.
+- **Household members**: Color-coded profiles. All members have the same permissions.
+- **Live updates**: Server-sent events keep every screen in sync.
+- **Announcements**: Send a message from a display or phone. It appears on all screens and can arrive as a Web Push notification. Set an expiry time or keep it until removed.
+- **Reminders**: Web Push notifications to phones and displays. No third-party push account is needed.
+- **Extras**: Spotify now playing with synced lyrics, photo frame, ICS export, dark/light mode with sunrise/sunset switching, and a mobile view.
 
 **Stack:** Vue 3 with Vite (TypeScript), FastAPI with PostgreSQL and Redis, Docker Compose with nginx.
 
 ## Screenshots
 
-| Calendar                                                      | Task board                                        |
-| ------------------------------------------------------------- | ------------------------------------------------- |
-| ![Calendar month view](docs/screenshots/desktop-calendar.png) | ![Task board](docs/screenshots/desktop-tasks.png) |
-
-<p align="center">
-  <img width="300" alt="Mobile agenda view" src="docs/screenshots/mobile-agenda.png" />
-</p>
-
-### Reminder
-
-![Reminder heads-up display](docs/screenshots/desktop-reminder.png)
-
-### Announcement
-
-![Announcement toast](docs/screenshots/desktop-announcement.png)
+<table align="center">
+  <tr>
+    <td align="center">
+      <img width="330" alt="Calendar month view" src="docs/screenshots/desktop-calendar.png" />
+      <br /><em>Calendar</em>
+    </td>
+    <td align="center">
+      <img width="330" alt="Task board" src="docs/screenshots/desktop-tasks.png" />
+      <br /><em>Task board</em>
+    </td>
+    <td align="center" rowspan="2">
+      <img width="180" alt="Mobile agenda view" src="docs/screenshots/mobile-agenda.png" />
+      <br /><em>Mobile</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img width="330" alt="Reminder heads-up display" src="docs/screenshots/desktop-reminder.png" />
+      <br /><em>Reminder</em>
+    </td>
+    <td align="center">
+      <img width="330" alt="Announcement toast" src="docs/screenshots/desktop-announcement.png" />
+      <br /><em>Announcement</em>
+    </td>
+  </tr>
+</table>
 
 ## Install
 
-HOMST is one container image and a PostgreSQL sidecar. The image contains nginx, the single-page application, the API (application programming interface), the worker, and Redis. The first start configures the system. You do not need a configuration file.
+HOMST is one container image plus PostgreSQL. The image includes nginx, the web app, API, worker, and Redis. No config file is required.
 
 ### Requirements
 
-- You need Docker Compose v2.24 or later. You can use Docker Desktop or Docker Engine with the Compose plugin.
-- You need a machine that stays on. A small server, network-attached storage (NAS), or Raspberry Pi is sufficient. HOMST supplies images for `linux/amd64` and `linux/arm64`.
-- You need the local area network (LAN) IP address of the host. The examples in this document use `192.168.1.50`.
+- Docker Compose v2.24 or later (Docker Desktop or Docker Engine with the Compose plugin).
+- A host that stays on. A small server, NAS, or Raspberry Pi is enough. Supports `linux/amd64` and `linux/arm64`.
+- The host's LAN IP. Examples use `192.168.1.50`.
 
-The command examples use bash. On Windows, use the equivalent PowerShell or cmd commands.
+Examples use bash. On Windows, use PowerShell or cmd.
 
 ### 1. Get the compose file
-
-Download the compose file from the latest release:
 
 ```bash
 mkdir homst && cd homst
@@ -60,28 +69,28 @@ curl -fLO https://github.com/mrkprdo/homst/releases/latest/download/docker-compo
 wget https://github.com/mrkprdo/homst/releases/latest/download/docker-compose.prod.yml
 ```
 
-To use a different release, replace `latest` with the release tag. This example uses release `v0.2.0`:
+For another release, replace `latest` with the tag:
 
 ```bash
-https://github.com/mrkprdo/homst/releases/download/v0.2.0/docker-compose.prod.yml
+curl -fLO https://github.com/mrkprdo/homst/releases/download/v0.2.0/docker-compose.prod.yml
 ```
 
 ### 2. Configure (optional)
 
-Configuration is optional. To change the default values, download the template and copy it to `.env` next to the compose file:
+To change defaults, copy the template to `.env` next to the compose file:
 
 ```bash
 curl -fLO https://github.com/mrkprdo/homst/releases/latest/download/env.example
 cp env.example .env
 ```
 
-Docker Compose reads `.env` automatically. The file sets the image tag (`HOMST_VERSION`) and the environment of the HOMST container. The environment includes the database, Redis, and Transport Layer Security (TLS) host names. It also includes cross-origin resource sharing (CORS), Spotify, Google Calendar, VAPID, and in-app update settings. The template describes each key.
+Docker Compose reads `.env` automatically. The template documents every key.
 
-- **Image tag**: `latest` is the stable release and the default. `dev` is the nightly build. `dev-<sha>` is a specified nightly build. `x.y.z` is a pinned release. Change `HOMST_VERSION`. Then run `docker compose -f docker-compose.prod.yml pull` and `docker compose -f docker-compose.prod.yml up -d`.
-- **Environment variables**: Environment variables have priority over `.env`. If Docker Compose uses an incorrect tag, remove `HOMST_VERSION` from the environment. Use `unset HOMST_VERSION` in bash, `Remove-Item Env:\HOMST_VERSION` in PowerShell, or `set HOMST_VERSION=` in cmd.
-- **Older installations**: An older installation can contain a `.env.prod` file. Docker Compose reads this file first, but `.env` has priority. Move the contents to `.env`. Then delete `.env.prod`.
+- **Image tag**: `latest` (default), `dev` (nightly), `dev-<sha>` (specific nightly), or `x.y.z` (pinned). Change `HOMST_VERSION` and redeploy.
+- **Environment variables**: These override `.env`. If a tag is wrong, remove `HOMST_VERSION`: `unset HOMST_VERSION` (bash), `Remove-Item Env:\HOMST_VERSION` (PowerShell), or `set HOMST_VERSION=` (cmd).
+- **Older installs**: `.env.prod` is read first, but `.env` wins. Move its contents to `.env`.
 
-On Windows, use `Copy-Item env.example .env` in PowerShell or `copy env.example .env` in cmd.
+On Windows, use `Copy-Item env.example .env` (PowerShell) or `copy env.example .env` (cmd).
 
 ### 3. Start the stack
 
@@ -89,37 +98,36 @@ On Windows, use `Copy-Item env.example .env` in PowerShell or `copy env.example 
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-At the first start, the stack does these steps:
+On first start, HOMST:
 
-1. It pulls the image.
-2. It generates the database password and writes the password to the `homst_secrets` volume.
-3. It initializes PostgreSQL with the password.
-4. It generates a local certificate authority (CA) and an HTTPS certificate. It writes them to the `homst_ssl` volume.
-5. It starts the dashboard on HTTPS port 8443.
+1. Pulls the image.
+2. Creates the database password in `homst_secrets` and initializes PostgreSQL.
+3. Creates a local CA and HTTPS certificate in `homst_ssl`.
+4. Starts the dashboard on HTTPS port 8443.
 
-Later starts use the same data.
+Later starts reuse the same data.
 
-- To upgrade, run `docker compose -f docker-compose.prod.yml pull`. Then run `docker compose -f docker-compose.prod.yml up -d`.
-- In-app updates are optional. Start the updater profile one time: `docker compose -f docker-compose.prod.yml --profile updates up -d`. Then use **Settings > Software update** to examine available releases, install a release, or roll back a release. Refer to [In-app updates](#in-app-updates-optional).
-- To build from source, run `make prod-build` from the repository root.
+- To upgrade: `docker compose -f docker-compose.prod.yml pull`, then `docker compose -f docker-compose.prod.yml up -d`.
+- For in-app updates, start the updater once: `docker compose -f docker-compose.prod.yml --profile updates up -d`. See [In-app updates](#in-app-updates-optional).
+- To build from source: `make prod-build`.
 
 ### 4. Trust the HTTPS certificate
 
-Browsers permit Progressive Web App (PWA) installation and push notifications only with a trusted certificate. Do this step one time for each device. HOMST generates and serves its own CA.
+PWA installation and Web Push need a trusted certificate. Do this once per device.
 
-First, add the address that you use for the dashboard to the certificate. If you do not add the address, the browser shows a name mismatch after you trust the CA.
+Add your dashboard address to the certificate:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec homst homst-cert 192.168.1.50
 ```
 
-To add more addresses, separate them with commas: `homst-cert 192.168.1.50,192.168.1.51`. If you issue the certificate again, the CA stays the same. Devices do not need to trust the CA again. You can also set `HOMST_TLS_HOSTS=192.168.1.50` in `.env` before the first start.
+For more addresses, separate them with commas: `homst-cert 192.168.1.50,192.168.1.51`. You can also set `HOMST_TLS_HOSTS=192.168.1.50` in `.env` before first start.
 
 Then install the CA on each device:
 
-1. Open `https://192.168.1.50:8443`. Accept the browser warning one time.
-2. Open **Settings > Add to your devices > HTTPS certificate > Download**. The browser saves `homst-ca.pem`. You can also open `https://192.168.1.50:8443/ca.pem`.
-3. Install the file as a trusted CA. Refer to the table.
+1. Open `https://192.168.1.50:8443` and accept the warning once.
+2. Open **Settings > Add to your devices > HTTPS certificate > Download** to save `homst-ca.pem` (or open `https://192.168.1.50:8443/ca.pem`).
+3. Install the file as a trusted CA.
 
 | Device        | Procedure                                                                                                                                                                                                              |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -129,129 +137,113 @@ Then install the CA on each device:
 | macOS         | Open **Keychain Access**. Select **System**. Move the file into the window. Open the file. Select **Always Trust**.                                                                                                    |
 | Linux         | `sudo cp homst-ca.pem /usr/local/share/ca-certificates/homst.crt && sudo update-ca-certificates`<br>For Chrome or Chromium, also run: `certutil -d sql:$HOME/.pki/nssdb -A -t 'C,,' -n 'HOMST Local CA' -i homst-ca.pem` |
 
-Reload the dashboard. The padlock is now valid.
+Reload the dashboard. The padlock should be valid.
 
 ### 5. Initial setup
 
-The first visit opens a four-step setup wizard:
+The first visit starts a four-step wizard:
 
-1. **Welcome**: Enter the household name. You can also enter the address.
-2. **Household members**: Add each person who lives in the household. Each person gets a color for calendars, tasks, and profiles.
-3. **Holiday calendar**: Select the country. You can also select a state or province. HOMST adds public holidays automatically.
-4. **All set**: Examine the data and confirm.
+1. **Welcome**: Household name and address.
+2. **Household members**: Add each person and assign a color.
+3. **Holiday calendar**: Select a country (and optional state or province).
+4. **All set**: Review and confirm.
 
-The home screen opens after the wizard. Use the navigation to open the other screens. Use the gear icon to open Settings.
+### 6. Install the app
 
-### 6. Install it as an app
+HOMST is a PWA. Install it on each display or phone, then enable notifications.
 
-HOMST is a PWA. Install it on each display or phone. Then enable notifications.
-
-- **Android or Chrome**: Open the menu. Select **Install app** or **Add to Home screen**.
-- **iPhone or iPad (Safari)**: Select **Share > Add to Home Screen**. You must do this before Web Push can operate (iOS 16.4 or later). Open the installed app.
+- **Android or Chrome**: Menu > **Install app** or **Add to Home screen**.
+- **iPhone or iPad (Safari)**: **Share > Add to Home Screen**. Do this before Web Push (iOS 16.4 or later).
 - **Desktop Chrome or Edge**: Select the install icon in the address bar.
 
-Then open **Settings > Reminders > Phone & browser**. Permit notifications. Use **Send test to all clients** to test the configuration. HOMST generates its own VAPID keys and stores them in the database. You do not need a third-party push account.
+Then open **Settings > Reminders > Phone & browser**, allow notifications, and use **Send test to all clients**. HOMST creates its own VAPID keys; no third-party push account is needed.
 
-Web Push is one-way. A phone that is away from the local network can still receive notifications, and HOMST keeps a copy of recent notification text on the device so you can read it in the app. Sending an announcement or firing a test needs a route back to the local server. Connect to the household network, or use a VPN, to make changes.
+Web Push is one-way. Remote phones still receive notifications, but sending announcements or tests requires a LAN or VPN connection.
 
 ### In-app updates (optional)
 
-The updater does these operations:
+The updater installs stable releases, keeps the previous image for rollback, and restores the last good build if a new version fails its health check.
 
-- It checks the official stable release feed.
-- It installs the exact release image.
-- It keeps the previous image for rollback.
-- It restores the last known good build if a new version fails the health check.
-
-Start the updater sidecar one time:
+Start it once:
 
 ```bash
 docker compose -f docker-compose.prod.yml --profile updates up -d
 ```
 
-The sidecar is the only container with access to the Docker socket. It does not expose a port to the LAN. Docker Compose skips the sidecar when you disable the `updates` profile. When the profile operates, **Settings > Software update** shows the current version and available stable releases. It also shows the version history, rollback controls, and update-check settings.
+The updater is the only container with Docker socket access and exposes no LAN port. **Settings > Software update** shows the current version, stable releases, history, and rollback controls.
 
-To keep the profile enabled for later Docker Compose commands, uncomment `COMPOSE_PROFILES=updates` in `.env`. You can also run `make prod-updates`.
+To keep the profile enabled, remove the `#` from `COMPOSE_PROFILES=updates` in `.env`.
 
-- The updater installs only official stable releases. You cannot install dev builds, nightly builds, or pinned images from the Software update screen. Use the manual commands in the update card.
-- Update checks operate by default when the updater is available. The default interval is 5 minutes. You can change the interval in Settings. A stable release is offered one day after it is published, which leaves time to publish a hotfix first. When a new stable release is available, connected display clients show a **New version available** message with Yes and No options.
-- If you select Yes, HOMST installs the release immediately. If you select No, HOMST hides the message for that version. The update stays visible in **Settings > Software update**. A later release shows a new message. HOMST does not install an update without your agreement.
-- If an update fails, HOMST automatically rolls back. HOMST holds the failed version and does not offer it again. A later stable release starts the prompts again.
-- HOMST keeps the previous stable image. It does not delete the image automatically. If you need disk space, delete unused images with `docker image prune`. Do this when you do not need a rollback.
-- HOMST has no login. All persons who can open the dashboard can start an update. Keep the dashboard on a trusted LAN, firewall port 8443 so only household devices can reach it, and never expose it to the internet. The defaults are now locked down for that model: `CORS_ALLOW_ALL` stays `false`, writes are only accepted from the dashboard's own origin, uploads must be images, and the dev stack publishes Postgres, Redis, the API, and the Vite server on `127.0.0.1` only. The production port is published as `${HOMST_BIND_ADDR:-0.0.0.0}:8443`; set `HOMST_BIND_ADDR` to the host's LAN IP (or `127.0.0.1`) to narrow the listener, and optionally set `ALLOWED_HOSTS` to a comma-separated host allow-list. See [SECURITY.md](SECURITY.md) for the threat model, the accepted residual risk of running without authentication, and the full deployment hardening checklist.
+- Stable releases only. Dev, nightly, and pinned images need manual updates.
+- Checks run every 5 minutes. Stable releases are offered one day after publication. Displays prompt before installing.
+- Failed updates roll back and are not offered again.
+- The previous image is kept. Run `docker image prune` when you no longer need rollback.
 
-The first release with this function must be installed manually. Older images do not have the updater.
+**Security:** HOMST has no login. Keep it on a trusted LAN, limit port 8443 to household devices, and never expose it to the internet. Defaults reject cross-origin writes and non-image uploads. The production port is `${HOMST_BIND_ADDR:-0.0.0.0}:8443`; set `HOMST_BIND_ADDR` to narrow it. See [SECURITY.md](SECURITY.md) for the threat model and hardening checklist.
+
+The first release with the updater must be installed manually. Older images do not have it.
 
 ```bash
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Nightly builds are not managed with the updater. Set the tag in `.env`. Then update manually:
+For nightly builds, set the tag in `.env` and update manually:
 
 ```bash
-# .env next to the compose file
 HOMST_VERSION=dev
+```
 
-# then
+```bash
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Use `HOMST_VERSION=dev-<sha>` for a specified nightly build. Set the value to `latest` or delete the line to use the stable channel. Nightly builds can contain database changes that stable releases do not contain. Make a backup before you change to the stable channel.
+Use `dev-<sha>` for a specific nightly. Make a backup before switching back to stable.
 
-The updater pulls images anonymously. The GitHub repository and the GitHub Container Registry (GHCR) package must be public. HOMST does not store a registry token or a GitHub key. If you publish the project, set the package visibility to public one time. Use **Package settings > Change visibility > Public** in GitHub.
-
-Rootless Docker or Podman users can set a different socket with `HOMST_DOCKER_SOCKET=/path/to/docker.sock` in `.env`.
+The updater pulls anonymously, so the GitHub repo and GHCR package must be public. Rootless Docker or Podman users can set `HOMST_DOCKER_SOCKET=/path/to/docker.sock`.
 
 ### Upgrade, data, and reset
 
-Data is in four volumes:
+Data lives in four volumes:
 
-- `pg_data`: database.
-- `photo_uploads`: photos.
-- `homst_ssl`: certificates.
-- `homst_secrets`: database password.
+- `pg_data`: database
+- `photo_uploads`: photos
+- `homst_ssl`: certificates
+- `homst_secrets`: database password
 
-The optional updater adds `homst_updater_state` for job history and held-version data. This volume does not contain household data.
+The updater adds `homst_updater_state` for job history; it contains no household data.
 
-To make a backup, stop the stack:
+To back up, stop the stack and archive the database volume:
 
 ```bash
 docker compose -f docker-compose.prod.yml down
 ```
 
-Then run this command:
-
 ```bash
 docker run --rm -v homst-prod_pg_data:/from -v "$PWD":/to alpine tar czf /to/pg_data.tgz -C /from .
 ```
 
-To start again from an empty state, run `docker compose -f docker-compose.prod.yml down -v`. This command deletes the database, photos, certificates, and password.
+To reset everything, run `docker compose -f docker-compose.prod.yml down -v`. This deletes the database, photos, certificates, and password.
 
-To examine the logs, run `docker compose -f docker-compose.prod.yml logs -f homst`. When the updater profile operates, also run `docker compose -f docker-compose.prod.yml logs -f updater`.
+Logs: `docker compose -f docker-compose.prod.yml logs -f homst`. With the updater active, also run `docker compose -f docker-compose.prod.yml logs -f updater`.
 
 ### Migration from the old multi-container stack
 
-Earlier versions used five containers and served `web/dist` from the host. Stop the old containers with `make prod-down`. This command removes the old `api`, `worker`, `nginx`, and `redis` containers as orphans. Start the new stack. The system reuses `pg_data` and `photo_uploads`, so it keeps the household data. You must trust the new `ca.pem` one time on each device.
+Earlier versions used five containers. Stop them with `make prod-down`, then start the new stack. `pg_data` and `photo_uploads` are reused; trust the new `ca.pem` once per device.
 
-An installation that still has `.env.prod` continues to operate. Docker Compose reads `.env.prod` first, but `.env` has priority when both files exist. Move the contents to `.env`. Then delete `.env.prod`. If the old stack used a `DATABASE_URL`, keep it to continue with the current database. If you used the old stack with a template that you did not change, the password is `yourpassword`. Set `DATABASE_URL=postgresql+asyncpg://postgres:yourpassword@postgres:5432/homst` in `.env`.
+If `.env.prod` exists, move its contents to `.env`; `.env` wins. Keep an existing `DATABASE_URL`. If you used the old template unchanged, set `DATABASE_URL=postgresql+asyncpg://postgres:yourpassword@postgres:5432/homst`.
 
 ## Develop
 
-To develop HOMST, you need these tools:
+You need Bun 1.0+, Python 3.12+, Docker Compose v2, and Node.js with OpenSSL.
 
-- Bun 1.0 or later.
-- Python 3.12 or later.
-- Docker with Compose v2.
-- Node.js with OpenSSL for certificate generation.
-
-Do not run `cp .env.dev .env` in a checkout that has a production `.env`. The command replaces the file. Use a separate checkout.
+Do not run `cp .env.dev .env` in a checkout with a production `.env`; use a separate checkout.
 
 ```bash
 cp .env.dev .env
-make cert   # generates nginx/ssl/{ca,cert,key}.pem for the dev HTTPS proxy
-make dev    # docker compose dev stack
+make cert   # nginx/ssl certificates for the dev HTTPS proxy
+make dev    # dev stack
 ```
 
 | Service  | URL                        |
@@ -260,48 +252,45 @@ make dev    # docker compose dev stack
 | API      | http://localhost:8000      |
 | API docs | http://localhost:8000/docs |
 
-To run the services directly, you need a PostgreSQL server and a Redis server. The services must be able to connect to them.
+To run services directly, provide PostgreSQL and Redis:
 
 ```bash
-make web      # Vue dev server
-make api      # FastAPI with hot reload
-make worker   # ARQ background worker
+make web
+make api
+make worker
 ```
 
-Tests and checks:
+Tests:
 
 ```bash
-make test-web     # Vitest unit tests (100% line coverage gate)
-make test-api     # pytest backend tests (100% line coverage gate)
+make test-web     # Vitest (100% line coverage)
+make test-api     # pytest (100% line coverage)
 make typecheck    # vue-tsc + TypeScript
-make test         # unit tests + Playwright e2e
+make test         # unit + Playwright e2e
 ```
 
-Both unit suites fail when an executable line has no test.
-
-To test the production image that you build from source, run `make prod-build`.
+To test the production image, run `make prod-build`.
 
 ## Release
 
-Releases are one click: open **Actions > Release > Run workflow**, then run it.
+Open **Actions > Release > Run workflow**.
 
-1. Leave **bump** at `patch`, or choose `minor` or `major`. The workflow reads the newest tag, increments that part, tags the head of `dev`, and starts Build for the new tag.
-2. To set the version yourself, type it into **version** (`0.3.0` or `0.3.0-rc.1`). It overrides **bump**.
-3. To release a different branch, change **ref** from `dev`.
+1. Choose **bump** (`patch`, `minor`, or `major`) or enter a **version**. A version overrides **bump**.
+2. To release another branch, change **ref** from `dev`.
 
-You can also start it from the command line:
+Or use the CLI:
 
 ```bash
 gh workflow run release.yml -f bump=minor
 gh workflow run release.yml -f version=0.3.0-rc.1
 ```
 
-Build then does the rest:
+Build behavior:
 
-- **`dev`** produces nightly images `:dev` and `:dev-<sha>`.
-- **A tag** produces release images `:x.y.z`, `:x.y`, and `:latest` for stable tags. It runs the test suite, builds `linux/amd64` and `linux/arm64`, pushes the tags, and creates or updates the GitHub Release for the tag with the compose file and the environment template attached.
+- `dev` creates nightly `:dev` and `:dev-<sha>` images.
+- A stable tag creates `:x.y.z`, `:x.y`, and `:latest`, runs tests, builds multi-arch images, and publishes a GitHub Release.
 
-Build also runs when you push a release tag, so this is equivalent to the button:
+Pushing a release tag does the same:
 
 ```bash
 git checkout dev
@@ -309,28 +298,26 @@ git tag 0.3.0
 git push origin 0.3.0
 ```
 
-Prerelease tags such as `0.3.0-rc.1` are prereleases. They do not move the `:latest` tag. The Release workflow creates the tag before the checks run, so if a run fails you can delete the tag (`git push --delete origin 0.3.0`) and run Release again.
+Prerelease tags do not move `:latest`. If a run fails, delete the tag and rerun Release.
 
-The nightly schedule builds `dev` at 03:00 UTC. It publishes `:dev` and `:dev-<sha>`. To use a nightly build, set `HOMST_VERSION=dev` in `.env`. Then run `docker compose -f docker-compose.prod.yml pull` and `docker compose -f docker-compose.prod.yml up -d`.
+The nightly schedule builds `dev` at 03:00 UTC.
 
-The local commands use the same Dockerfile:
+Local commands:
 
 ```bash
 docker login ghcr.io             # PAT with write:packages
-make image VERSION=0.2.0         # build for this machine only
+make image VERSION=0.2.0         # local build
 make release VERSION=0.2.0       # multi-arch buildx push (PLATFORMS=…)
-make image-save VERSION=0.2.0    # homst-image-0.2.0.tar.gz for offline installs
+make image-save VERSION=0.2.0    # offline image archive
 ```
-
-`docker login ghcr.io` needs a personal access token (PAT) with `write:packages`.
 
 ## Contribute
 
-1. Fork the repository and create a branch: `git checkout -b feat/your-feature`.
-2. Make your changes. Keep the tests green. Run `make test-web` and `make test-api`.
+1. Fork the repo and create a branch: `git checkout -b feat/your-feature`.
+2. Make changes and keep tests passing: `make test-web` and `make test-api`.
 3. Open a pull request against `dev`.
 
-Use GitHub Issues for bug reports, feature ideas, and feedback.
+Use GitHub Issues for bugs, ideas, and feedback.
 
 ## License
 
