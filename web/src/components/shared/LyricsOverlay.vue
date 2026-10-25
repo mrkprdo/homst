@@ -136,6 +136,7 @@ const trackTransform = computed(
   font-weight: var(--font-weight-medium, 500);
   line-height: 1.16;
   letter-spacing: -0.012em;
+  overflow-wrap: anywhere;
   text-wrap: balance;
   text-shadow:
     0 1px 2px color-mix(in srgb, var(--color-bgBase) 60%, transparent),

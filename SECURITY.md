@@ -60,7 +60,10 @@ Consequences that are accepted by design:
   notifications; this is how HOMST avoids a third-party push account.
 - The dashboard links out to optional third-party widgets (Spotify, Google
   Calendar, weather, holidays). Those integrations see only the requests the
-  browser or server makes to them.
+  browser or server makes to them. Synced lyrics are looked up at
+  `lrclib.net`, which receives the title, artist and duration of the track
+  that is playing. Turn them off in **Settings > Music** to keep listening
+  data on the device.
 
 Out of scope for this model:
 

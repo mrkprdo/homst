@@ -90,7 +90,11 @@ onMounted(() => {
   box-shadow: inset -1px 0 0 var(--color-border);
   gap: var(--space-2);
   flex-shrink: 0;
-  /* Initial state — anime.js takes over on mount */
+  /* Above the full-width lyrics wash (z-index 50) so the rail keeps its own
+     background; drawers, announcements and the HUD still sit above this. */
+  position: relative;
+  z-index: 60;
+  /* Initial state - anime.js takes over on mount */
   opacity: 0;
 }
 
