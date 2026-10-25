@@ -306,7 +306,7 @@ export function _resetSettings() {
   hudEnabled.value = true
   lyricsEnabled.value = true
   musicBackground.value = true
-  musicBackgroundSpin.value = true
+  musicBackgroundSpin.value = false
   musicCardSpin.value = true
   houseName.value = ""
   photos.value = []
