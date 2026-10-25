@@ -744,7 +744,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
             <div class="weather-secondary">
               <span class="weather-label">{{ weatherLabel(weather.code) }}</span>
               <span class="weather-feels">Feels like {{ weather.feelsLike }}°</span>
-              <span class="weather-coords">{{ weather.lat.toFixed(4) }}, {{ weather.lon.toFixed(4) }}</span>
             </div>
             <div class="weather-stats">
               <span class="weather-stat">
@@ -1557,14 +1556,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   white-space: nowrap;
 }
 
-.weather-coords {
-  font-size: 10px;
-  color: var(--color-textMuted);
-  opacity: 0.5;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
 .weather-stats {
   display: flex;
   align-items: center;
@@ -1642,7 +1633,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
     min-width: 0;
   }
 
-  .weather-coords,
   .weather-stats {
     display: none;
   }
@@ -1678,10 +1668,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 @container w (max-width: 12em) {
   .weather-secondary {
     flex-wrap: wrap;
-  }
-
-  .weather-coords {
-    display: none;
   }
 
   .weather-label,
