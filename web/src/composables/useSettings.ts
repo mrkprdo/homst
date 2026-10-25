@@ -78,7 +78,7 @@ const hudEnabled = ref(true)
 /** Now-playing extras: the lyrics overlay, the full-screen cover, its spin, and the card's spin. */
 const lyricsEnabled = ref(true)
 const musicBackground = ref(true)
-const musicBackgroundSpin = ref(true)
+const musicBackgroundSpin = ref(false)
 const musicCardSpin = ref(true)
 const houseName = ref("")
 const photos = ref<PhotoEntry[]>([])

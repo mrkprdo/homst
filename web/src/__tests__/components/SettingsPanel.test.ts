@@ -101,6 +101,12 @@ describe("SettingsPanel", () => {
     const row = (label: string) =>
       wrapper.findAll(".setting-row").find((r) => r.text().includes(label))!
 
+    expect(settings.musicBackgroundSpin.value).toBe(false)
+
+    await row("Spin the cover").find(".ui-toggle").trigger("click")
+    await flushPromises()
+    expect(settings.musicBackgroundSpin.value).toBe(true)
+
     await row("Spin the cover").find(".ui-toggle").trigger("click")
     await flushPromises()
     await row("Spinning album art").find(".ui-toggle").trigger("click")
