@@ -272,9 +272,10 @@ describe("MobileQuickAdd", () => {
       await nextTick()
 
       await w.find(".mqa-submit").trigger("click")
-      await flushPromises()
+      await vi.waitFor(() => {
+        expect(useEvents().events.value.some(e => e.title === "Party")).toBe(true)
+      })
       vi.advanceTimersByTime(900)
-      expect(useEvents().events.value.some(e => e.title === "Party")).toBe(true)
 
       // Switch to Task tab, create task when no list exists (creates General list first)
       const tabs = w.findAll(".mqa-tab")
@@ -302,9 +303,10 @@ describe("MobileQuickAdd", () => {
       })
 
       await w.find(".mqa-submit").trigger("click")
-      await flushPromises()
+      await vi.waitFor(() => {
+        expect(useTasks().tasks.value.some(t => t.title === "Vacuum")).toBe(true)
+      })
       vi.advanceTimersByTime(900)
-      expect(useTasks().tasks.value.some(t => t.title === "Vacuum")).toBe(true)
     } finally {
       vi.useRealTimers()
     }

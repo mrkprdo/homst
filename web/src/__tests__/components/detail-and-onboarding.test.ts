@@ -215,6 +215,9 @@ describe("OnboardingWizard & MobileOnboardingGate", () => {
   })
 
   it("OnboardingWizard walks through all 4 steps, manages members/colors, and finishes", async () => {
+    // Preload the lazy home route so its import cannot outlive the test.
+    await import("@/components/home/HomeView.vue")
+
     const w = mount(OnboardingWizard, { global: { plugins: [router] } })
 
     // Step 1: house name + address
