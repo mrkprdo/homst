@@ -340,16 +340,19 @@ function eventCoversDate(e: { startAt: string; endAt: string | null; allDay: boo
   if (e.allDay && end.getTime() <= start.getTime()) end = new Date(start.getTime() + 1)
   return end >= dayStart
 }
+
+function compareEventsByStart(a: CalendarEvent, b: CalendarEvent) {
+  // All-day entries lead the day, then timed events run chronologically.
+  if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
+  return new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
+}
+
 const scheduleEvents = computed(() => {
   const date = scheduleDate.value
   return events.value
     .filter(event => eventCoversDate(event, date))
     .slice()
-    .sort((a, b) => {
-      // All-day entries lead the day, then timed events run chronologically.
-      if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
-      return new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
-    })
+    .sort(compareEventsByStart)
 })
 
 const scheduleEmptyMessage = computed(() => {
@@ -363,6 +366,10 @@ function scheduleTime(event: CalendarEvent): string {
   return event.allDay ? "All day" : formatEventTime(event.startAt)
 }
 
+function openScheduleEvent(event: CalendarEvent) {
+  ui.openCalendar(event.startAt, event.id)
+}
+
 // ── Mini calendar ─────────────────────────────────────────────────────────────
 const viewYear = ref(today.value.getFullYear())
 const viewMonth = ref(today.value.getMonth())
@@ -371,42 +378,89 @@ const monthName = computed(() =>
   new Date(viewYear.value, viewMonth.value, 1).toLocaleString("en-US", { month: "long", year: "numeric" })
 )
 
-const calendarDays = computed(() => {
+const isViewingCurrentMonth = computed(() =>
+  viewYear.value === today.value.getFullYear() && viewMonth.value === today.value.getMonth()
+)
+
+function stepCalendarMonth(delta: -1 | 1) {
+  const next = new Date(viewYear.value, viewMonth.value + delta, 1)
+  viewYear.value = next.getFullYear()
+  viewMonth.value = next.getMonth()
+  void prefetchAround(viewYear.value, viewMonth.value)
+}
+
+function resetCalendarMonth() {
+  if (isViewingCurrentMonth.value) return
+  viewYear.value = today.value.getFullYear()
+  viewMonth.value = today.value.getMonth()
+}
+
+interface MiniCalendarDay {
+  date: Date | null
+  n: number | null
+  events: CalendarEvent[]
+}
+
+const calendarDays = computed<MiniCalendarDay[]>(() => {
   const year = viewYear.value
   const month = viewMonth.value
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const days: Array<{ date: Date | null; n: number | null }> = []
-  for (let i = 0; i < firstDay; i++) days.push({ date: null, n: null })
-  for (let d = 1; d <= daysInMonth; d++) days.push({ date: new Date(year, month, d), n: d })
+  const days: MiniCalendarDay[] = []
+  for (let i = 0; i < firstDay; i++) days.push({ date: null, n: null, events: [] })
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d)
+    const dayEvents = events.value
+      .filter(event => eventCoversDate(event, date))
+      .sort(compareEventsByStart)
+    days.push({ date, n: d, events: dayEvents })
+  }
   return days
 })
-
-const eventsByDay = computed(() => {
-  const map = new Map<string, number>()
-  const year = viewYear.value
-  const month = viewMonth.value
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  for (let d = 1; d <= daysInMonth; d++) {
-    const day = new Date(year, month, d)
-    let count = 0
-    for (const e of events.value) if (eventCoversDate(e, day)) count++
-    if (count > 0) map.set(`${year}-${month}-${d}`, count)
-  }
-  return map
-})
-
-function eventCountForDate(date: Date | null): number {
-  if (!date) return 0
-  return eventsByDay.value.get(`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`) ?? 0
-}
 
 function isToday(date: Date | null): boolean {
   return !!date && date.toDateString() === today.value.toDateString()
 }
 
+function isWeekend(date: Date | null): boolean {
+  return !!date && (date.getDay() === 0 || date.getDay() === 6)
+}
+
+function eventColor(event: CalendarEvent): string {
+  const member = event.assigneeId
+    ? members.value.find(m => m.id === event.assigneeId)
+    : undefined
+  if (!member) return "var(--color-primary)"
+  return member.color.startsWith("#")
+    ? member.color
+    : memberColorHex(member.color as MemberColor)
+}
+
+function miniEventStyle(event: CalendarEvent) {
+  return { "--mini-event-color": eventColor(event) }
+}
+
 function formatEventTime(startAt: string): string {
   return new Date(startAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+}
+
+function dayAriaLabel(day: MiniCalendarDay): string | undefined {
+  if (!day.date) return undefined
+  const base = day.date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+  return day.events.length
+    ? `${base}, ${day.events.length} event${day.events.length === 1 ? "" : "s"}`
+    : base
+}
+
+function dayEventTooltip(day: MiniCalendarDay): string | undefined {
+  if (!day.date) return undefined
+  const base = day.date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+  if (!day.events.length) return base
+  const lines = day.events.slice(0, 5).map(event =>
+    event.allDay ? event.title : `${formatEventTime(event.startAt)}  ${event.title}`
+  )
+  if (day.events.length > 5) lines.push(`+${day.events.length - 5} more`)
+  return `${base}\n${lines.join("\n")}`
 }
 
 const ICON_MAP: Record<string, any> = {
@@ -848,8 +902,10 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
           </div>
 
           <div v-if="scheduleEntries.length" ref="scheduleListEl" class="schedule-list">
-            <div v-for="entry in visibleScheduleEvents" :key="entry.event.id" class="schedule-row"
-              :class="{ 'schedule-row--now': entry.isNow, 'schedule-row--past': entry.isPast }">
+            <button v-for="entry in visibleScheduleEvents" :key="entry.event.id" type="button" class="schedule-row"
+              :class="{ 'schedule-row--now': entry.isNow, 'schedule-row--past': entry.isPast }"
+              :title="`Open ${entry.event.title} in the calendar`"
+              @click="openScheduleEvent(entry.event)">
               <span class="schedule-time" :class="{ 'schedule-time--allday': entry.event.allDay }">
                 {{ scheduleTime(entry.event) }}
               </span>
@@ -858,7 +914,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
               <span class="schedule-title">{{ entry.event.title }}</span>
               <span v-if="entry.isNow" class="schedule-now">Now</span>
               <span v-if="entry.assignee" class="schedule-assignee">{{ entry.assignee.name }}</span>
-            </div>
+            </button>
             <p v-if="hiddenScheduleCount > 0" class="list-more">+{{ hiddenScheduleCount }} more</p>
           </div>
           <UiEmptyState v-else class="widget-empty" :message="scheduleEmptyMessage">
@@ -929,24 +985,61 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
       <div :ref="(el) => registerWidgetEl('calendar', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'calendar' }"
         :style="{ ...widgetStyle(getWidget('calendar')!), '--wobble-delay': '100ms' }">
-        <UiCard class="home-block" :padding="false">
-          <div class="block-header">
-            <span class="block-title"><span class="block-title-text">{{ monthName }}</span></span>
-            <UiButton variant="link" size="sm" @click="ui.setPanel('calendar')">
+        <UiCard class="home-block calendar-card" :padding="false">
+          <div class="block-header calendar-header">
+            <div class="calendar-month-nav">
+              <PhCalendarBlank :size="18" class="calendar-month-nav__icon" />
+              <button type="button" class="calendar-month-nav__arrow" aria-label="Previous month"
+                @click="stepCalendarMonth(-1)">
+                <PhCaretLeft :size="14" weight="bold" />
+              </button>
+              <button type="button" class="calendar-month-nav__label"
+                :class="{ 'is-current': isViewingCurrentMonth }"
+                :title="isViewingCurrentMonth ? monthName : 'Back to this month'"
+                :aria-label="isViewingCurrentMonth ? monthName : `Back to this month, ${monthName}`"
+                @click="resetCalendarMonth">
+                {{ monthName }}
+              </button>
+              <button type="button" class="calendar-month-nav__arrow" aria-label="Next month"
+                @click="stepCalendarMonth(1)">
+                <PhCaretRight :size="14" weight="bold" />
+              </button>
+            </div>
+            <UiButton variant="link" size="sm" class="calendar-open-btn" @click="ui.setPanel('calendar')">
               Open
               <PhArrowRight :size="13" />
             </UiButton>
           </div>
-          <div class="mini-cal">
+          <div class="mini-cal" :key="monthName">
             <div class="mini-cal-weekdays">
               <span v-for="d in ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']" :key="d">{{ d }}</span>
             </div>
             <div class="mini-cal-grid">
               <button v-for="(day, i) in calendarDays" :key="i" class="mini-cal-day"
-                :class="{ 'mini-cal-day--empty': !day.date, 'mini-cal-day--today': isToday(day.date) }"
-                :disabled="!day.date" @click="day.date && ui.setPanel('calendar')">
-                <span v-if="day.n">{{ day.n }}</span>
-                <span v-if="day.date && eventCountForDate(day.date) > 0" class="event-dot" />
+                :class="{
+                  'mini-cal-day--empty': !day.date,
+                  'mini-cal-day--today': isToday(day.date),
+                  'mini-cal-day--weekend': isWeekend(day.date),
+                }"
+                :disabled="!day.date" :title="dayEventTooltip(day)" :aria-label="dayAriaLabel(day)"
+                @click="day.date && ui.openCalendar(day.date)">
+                <template v-if="day.date">
+                  <span class="mini-cal-day__num">{{ day.n }}</span>
+                  <span v-if="day.events.length" class="mini-cal-events" aria-hidden="true">
+                    <span v-for="event in day.events.slice(0, 2)" :key="event.id"
+                      class="mini-cal-chip" :style="miniEventStyle(event)">
+                      {{ event.title }}
+                    </span>
+                    <span v-if="day.events.length > 2" class="mini-cal-more">
+                      +{{ day.events.length - 2 }} more
+                    </span>
+                  </span>
+                  <span v-if="day.events.length" class="mini-cal-dots" aria-hidden="true">
+                    <span v-for="event in day.events.slice(0, 3)" :key="'dot-' + event.id"
+                      class="event-dot" :style="{ background: eventColor(event) }" />
+                    <span v-if="day.events.length > 3" class="event-dot event-dot--more" />
+                  </span>
+                </template>
               </button>
             </div>
           </div>
@@ -1934,10 +2027,21 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   display: flex;
   align-items: center;
   gap: clamp(4px, 1.2cqw, var(--space-2));
+  width: 100%;
   padding: var(--space-1) var(--space-3);
+  border: none;
   border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: var(--font-family);
+  text-align: left;
+  cursor: pointer;
   flex-shrink: 0;
   transition: background var(--duration-fast);
+}
+
+.schedule-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .schedule-row:hover {
@@ -2066,12 +2170,89 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 /* ── Mini calendar ───────────────────────────────────────────────────────────── */
+.calendar-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.calendar-month-nav__icon {
+  flex-shrink: 0;
+}
+
+.calendar-month-nav__arrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-textMuted);
+  cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
+}
+
+.calendar-month-nav__arrow:hover {
+  background: var(--color-bgSubtle);
+  color: var(--color-textPrimary);
+}
+
+.calendar-month-nav__arrow:active {
+  transform: scale(0.92);
+}
+
+.calendar-month-nav__label {
+  min-width: 0;
+  padding: 2px var(--space-1);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font-family: var(--font-family);
+  font-size: var(--text-heading-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+  color: var(--color-textPrimary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.calendar-month-nav__label:hover {
+  background: var(--color-bgSubtle);
+}
+
+.calendar-month-nav__label.is-current {
+  cursor: default;
+}
+
+.calendar-month-nav__label.is-current:hover {
+  background: transparent;
+}
+
+.calendar-month-nav__arrow:focus-visible,
+.calendar-month-nav__label:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
 .mini-cal {
   padding: 0 var(--space-3) var(--space-2);
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  animation: mini-cal-in var(--duration-base) ease;
+}
+
+@keyframes mini-cal-in {
+  from { opacity: 0.35; }
+  to   { opacity: 1; }
 }
 
 .mini-cal-weekdays {
@@ -2079,6 +2260,9 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   grid-template-columns: repeat(7, 1fr);
   gap: clamp(1px, 0.5cqh, 4px);
   flex-shrink: 0;
+  margin-bottom: clamp(2px, 0.6cqh, 5px);
+  padding-bottom: clamp(2px, 0.6cqh, 5px);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
 }
 
 .mini-cal-weekdays span {
@@ -2089,7 +2273,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1.2;
-  padding-bottom: 2px;
 }
 
 .mini-cal-grid {
@@ -2109,7 +2292,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   justify-content: center;
   border: none;
   background: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   font-size: clamp(9px, 2.6cqh, var(--text-label-size));
   color: var(--color-textSecondary);
   cursor: pointer;
@@ -2118,7 +2301,16 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   padding: 0;
   line-height: 1;
   overflow: hidden;
-  transition: background var(--duration-fast);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.mini-cal-day__num {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-cal-day--weekend:not(.mini-cal-day--today) {
+  color: var(--color-textMuted);
 }
 
 .mini-cal-day:hover:not(:disabled):not(.mini-cal-day--today) {
@@ -2135,21 +2327,139 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   font-weight: var(--font-weight-medium);
 }
 
-.event-dot {
+.mini-cal-events {
+  display: none;
+}
+
+.mini-cal-more,
+.mini-cal-dots {
+  pointer-events: none;
+}
+
+.mini-cal-dots {
   position: absolute;
-  bottom: 2px;
+  bottom: clamp(2px, 0.6cqh, 4px);
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.event-dot {
   width: clamp(3px, 0.5cqh, var(--space-2));
   height: clamp(3px, 0.5cqh, var(--space-2));
   border-radius: 50%;
   background: var(--color-primary);
-  opacity: 0.5;
+  opacity: 0.8;
+}
+
+.event-dot--more {
+  background: var(--color-textMuted);
+  opacity: 0.55;
 }
 
 .mini-cal-day--today .event-dot {
-  background: var(--color-textInverse);
-  opacity: 0.7;
+  box-shadow: 0 0 0 1px var(--color-textInverse);
+}
+
+/*
+ * Detailed mode: once a cell can fit the day number plus a couple of lines,
+ * replace the density dots with real event titles.
+ */
+@container w (min-width: 20em) and (min-height: 18em) {
+  .mini-cal-day {
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: clamp(1px, 0.4cqh, 3px);
+    padding: clamp(2px, 0.7cqh, 5px);
+    text-align: left;
+    font-size: clamp(10px, 2.2cqh, var(--text-label-size));
+  }
+
+  .mini-cal-day__num {
+    align-self: flex-start;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.1;
+    color: var(--color-textPrimary);
+  }
+
+  .mini-cal-day--weekend .mini-cal-day__num {
+    color: var(--color-textSecondary);
+  }
+
+  .mini-cal-day:hover:not(:disabled) {
+    background: var(--color-bgSubtle);
+  }
+
+  .mini-cal-day--today {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    color: var(--color-textPrimary);
+  }
+
+  .mini-cal-day--today:hover {
+    background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
+
+  .mini-cal-day--today .mini-cal-day__num {
+    display: grid;
+    place-items: center;
+    min-width: 1.7em;
+    height: 1.7em;
+    padding: 0 3px;
+    border-radius: var(--radius-full);
+    background: var(--color-primary);
+    color: var(--color-textInverse);
+  }
+
+  .mini-cal-events {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    width: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .mini-cal-chip {
+    flex-shrink: 0;
+    display: block;
+    padding: 0 clamp(2px, 0.6cqw, 4px);
+    border-left: 2px solid var(--mini-event-color, var(--color-primary));
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--mini-event-color, var(--color-primary)) 26%, transparent);
+    font-size: clamp(9px, 1.7cqh, 10px);
+    line-height: 1.3;
+    color: var(--color-textPrimary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mini-cal-day--today .mini-cal-chip {
+    background: color-mix(in srgb, var(--mini-event-color, var(--color-primary)) 34%, transparent);
+  }
+
+  .mini-cal-more {
+    flex-shrink: 0;
+    font-size: clamp(7px, 1.4cqh, 9px);
+    line-height: 1.2;
+    color: var(--color-textMuted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mini-cal-dots {
+    display: none;
+  }
+}
+
+/* Keep the month controls legible on single-column tiles. */
+@container w (max-width: 20em) {
+  .calendar-header :deep(.ui-btn--sm) {
+    display: none;
+  }
 }
 
 /* Shorter tiles drop the weekday strip so the month keeps every date. */
@@ -2166,6 +2476,10 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 @container w (max-width: 16em) {
   .mini-cal-weekdays span {
     letter-spacing: 0;
+  }
+
+  .calendar-month-nav__icon {
+    display: none;
   }
 }
 

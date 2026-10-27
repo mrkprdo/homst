@@ -155,10 +155,13 @@ describe("HomeView", () => {
       // Dispatch custom layout event
       window.dispatchEvent(new CustomEvent("homst:widget-layout-updated", { detail: [] }))
 
-      // Mini-calendar day click switches panel
+      // Mini-calendar day click jumps to the calendar on that date
       const dayBtn = wrapper.find(".mini-cal-day:not(.mini-cal-day--empty)")
+      const clickedDay = Number(dayBtn.find(".mini-cal-day__num").text())
       await dayBtn.trigger("click")
       expect(ui.activePanel.value).toBe("calendar")
+      expect(new Date(ui.calendarTarget.value!.date).getDate()).toBe(clickedDay)
+      expect(ui.calendarTarget.value!.eventId).toBeUndefined()
 
       wrapper.unmount()
     } finally {
@@ -193,11 +196,13 @@ describe("HomeView", () => {
 
       const prev = wrapper.find('[aria-label="Previous day"]')
       const next = wrapper.find('[aria-label="Next day"]')
+      const scheduleText = () =>
+        wrapper.find(".schedule-list").exists() ? wrapper.find(".schedule-list").text() : ""
       expect(prev.exists()).toBe(true)
       expect(next.exists()).toBe(true)
       expect(wrapper.find(".schedule-nav__label").text()).toBe("Today")
       expect(wrapper.text()).toContain("Today's Schedule")
-      expect(wrapper.text()).not.toContain("Tomorrow event")
+      expect(scheduleText()).not.toContain("Tomorrow event")
 
       await prev.trigger("click")
       await nextTick()
@@ -207,7 +212,7 @@ describe("HomeView", () => {
       await next.trigger("click")
       await nextTick()
       expect(wrapper.text()).toContain("Tomorrow's Schedule")
-      expect(wrapper.text()).toContain("Tomorrow event")
+      expect(scheduleText()).toContain("Tomorrow event")
 
       // Keep going to any date, not just tomorrow.
       await next.trigger("click")
@@ -228,7 +233,7 @@ describe("HomeView", () => {
       await vi.advanceTimersByTimeAsync(1_000)
       await nextTick()
       expect(wrapper.text()).toContain("Today's Schedule")
-      expect(wrapper.text()).not.toContain("Tomorrow event")
+      expect(scheduleText()).not.toContain("Tomorrow event")
 
       // Leaving the home screen resets the picker as well.
       await next.trigger("click")
@@ -243,6 +248,91 @@ describe("HomeView", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("navigates the mini calendar by month and previews event titles", async () => {
+    vi.useFakeTimers()
+    const base = Math.floor(Date.now() / 60_000) * 60_000
+    vi.setSystemTime(base)
+    try {
+      vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))
+      const ev = useEvents()
+      const eventDate = new Date(base)
+      eventDate.setHours(12, 0, 0, 0)
+      const eventEnd = new Date(eventDate)
+      eventEnd.setHours(13)
+      ev.upsertEvent({
+        id: "mini-calendar-event", calendarId: "c1", title: "Mini calendar event", description: "",
+        startAt: eventDate.toISOString(), endAt: eventEnd.toISOString(), allDay: false, recurrence: null,
+        source: "internal", externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+      })
+
+      const wrapper = mount(HomeView)
+      await flushPromises()
+      await nextTick()
+
+      const monthLabel = () => wrapper.find(".calendar-month-nav__label")
+      const current = new Date(base)
+      const currentMonth = current.toLocaleString("en-US", { month: "long", year: "numeric" })
+      expect(monthLabel().text()).toBe(currentMonth)
+      expect(wrapper.findAll(".mini-cal-chip").map(chip => chip.text())).toContain("Mini calendar event")
+      expect(wrapper.findAll(".event-dot").length).toBeGreaterThan(0)
+
+      await wrapper.find('[aria-label="Next month"]').trigger("click")
+      await nextTick()
+      const next = new Date(base)
+      next.setDate(1)
+      next.setMonth(next.getMonth() + 1)
+      expect(monthLabel().text()).toBe(next.toLocaleString("en-US", { month: "long", year: "numeric" }))
+
+      await wrapper.find('[aria-label="Previous month"]').trigger("click")
+      await nextTick()
+      expect(monthLabel().text()).toBe(currentMonth)
+
+      await wrapper.find('[aria-label="Previous month"]').trigger("click")
+      await nextTick()
+      const previous = new Date(base)
+      previous.setDate(1)
+      previous.setMonth(previous.getMonth() - 1)
+      expect(monthLabel().text()).toBe(previous.toLocaleString("en-US", { month: "long", year: "numeric" }))
+
+      // The month title is the shortcut back to the live month.
+      await monthLabel().trigger("click")
+      await nextTick()
+      expect(monthLabel().text()).toBe(currentMonth)
+
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("links a schedule event to its calendar date and detail", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))
+    const ev = useEvents()
+    const ui = useUi()
+    const start = new Date()
+    start.setHours(15, 0, 0, 0)
+    const end = new Date(start)
+    end.setHours(16)
+    ev.upsertEvent({
+      id: "linked-event", calendarId: "c1", title: "Linked event", description: "",
+      startAt: start.toISOString(), endAt: end.toISOString(), allDay: false, recurrence: null,
+      source: "internal", externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+    })
+
+    const wrapper = mount(HomeView)
+    await flushPromises()
+    await nextTick()
+
+    const row = wrapper.findAll(".schedule-row").find(r => r.text().includes("Linked event"))
+    expect(row).toBeTruthy()
+    await row!.trigger("click")
+
+    expect(ui.activePanel.value).toBe("calendar")
+    expect(ui.calendarTarget.value?.eventId).toBe("linked-event")
+    expect(new Date(ui.calendarTarget.value!.date).toDateString()).toBe(start.toDateString())
+    wrapper.unmount()
   })
 
   const LEGACY_LAYOUT = [

@@ -21,10 +21,22 @@ const now = ref(new Date())
 let nowInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
+  const target = ui.consumeCalendarTarget()
+  if (target) {
+    const targetDate = new Date(target.date)
+    if (!Number.isNaN(targetDate.getTime())) {
+      selectedDate.value = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate())
+      currentYear.value = targetDate.getFullYear()
+      currentMonth.value = targetDate.getMonth()
+    }
+  }
+
   await Promise.all([
     loadMembers(),
     prefetchAround(currentYear.value, currentMonth.value),
   ])
+
+  if (target?.eventId) ui.openDrawer("event-detail", target.eventId)
   nowInterval = setInterval(() => { now.value = new Date() }, 60000)
 })
 

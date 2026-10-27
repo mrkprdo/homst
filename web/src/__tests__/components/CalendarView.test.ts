@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { mount } from "@vue/test-utils"
+import { mount, flushPromises } from "@vue/test-utils"
 import { nextTick } from "vue"
 import CalendarView from "@/components/calendar/CalendarView.vue"
 import { useEvents } from "@/composables/useEvents"
@@ -147,6 +147,36 @@ describe("CalendarView", () => {
     await addBtn.trigger("click")
     expect(ui.isDrawerOpen.value).toBe(true)
     expect(ui.drawer.value.type).toBe("quick-add")
+  })
+
+  it("opens focused on a requested calendar date", async () => {
+    const ui = useUi()
+    const target = new Date(2030, 0, 15)
+    ui.openCalendar(target)
+
+    const wrapper = mount(CalendarView)
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.find(".day-cell.selected .day-num").text()).toBe("15")
+    expect(ui.calendarTarget.value).toBeNull()
+    expect(ui.drawer.value.type).toBeNull()
+    wrapper.unmount()
+  })
+
+  it("opens the event detail after landing on its date", async () => {
+    const ui = useUi()
+    const target = new Date(2030, 0, 15)
+    ui.openCalendar(target, "evt-focused")
+
+    const wrapper = mount(CalendarView)
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.find(".day-cell.selected .day-num").text()).toBe("15")
+    expect(ui.drawer.value.type).toBe("event-detail")
+    expect(ui.drawer.value.id).toBe("evt-focused")
+    wrapper.unmount()
   })
 
   it("navigation arrows exist and are clickable", async () => {

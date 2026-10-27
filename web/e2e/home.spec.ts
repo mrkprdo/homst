@@ -78,8 +78,34 @@ test.describe("Home dashboard", () => {
     await page.reload()
     await page.waitForTimeout(700)
     await expect(page.locator(".widget").filter({ hasText: "Today's Schedule" })).toContainText("Team standup")
-    // Event day is dotted on the mini calendar
-    await expect(page.locator(".event-dot").first()).toBeVisible()
+    // Event day is marked on the mini calendar (chips in detailed tiles, dots when compact)
+    await expect(page.locator(".mini-cal-chip:visible, .event-dot:visible").first()).toBeVisible()
+  })
+
+  test("mini calendar date click opens that date in the calendar", async ({ page }) => {
+    const day = page.locator(".mini-cal-day:not(.mini-cal-day--empty)").nth(10)
+    const dayNumber = (await day.locator(".mini-cal-day__num").innerText()).trim()
+    await day.click()
+
+    await expect(page.locator(".calendar-view")).toBeVisible()
+    await expect(page.locator(".day-cell.selected .day-num")).toHaveText(dayNumber)
+  })
+
+  test("schedule event click opens its date and event detail", async ({ page }) => {
+    const start = new Date()
+    start.setHours(12, 0, 0, 0)
+    const end = new Date(start)
+    end.setHours(13)
+    addMockEvent({ title: "Linked standup", start_at: start.toISOString(), end_at: end.toISOString() })
+    await page.reload()
+    await page.waitForTimeout(700)
+
+    await page.locator(".widget").filter({ hasText: "Today's Schedule" })
+      .locator(".schedule-row").filter({ hasText: "Linked standup" }).click()
+
+    await expect(page.locator(".calendar-view")).toBeVisible()
+    await expect(page.locator(".edp-title")).toHaveText("Linked standup")
+    await expect(page.locator(".day-cell.selected .day-num")).toHaveText(String(start.getDate()))
   })
 
   test("lock toggle switches the canvas into edit mode", async ({ page }) => {

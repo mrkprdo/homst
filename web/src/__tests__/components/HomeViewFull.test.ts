@@ -156,7 +156,7 @@ describe("HomeView — layout engine & edit mode", () => {
     await wrapper.findAll(".widget")[1].find("button").trigger("click")
     expect(ui.activePanel.value).toBe("calendar")
     ui.setPanel("home")
-    await wrapper.findAll(".widget")[3].find("button").trigger("click")
+    await wrapper.findAll(".widget")[3].find(".calendar-open-btn").trigger("click")
     expect(ui.activePanel.value).toBe("calendar")
     ui.setPanel("home")
     await wrapper.findAll(".widget")[4].find("button").trigger("click")
