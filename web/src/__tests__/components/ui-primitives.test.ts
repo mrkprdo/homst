@@ -143,4 +143,37 @@ describe("UI primitives", () => {
     settings.updateFontSize("small")
     await nextTick()
   })
+
+  it("UiSegmentedControl repositions its pill when the container resizes", async () => {
+    const OriginalResizeObserver = globalThis.ResizeObserver
+    let callback: ResizeObserverCallback | null = null
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) { callback = cb }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+
+    try {
+      const w = mount(UiSegmentedControl, {
+        props: {
+          modelValue: "a",
+          options: [
+            { value: "a", label: "Alpha" },
+            { value: "b", label: "Beta" },
+          ],
+        },
+      })
+      await nextTick()
+      expect(callback).toBeTruthy()
+
+      const entry = (width: number) => [{ contentRect: { width } } as ResizeObserverEntry]
+      callback!(entry(160), {} as ResizeObserver)
+      callback!(entry(160), {} as ResizeObserver)
+      callback!(entry(200), {} as ResizeObserver)
+      expect(w.exists()).toBe(true)
+    } finally {
+      globalThis.ResizeObserver = OriginalResizeObserver
+    }
+  })
 })

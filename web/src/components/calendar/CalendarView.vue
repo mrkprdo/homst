@@ -274,16 +274,18 @@ const expandedEvents = computed<Event[]>(() =>
   events.value.flatMap(ev => ev.recurrence ? expandRecurring(ev, RECUR_FROM, RECUR_TO) : [ev])
 )
 
-// Auto-scroll to 6am when switching to week view
-function scrollTo6am() {
+// Auto-scroll to the useful part of the day when switching views: current
+// time for the live day/week, otherwise the start of the working morning.
+function scrollWeekToRelevantTime() {
   nextTick(() => {
     const el = weekScrollEl.value
     if (!el) return
-    el.scrollTop = WEEK_ROW_HEIGHT * 6
+    const hour = isCurrentWeek.value ? Math.max(0, now.value.getHours() - 2) : 6
+    el.scrollTop = WEEK_ROW_HEIGHT * hour
   })
 }
 
-watch(viewMode, (v) => { if (v === "week") scrollTo6am() })
+watch(viewMode, (v) => { if (v === "week") scrollWeekToRelevantTime() })
 
 function formatEventTime(startAt: string) {
   const d = new Date(startAt)
@@ -332,25 +334,104 @@ const currentTimePx = computed(() => {
   return (h + m / 60) * WEEK_ROW_HEIGHT
 })
 
-function dayClampedStart(ev: Event, date: Date): Date {
-  const start = new Date(ev.startAt)
-  const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0)
-  return start < dayStart ? dayStart : start
+const currentTimeLabel = computed(() =>
+  now.value.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+)
+
+interface TimedEventLayoutItem {
+  event: Event
+  startMin: number
+  endMin: number
+  duration: number
+  lane: number
+  lanes: number
+  compact: boolean
+  timeLabel: string
 }
 
-function eventPositionStyle(ev: Event, date: Date) {
-  const start = new Date(ev.startAt)
-  const end = new Date(ev.endAt ?? ev.startAt)
+/**
+ * Pack each day's timed events into lanes so concurrent events sit side by
+ * side instead of covering each other. Events are grouped into clusters of
+ * overlapping time; every member of a cluster shares the same lane count.
+ */
+function timedEventLayoutForDate(date: Date): TimedEventLayoutItem[] {
   const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0)
   const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
-  const clampedStart = start < dayStart ? dayStart : start
-  const clampedEnd = end > dayEnd ? dayEnd : end
-  const startMinutes = clampedStart.getHours() * 60 + clampedStart.getMinutes()
-  const duration = Math.max((clampedEnd.getTime() - clampedStart.getTime()) / 60000, 15)
-  return {
-    top:    `${(startMinutes / 60) * WEEK_ROW_HEIGHT}px`,
-    height: `${(duration   / 60) * WEEK_ROW_HEIGHT}px`,
+
+  const items: TimedEventLayoutItem[] = timedEventsForDate(date).map(event => {
+    const start = new Date(event.startAt)
+    const end = new Date(event.endAt ?? event.startAt)
+    const clampedStart = start < dayStart ? dayStart : start
+    const clampedEnd = end > dayEnd ? dayEnd : end
+    const startMin = Math.max(0, (clampedStart.getTime() - dayStart.getTime()) / 60000)
+    const endMin = Math.min(1440, (clampedEnd.getTime() - dayStart.getTime()) / 60000)
+    const duration = Math.max(endMin - startMin, 15)
+    return {
+      event,
+      startMin,
+      endMin: startMin + duration,
+      duration,
+      lane: 0,
+      lanes: 1,
+      compact: duration < 45,
+      timeLabel: formatEventTime(clampedStart.toISOString()),
+    }
+  }).sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin)
+
+  let cluster: TimedEventLayoutItem[] = []
+  let laneEnds: number[] = []
+  let clusterEnd = -1
+
+  function finishCluster() {
+    const lanes = Math.max(laneEnds.length, 1)
+    for (const item of cluster) item.lanes = lanes
+    cluster = []
+    laneEnds = []
+    clusterEnd = -1
   }
+
+  for (const item of items) {
+    if (cluster.length && item.startMin >= clusterEnd) finishCluster()
+    let lane = laneEnds.findIndex(end => end <= item.startMin)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(item.endMin)
+    } else {
+      laneEnds[lane] = item.endMin
+    }
+    item.lane = lane
+    cluster.push(item)
+    clusterEnd = Math.max(clusterEnd, item.endMin)
+  }
+  finishCluster()
+
+  return items
+}
+
+function timedEventStyle(item: TimedEventLayoutItem): Record<string, string> {
+  const width = 100 / item.lanes
+  return {
+    top: `${(item.startMin / 60) * WEEK_ROW_HEIGHT}px`,
+    height: `${(item.duration / 60) * WEEK_ROW_HEIGHT}px`,
+    left: `calc(${item.lane * width}% + 2px)`,
+    width: `calc(${width}% - 4px)`,
+    "--event-color": eventChipColor(item.event),
+  }
+}
+
+function eventBlockTooltip(event: Event, timeLabel: string): string {
+  return `${timeLabel} · ${eventChipTitle(event)}`
+}
+
+const selectedDayEventLabel = computed(() => {
+  const count = expandedEvents.value.filter(event => coversDate(event, selectedDate.value)).length
+  return count === 0 ? "No events" : `${count} ${count === 1 ? "event" : "events"}`
+})
+
+function openDayFromWeek(date: Date) {
+  selectedDate.value = new Date(date)
+  viewMode.value = "day"
+  handleNavChange(date.getFullYear(), date.getMonth())
 }
 
 // ── Day view
@@ -379,13 +460,15 @@ const navLabel = computed(() => {
 const dayScrollEl = ref<HTMLElement | null>(null)
 const isSelectedToday = computed(() => isSameDate(selectedDate.value, today.value))
 
-function scrollDayTo6am() {
+function scrollDayToRelevantTime() {
   nextTick(() => {
-    if (dayScrollEl.value) dayScrollEl.value.scrollTop = WEEK_ROW_HEIGHT * 6
+    if (!dayScrollEl.value) return
+    const hour = isSelectedToday.value ? Math.max(0, now.value.getHours() - 2) : 6
+    dayScrollEl.value.scrollTop = WEEK_ROW_HEIGHT * hour
   })
 }
 
-watch(viewMode, (v) => { if (v === "day") scrollDayTo6am() })
+watch(viewMode, (v) => { if (v === "day") scrollDayToRelevantTime() })
 
 function onEventClick(eventId: string) {
   ui.openDrawer("event-detail", eventId.split("::")[0])
@@ -473,13 +556,22 @@ function onEventClick(eventId: string) {
         <div class="week-sticky">
           <div class="week-headers">
             <div class="week-time-gutter" />
-            <div v-for="d in weekDays" :key="d.date.toISOString()" class="week-col-header" :class="{ today: d.isToday }">
+            <button
+              v-for="d in weekDays"
+              :key="d.date.toISOString()"
+              type="button"
+              class="week-col-header"
+              :class="{ today: d.isToday }"
+              :title="`Open ${d.dayName} ${d.label}`"
+              :aria-label="`Open ${d.date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`"
+              @click="openDayFromWeek(d.date)"
+            >
               <span class="week-day-name">{{ d.dayName }}</span>
               <span class="week-day-num">{{ d.label }}</span>
-            </div>
+            </button>
           </div>
           <div v-if="hasAllDayEvents" class="week-all-day">
-            <div class="week-time-gutter" />
+            <span class="week-all-day-label">All day</span>
             <div v-for="d in weekDays" :key="'ad-'+d.date.toISOString()" class="week-all-day-cell">
               <EventChip v-for="ev in allDayEventsForDate(d.date)" :key="ev.id" :title="eventChipTitle(ev)" :all-day="true" :color="eventChipColor(ev)" @click="onEventClick(ev.id)" />
             </div>
@@ -490,10 +582,10 @@ function onEventClick(eventId: string) {
           <div v-if="isCurrentWeek" class="week-today-strip" :style="{ '--day-idx': todayDayIdx }" />
           <div class="week-grid">
             <template v-for="hour in hoursOfDay" :key="'h-'+hour">
-              <div class="week-time-label">{{ hour % 12 || 12 }}{{ hour >= 12 ? 'pm' : 'am' }}</div>
-              <div v-for="d in weekDays" :key="d.date.toISOString()+'-'+hour" class="week-hour-cell" />
+              <div class="week-time-label" :class="{ 'is-off-hours': hour < 7 || hour >= 20 }">{{ hour % 12 || 12 }}{{ hour >= 12 ? 'pm' : 'am' }}</div>
+              <div v-for="d in weekDays" :key="d.date.toISOString()+'-'+hour" class="week-hour-cell" :class="{ 'is-off-hours': hour < 7 || hour >= 20 }" />
             </template>
-            <div v-if="isCurrentWeek" class="week-now-line" :style="{ top: currentTimePx + 'px' }" />
+            <div v-if="isCurrentWeek" class="week-now-line" :style="{ top: currentTimePx + 'px', '--day-idx': todayDayIdx }" />
           </div>
           <div class="week-events-layer">
             <div class="week-gutter-filler" />
@@ -504,16 +596,22 @@ function onEventClick(eventId: string) {
               :style="{ gridColumn: idx + 2 }"
               @click.self="onWeekDayClick(d.date, $event)"
             >
-              <div
-                v-for="ev in timedEventsForDate(d.date)"
-                :key="ev.id"
+              <button
+                v-for="item in timedEventLayoutForDate(d.date)"
+                :key="item.event.id"
+                type="button"
                 class="week-event-block"
-                :style="{ top: eventPositionStyle(ev, d.date).top, height: eventPositionStyle(ev, d.date).height, '--event-color': eventChipColor(ev) }"
-                @click.stop="onEventClick(ev.id)"
+                :class="{ 'is-compact': item.compact }"
+                :style="timedEventStyle(item)"
+                :title="eventBlockTooltip(item.event, item.timeLabel)"
+                :aria-label="eventBlockTooltip(item.event, item.timeLabel)"
+                :data-lane="item.lane"
+                :data-lanes="item.lanes"
+                @click.stop="onEventClick(item.event.id)"
               >
-                <span class="week-event__time">{{ formatEventTime(dayClampedStart(ev, d.date).toISOString()) }}</span>
-                <span class="week-event__title">{{ eventChipTitle(ev) }}</span>
-              </div>
+                <span class="week-event__time">{{ item.timeLabel }}</span>
+                <span class="week-event__title">{{ item.event.title }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -525,12 +623,21 @@ function onEventClick(eventId: string) {
       <div ref="dayScrollEl" class="day-scroll">
         <div class="day-sticky">
           <div class="day-banner" :class="{ today: isSelectedToday }">
-            <span class="day-banner-dayname">{{ dayNames[selectedDate.getDay()] }}</span>
-            <span class="day-banner-date">{{ selectedDate.getDate() }}</span>
-            <span class="day-banner-month">{{ selectedDate.toLocaleDateString('en-US',{month:'long',year:'numeric'}) }}</span>
+            <div class="day-banner__date">
+              <span class="day-banner-dayname">{{ dayNames[selectedDate.getDay()] }}</span>
+              <span class="day-banner-date">{{ selectedDate.getDate() }}</span>
+              <span class="day-banner-month">{{ selectedDate.toLocaleDateString('en-US',{month:'long',year:'numeric'}) }}</span>
+            </div>
+            <div class="day-banner__meta">
+              <span v-if="isSelectedToday" class="day-banner-badge">Today</span>
+              <span v-if="isSelectedToday" class="day-banner-now">
+                <span class="day-banner-now-dot" aria-hidden="true" />Now {{ currentTimeLabel }}
+              </span>
+              <span class="day-banner-count">{{ selectedDayEventLabel }}</span>
+            </div>
           </div>
           <div v-if="allDayEventsForDate(selectedDate).length" class="day-all-day">
-            <div class="day-time-gutter" />
+            <span class="day-all-day-label">All day</span>
             <div class="day-all-day-cell">
               <EventChip v-for="ev in allDayEventsForDate(selectedDate)" :key="ev.id" :title="eventChipTitle(ev)" :all-day="true" :color="eventChipColor(ev)" @click="onEventClick(ev.id)" />
             </div>
@@ -539,24 +646,30 @@ function onEventClick(eventId: string) {
         <div class="day-body">
           <div class="day-grid">
             <template v-for="hour in hoursOfDay" :key="'dh-'+hour">
-              <div class="day-time-label">{{ hour % 12 || 12 }}{{ hour >= 12 ? 'pm' : 'am' }}</div>
-              <div class="day-hour-cell" />
+              <div class="day-time-label" :class="{ 'is-off-hours': hour < 7 || hour >= 20 }">{{ hour % 12 || 12 }}{{ hour >= 12 ? 'pm' : 'am' }}</div>
+              <div class="day-hour-cell" :class="{ 'is-off-hours': hour < 7 || hour >= 20 }" />
             </template>
             <div v-if="isSelectedToday" class="day-now-line" :style="{ top: currentTimePx + 'px' }" />
           </div>
           <div class="day-events-layer">
             <div class="day-gutter-filler" />
             <div class="day-event-col" @click.self="onWeekDayClick(selectedDate, $event)">
-              <div
-                v-for="ev in timedEventsForDate(selectedDate)"
-                :key="ev.id"
+              <button
+                v-for="item in timedEventLayoutForDate(selectedDate)"
+                :key="item.event.id"
+                type="button"
                 class="day-event-block"
-                :style="{ top: eventPositionStyle(ev, selectedDate).top, height: eventPositionStyle(ev, selectedDate).height, '--event-color': eventChipColor(ev) }"
-                @click.stop="onEventClick(ev.id)"
+                :class="{ 'is-compact': item.compact }"
+                :style="timedEventStyle(item)"
+                :title="eventBlockTooltip(item.event, item.timeLabel)"
+                :aria-label="eventBlockTooltip(item.event, item.timeLabel)"
+                :data-lane="item.lane"
+                :data-lanes="item.lanes"
+                @click.stop="onEventClick(item.event.id)"
               >
-                <span class="day-event__time">{{ formatEventTime(dayClampedStart(ev, selectedDate).toISOString()) }}</span>
-                <span class="day-event__title">{{ eventChipTitle(ev) }}</span>
-              </div>
+                <span class="day-event__time">{{ item.timeLabel }}</span>
+                <span class="day-event__title">{{ item.event.title }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -565,9 +678,14 @@ function onEventClick(eventId: string) {
 
     <!-- Skeleton -->
     <Transition name="skeleton-fade">
-      <div v-if="loading" class="skeleton-grid">
-        <div v-for="i in 7" :key="'sh-'+i" class="skeleton-header" />
-        <div v-for="i in 35" :key="'sc-'+i" class="skeleton-cell" />
+      <div v-if="loading" class="skeleton-grid" :class="`skeleton-grid--${viewMode}`">
+        <template v-if="viewMode === 'month'">
+          <div v-for="i in 7" :key="'sh-'+i" class="skeleton-header" />
+          <div v-for="i in 35" :key="'sc-'+i" class="skeleton-cell" />
+        </template>
+        <div v-else class="skeleton-timeline">
+          <div v-for="i in 10" :key="'st-'+i" class="skeleton-time-row" />
+        </div>
       </div>
     </Transition>
   </div>
@@ -633,82 +751,323 @@ function onEventClick(eventId: string) {
 .week-headers{display:grid;grid-template-columns:48px repeat(7,1fr);column-gap:var(--space-1);flex-shrink:0;padding-bottom:var(--space-1)}
 .week-time-gutter{grid-column:1}
 
-.week-col-header{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:var(--space-1);border-radius:var(--radius-sm);font-size:var(--text-body-size);font-weight:var(--font-weight-medium);background:var(--color-accent-lighter);color:var(--color-textPrimary);transition:background var(--duration-fast);border-bottom:2px solid transparent}
-.week-col-header.today{background:var(--color-accent-base);color:var(--color-on-accent,var(--color-textInverse));border-bottom-color:var(--color-accent-dark);box-shadow:0 2px 0 0 var(--color-accent-dark)}
-.week-day-name{font-size:var(--text-micro-size);opacity:0.7;text-transform:uppercase;letter-spacing:0.04em}
-.week-day-num{font-size:var(--text-heading-size);line-height:1}
+.week-col-header{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:1px;
+  min-width:0;
+  padding:var(--space-1) var(--space-1) var(--space-2);
+  border:none;
+  border-bottom:2px solid transparent;
+  border-radius:var(--radius-sm) var(--radius-sm) 0 0;
+  background:transparent;
+  color:var(--color-textSecondary);
+  font-family:var(--font-family);
+  appearance:none;
+  cursor:pointer;
+  transition:background var(--duration-fast),color var(--duration-fast),border-color var(--duration-fast);
+}
+.week-col-header:hover{background:var(--color-bgSubtle);color:var(--color-textPrimary)}
+.week-col-header:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}
+.week-col-header.today{
+  background:color-mix(in srgb,var(--color-accent-base) 12%,transparent);
+  border-bottom-color:var(--color-accent-dark);
+  color:var(--color-textPrimary);
+}
+.week-col-header.today:hover{background:color-mix(in srgb,var(--color-accent-base) 18%,transparent)}
+.week-day-name{
+  font-size:var(--text-micro-size);
+  font-weight:var(--font-weight-medium);
+  color:var(--color-textMuted);
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  line-height:1.2;
+}
+.week-day-num{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:1.5em;
+  height:1.5em;
+  padding:0 .3em;
+  border-radius:var(--radius-full);
+  font-size:var(--text-heading-size);
+  font-weight:var(--font-weight-medium);
+  line-height:1;
+  font-variant-numeric:tabular-nums;
+}
+.week-col-header.today .week-day-num{background:var(--color-accent-dark);color:var(--color-on-accent,var(--color-textInverse))}
+.week-col-header.today .week-day-name{color:var(--color-textSecondary)}
 
 /* ── All-day events bar ── */
-.week-all-day{display:grid;grid-template-columns:48px repeat(7,1fr);column-gap:var(--space-1);padding-bottom:var(--space-1);padding-top:var(--space-1)}
+.week-all-day{
+  display:grid;
+  grid-template-columns:48px repeat(7,1fr);
+  column-gap:var(--space-1);
+  padding:var(--space-1) 0;
+  background:color-mix(in srgb,var(--color-bgSubtle) 55%,transparent);
+  border-top:1px solid var(--color-border);
+}
+.week-all-day-label{
+  grid-column:1;
+  align-self:start;
+  justify-self:end;
+  padding:2px var(--space-1) 0 0;
+  font-size:calc(var(--text-micro-size) * 0.85);
+  color:var(--color-textMuted);
+  text-transform:uppercase;
+  letter-spacing:.02em;
+  line-height:1.3;
+  white-space:nowrap;
+}
 .week-all-day-cell{display:flex;flex-direction:column;gap:2px;min-height:0}
 
 /* ── Body: time grid + events overlay ── */
 .week-body{position:relative}
 
-.week-grid{display:grid;grid-template-columns:48px repeat(7,1fr);column-gap:var(--space-1);grid-auto-rows:56px;position:relative}
+.week-grid{
+  display:grid;
+  grid-template-columns:48px repeat(7,1fr);
+  column-gap:var(--space-1);
+  grid-auto-rows:56px;
+  position:relative;
+  --_cw:calc((100% - 76px) / 7);
+}
 
-.week-time-label{display:flex;align-items:flex-start;justify-content:flex-end;padding:var(--space-1) var(--space-2) 0 0;font-size:var(--text-micro-size);color:var(--color-textMuted);font-variant-numeric:tabular-nums}
+.week-time-label{
+  display:flex;
+  align-items:flex-start;
+  justify-content:flex-end;
+  padding:var(--space-1) var(--space-2) 0 0;
+  border-radius:0 var(--radius-xs) var(--radius-xs) 0;
+  font-size:var(--text-micro-size);
+  color:var(--color-textSecondary);
+  font-variant-numeric:tabular-nums;
+  transition:background var(--duration-fast);
+}
 
 /* Hour cell — clean, minimal */
-.week-hour-cell{border-bottom:1px solid var(--color-border)}
+.week-hour-cell{
+  border-bottom:1px solid color-mix(in srgb,var(--color-border) 70%,transparent);
+  transition:background var(--duration-fast);
+}
 .week-hour-cell:hover{background:var(--color-bgSubtle)}
+.week-time-label.is-off-hours,
+.week-hour-cell.is-off-hours{background:color-mix(in srgb,var(--color-bgSubtle) 42%,transparent)}
 
 /* Today column accent strip — absolute, full height of scroll body, behind grid */
 /* col-gap = 4px (--space-1), 7 gaps total = 28px; col-width = (100% - 48px - 28px)/7 */
 .week-today-strip{
-  --_cw: calc((100% - 76px) / 7);
+  --_cw:calc((100% - 76px) / 7);
   position:absolute;top:0;bottom:0;
   left:calc(52px + var(--day-idx,0) * (4px + var(--_cw)));
   width:var(--_cw);
-  background:color-mix(in srgb,var(--color-accent-base) 16%,transparent);pointer-events:none;z-index:0
+  border-radius:0 0 var(--radius-sm) var(--radius-sm);
+  background:color-mix(in srgb,var(--color-accent-base) 9%,transparent);
+  pointer-events:none;
+  z-index:0;
 }
 
-/* Current time line — positioned inside .week-grid (position:relative) */
-.week-now-line{position:absolute;left:calc(48px + var(--space-1));right:0;height:2px;background:var(--color-accent-dark);z-index:5;pointer-events:none;transform:translateY(-1px)}
-.week-now-line::before{content:'';position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--color-accent-dark)}
+/* Current time line — only over today's column */
+.week-now-line{
+  position:absolute;
+  left:calc(52px + var(--day-idx,0) * (4px + var(--_cw)));
+  width:var(--_cw);
+  height:2px;
+  background:var(--color-accent-dark);
+  z-index:5;
+  pointer-events:none;
+  transform:translateY(-1px);
+}
+.week-now-line::before,
+.day-now-line::before{
+  content:'';position:absolute;left:-5px;top:-4px;
+  width:10px;height:10px;border-radius:50%;
+  background:var(--color-accent-dark);
+}
 
 /* ── Events overlay ── */
 .week-events-layer{position:absolute;inset:0;display:grid;grid-template-columns:48px repeat(7,1fr);grid-template-rows:1fr;column-gap:var(--space-1);pointer-events:none}
 .week-gutter-filler{grid-column:1}
 .week-event-col{position:relative;grid-row:1/-1;pointer-events:auto;cursor:pointer}
 
-.week-event-block{position:absolute;left:2px;right:2px;border-radius:var(--radius-xs);padding:1px 4px;overflow:hidden;cursor:pointer;background:color-mix(in srgb,var(--event-color) 18%,var(--color-bgBase));border-left:3px solid var(--event-color);font-size:var(--text-label-size);line-height:1.3;min-height:14px;display:flex;flex-direction:column;gap:0;transition:box-shadow var(--duration-fast),z-index 0s;z-index:1}
-.week-event-block:hover{box-shadow:0 2px 8px -2px color-mix(in srgb,var(--event-color) 50%,transparent);z-index:2}
-.week-event__time{font-size:10px;opacity:0.65;font-variant-numeric:tabular-nums;flex-shrink:0}
-.week-event__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Timed event cards are shared by week and day so both views feel identical. */
+.week-event-block,
+.day-event-block{
+  position:absolute;
+  border-radius:var(--radius-xs);
+  border:none;
+  padding:2px 6px;
+  overflow:hidden;
+  background:color-mix(in srgb,var(--event-color) 22%,var(--color-bgElevated));
+  color:var(--color-textPrimary);
+  font-family:var(--font-family);
+  font-size:var(--text-label-size);
+  line-height:1.25;
+  text-align:left;
+  min-height:20px;
+  display:flex;
+  flex-direction:column;
+  gap:1px;
+  cursor:pointer;
+  appearance:none;
+  transition:box-shadow var(--duration-fast),background var(--duration-fast),z-index 0s;
+  z-index:1;
+}
+.week-event-block:hover,
+.day-event-block:hover{
+  background:color-mix(in srgb,var(--event-color) 28%,var(--color-bgElevated));
+  box-shadow:0 4px 12px -4px color-mix(in srgb,var(--event-color) 55%,transparent);
+  z-index:3;
+}
+.week-event-block:focus-visible,
+.day-event-block:focus-visible{outline:2px solid var(--color-primary);outline-offset:1px;z-index:4}
+.week-event__time,
+.day-event__time{
+  font-size:var(--text-micro-size);
+  color:var(--color-textSecondary);
+  font-variant-numeric:tabular-nums;
+  flex-shrink:0;
+  line-height:1.2;
+}
+.week-event__title,
+.day-event__title{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:var(--text-label-size);
+  line-height:1.25;
+}
+.week-event-block.is-compact,
+.day-event-block.is-compact{
+  flex-direction:row;
+  align-items:center;
+  gap:var(--space-2);
+  padding:1px 5px;
+}
+.week-event-block.is-compact .week-event__time,
+.day-event-block.is-compact .day-event__time{display:none}
+.week-event-block.is-compact .week-event__title,
+.day-event-block.is-compact .day-event__title{flex:1}
 
 /* ── Day View ── */
 .day-view{display:flex;flex-direction:column;flex:1;min-height:0}
 .day-scroll{flex:1;min-height:0;overflow-y:auto;width:100%}
 .day-sticky{position:sticky;top:0;z-index:10;background:var(--color-bgBase);border-bottom:1px solid var(--color-border)}
-.day-banner{display:flex;align-items:baseline;justify-content:center;gap:var(--space-3);padding:var(--space-3) var(--space-6);background:var(--color-bgSubtle);flex-shrink:0}
-.day-banner.today{background:linear-gradient(165deg,var(--color-accent-base),var(--color-accent-dark));color:var(--color-on-accent,var(--color-textInverse))}
-.day-banner-dayname{font-size:var(--text-title-size);font-weight:var(--font-weight-regular)}
-.day-banner-date{font-size:var(--text-display-size);font-weight:var(--font-weight-thin)}
-.day-banner-month{font-size:var(--text-body-size);opacity:0.7}
-.day-all-day{display:grid;grid-template-columns:48px 1fr;column-gap:var(--space-2);padding:var(--space-1);border-top:1px solid var(--color-border)}
-.day-time-gutter{grid-column:1}
+.day-banner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:var(--space-3);
+  row-gap:var(--space-1);
+  padding:var(--space-2) var(--space-5);
+  background:color-mix(in srgb,var(--color-bgSubtle) 55%,transparent);
+  flex-shrink:0;
+}
+.day-banner.today{background:color-mix(in srgb,var(--color-accent-base) 12%,transparent)}
+.day-banner__date{display:flex;align-items:baseline;gap:var(--space-2);min-width:0;flex-wrap:wrap}
+.day-banner-dayname{font-size:var(--text-title-size);font-weight:var(--font-weight-regular);line-height:1.2}
+.day-banner-date{font-size:var(--text-display-size);font-weight:var(--font-weight-thin);line-height:1;font-variant-numeric:tabular-nums}
+.day-banner-month{font-size:var(--text-body-size);color:var(--color-textMuted)}
+.day-banner.today .day-banner-month{color:var(--color-textSecondary)}
+.day-banner__meta{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;flex-shrink:0}
+.day-banner-badge{
+  padding:1px 8px;
+  border-radius:var(--radius-full);
+  background:var(--color-accent-dark);
+  color:var(--color-on-accent,var(--color-textInverse));
+  font-size:var(--text-micro-size);
+  font-weight:var(--font-weight-medium);
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  line-height:1.6;
+}
+.day-banner-count{font-size:var(--text-label-size);color:var(--color-textMuted);white-space:nowrap}
+.day-banner-now{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:var(--text-label-size);
+  color:var(--color-textSecondary);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.day-banner-now-dot{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:var(--color-accent-dark);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--color-accent-base) 28%,transparent);
+}
+.day-all-day{
+  display:grid;
+  grid-template-columns:48px 1fr;
+  column-gap:var(--space-2);
+  padding:var(--space-1) 0;
+  background:color-mix(in srgb,var(--color-bgSubtle) 55%,transparent);
+  border-top:1px solid var(--color-border);
+}
+.day-all-day-label{
+  grid-column:1;
+  align-self:start;
+  justify-self:end;
+  padding:2px var(--space-1) 0 0;
+  font-size:calc(var(--text-micro-size) * 0.85);
+  color:var(--color-textMuted);
+  text-transform:uppercase;
+  letter-spacing:.02em;
+  line-height:1.3;
+  white-space:nowrap;
+}
 .day-all-day-cell{display:flex;flex-direction:column;gap:2px}
 .day-body{position:relative}
 .day-grid{display:grid;grid-template-columns:48px 1fr;column-gap:var(--space-2);grid-auto-rows:56px;position:relative}
-.day-time-label{display:flex;align-items:flex-start;justify-content:flex-end;padding:var(--space-1) var(--space-2) 0 0;font-size:var(--text-micro-size);color:var(--color-textMuted);font-variant-numeric:tabular-nums}
-.day-hour-cell{border-bottom:1px solid var(--color-border)}
+.day-time-label{
+  display:flex;
+  align-items:flex-start;
+  justify-content:flex-end;
+  padding:var(--space-1) var(--space-2) 0 0;
+  border-radius:0 var(--radius-xs) var(--radius-xs) 0;
+  font-size:var(--text-micro-size);
+  color:var(--color-textSecondary);
+  font-variant-numeric:tabular-nums;
+  transition:background var(--duration-fast);
+}
+.day-hour-cell{
+  border-bottom:1px solid color-mix(in srgb,var(--color-border) 70%,transparent);
+  transition:background var(--duration-fast);
+}
 .day-hour-cell:hover{background:var(--color-bgSubtle)}
-.day-now-line{position:absolute;left:calc(48px + var(--space-2));right:0;height:2px;background:var(--color-accent-dark);z-index:5;pointer-events:none;transform:translateY(-1px)}
-.day-now-line::before{content:'';position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--color-accent-dark)}
+.day-time-label.is-off-hours,
+.day-hour-cell.is-off-hours{background:color-mix(in srgb,var(--color-bgSubtle) 42%,transparent)}
+.day-now-line{
+  position:absolute;
+  left:calc(48px + var(--space-2));
+  right:0;
+  height:2px;
+  background:var(--color-accent-dark);
+  z-index:5;
+  pointer-events:none;
+  transform:translateY(-1px);
+}
 .day-events-layer{position:absolute;inset:0;display:grid;grid-template-columns:48px 1fr;grid-template-rows:1fr;column-gap:var(--space-2);pointer-events:none}
 .day-gutter-filler{grid-column:1}
 .day-event-col{position:relative;grid-column:2;grid-row:1/-1;pointer-events:auto;cursor:pointer}
-.day-event-block{position:absolute;left:2px;right:2px;border-radius:var(--radius-xs);padding:2px 6px;overflow:hidden;cursor:pointer;background:color-mix(in srgb,var(--event-color) 18%,var(--color-bgBase));border-left:3px solid var(--event-color);font-size:var(--text-label-size);line-height:1.3;min-height:14px;display:flex;flex-direction:column;gap:0;transition:box-shadow var(--duration-fast);z-index:1}
-.day-event-block:hover{box-shadow:0 2px 8px -2px color-mix(in srgb,var(--event-color) 50%,transparent);z-index:2}
-.day-event__time{font-size:10px;opacity:0.65;font-variant-numeric:tabular-nums;flex-shrink:0}
-.day-event__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* Skeleton */
 .skeleton-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--color-border);border-radius:var(--radius-md);overflow:hidden;position:absolute;inset:0;top:56px}
+.skeleton-grid--week,
+.skeleton-grid--day{display:block;background:var(--color-bgBase);border-radius:0}
+.skeleton-timeline{display:flex;flex-direction:column;gap:1px}
+.skeleton-time-row{height:56px;background:var(--color-bgSurface);position:relative;overflow:hidden}
 .skeleton-header{height:32px;background:var(--color-bgSurface)}
 .skeleton-cell{min-height:100px;background:var(--color-bgSurface);position:relative;overflow:hidden}
-.skeleton-cell::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,var(--shadow-shine) 45%,var(--shadow-shine) 50%,var(--shadow-shine) 55%,transparent 100%);background-size:250% 100%;animation:shimmer 1.8s ease-in-out infinite}
+.skeleton-cell::after,
+.skeleton-time-row::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,var(--shadow-shine) 45%,var(--shadow-shine) 50%,var(--shadow-shine) 55%,transparent 100%);background-size:250% 100%;animation:shimmer 1.8s ease-in-out infinite}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .skeleton-fade-enter-active{transition:opacity var(--duration-base) ease}
 .skeleton-fade-leave-active{transition:opacity var(--duration-slow) ease}
@@ -725,8 +1084,7 @@ function onEventClick(eventId: string) {
 </style>
 
 <style>
-.dark .day-header,
-.dark .week-col-header {
+.dark .day-header {
   background: var(--color-accent-dark);
   color: var(--color-textPrimary);
 }

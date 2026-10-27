@@ -108,6 +108,16 @@ html.low-power.vinyl-backdrop .ms-nav {
   background: color-mix(in srgb, var(--color-bgSurface) 88%, transparent) !important;
 }
 
+/* The calendar timeline has no card surface to fall back on. Paint the same
+   panel tint it normally inherits so the grid stays legible over the record. */
+html.vinyl-backdrop .calendar-view {
+  background-color: var(--color-bgSubtle);
+}
+
+html.dark.vinyl-backdrop .calendar-view {
+  background-color: var(--color-bgBase);
+}
+
 .app-root,
 .main-panel,
 .mobile-shell {

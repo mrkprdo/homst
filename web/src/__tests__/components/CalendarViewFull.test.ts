@@ -246,7 +246,7 @@ describe("CalendarView (recurrence expansion)", () => {
 })
 
 describe("CalendarView (week & day layout)", () => {
-  it("scrolls the week grid to 6am and shows the now line", async () => {
+  it("scrolls the week grid near the current time and shows the now line", async () => {
     const wrapper = mount(CalendarView)
     await switchView(wrapper, 1)
     await nextTick()
@@ -254,14 +254,53 @@ describe("CalendarView (week & day layout)", () => {
     expect(wrapper.find(".week-grid").exists()).toBe(true)
     expect(wrapper.find(".week-today-strip").exists()).toBe(true)
     expect(wrapper.find(".week-now-line").exists()).toBe(true)
-    expect(wrapper.find(".week-scroll").element.scrollTop).toBe(56 * 6)
+    expect(wrapper.find(".week-scroll").element.scrollTop).toBe(56 * Math.max(0, new Date().getHours() - 2))
   })
 
-  it("scrolls the day grid to 6am", async () => {
+  it("scrolls the day grid near the current time", async () => {
     const wrapper = mount(CalendarView)
     await switchView(wrapper, 2)
     await nextTick()
-    expect(wrapper.find(".day-scroll").element.scrollTop).toBe(56 * 6)
+    expect(wrapper.find(".day-scroll").element.scrollTop).toBe(56 * Math.max(0, new Date().getHours() - 2))
+  })
+
+  it("places overlapping week events side by side and compacts short ones", async () => {
+    seedCalendar()
+    const now = new Date()
+    const at = (h: number, m: number) =>
+      new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).toISOString()
+
+    seedEvent({ id: "ov-long", title: "Long block", startAt: at(9, 0), endAt: at(10, 30) })
+    seedEvent({ id: "ov-short", title: "Short block", startAt: at(9, 30), endAt: at(10, 0) })
+    seedEvent({ id: "ov-tail", title: "Tail block", startAt: at(10, 0), endAt: at(10, 30) })
+
+    const wrapper = mount(CalendarView)
+    await switchView(wrapper, 1)
+    await nextTick()
+
+    const long = wrapper.findAll(".week-event-block").find(block => block.text().includes("Long block"))
+    const short = wrapper.findAll(".week-event-block").find(block => block.text().includes("Short block"))
+    const tail = wrapper.findAll(".week-event-block").find(block => block.text().includes("Tail block"))
+    expect(long).toBeTruthy()
+    expect(short).toBeTruthy()
+    expect(tail).toBeTruthy()
+    expect(long!.attributes("data-lanes")).toBe("2")
+    expect(short!.attributes("data-lanes")).toBe("2")
+    expect(tail!.attributes("data-lanes")).toBe("2")
+    expect(long!.attributes("data-lane")).not.toBe(short!.attributes("data-lane"))
+    expect(tail!.attributes("data-lane")).toBe(short!.attributes("data-lane"))
+    expect(short!.classes()).toContain("is-compact")
+    expect(long!.classes()).not.toContain("is-compact")
+  })
+
+  it("opens a week column header in day view", async () => {
+    const wrapper = mount(CalendarView)
+    await switchView(wrapper, 1)
+    await nextTick()
+
+    await wrapper.findAll(".week-col-header")[3]!.trigger("click")
+    await nextTick()
+    expect(wrapper.find(".day-view").exists()).toBe(true)
   })
 
   it("renders an all-day row in the week view for all-day events", async () => {

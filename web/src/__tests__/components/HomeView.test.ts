@@ -244,10 +244,54 @@ describe("HomeView", () => {
       expect(wrapper.text()).toContain("Today's Schedule")
 
       ui.setPanel("home")
+
+      // Crossing a month boundary fetches that month on demand.
+      for (let i = 0; i < 40; i++) (next.element as HTMLButtonElement).click()
+      await nextTick()
+      await flushPromises()
+      expect(wrapper.find(".schedule-nav__label").text()).not.toBe("Today")
+
+      // Tapping the date itself is the shortcut back to Today.
+      await wrapper.find(".schedule-nav__active").trigger("click")
+      await nextTick()
+      expect(wrapper.find(".schedule-nav__label").text()).toBe("Today")
+
       wrapper.unmount()
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("sorts all-day events before timed events in the schedule", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))
+    const ev = useEvents()
+    const now = new Date()
+    const at = (hour: number) =>
+      new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour).toISOString()
+
+    ev.upsertEvent({
+      id: "sort-all-day", calendarId: "c1", title: "All-day holiday", description: "",
+      startAt: at(0), endAt: at(0), allDay: true, recurrence: null,
+      source: "internal", externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+    })
+    ev.upsertEvent({
+      id: "sort-late", calendarId: "c1", title: "Late event", description: "",
+      startAt: at(15), endAt: at(16), allDay: false, recurrence: null,
+      source: "internal", externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+    })
+    ev.upsertEvent({
+      id: "sort-early", calendarId: "c1", title: "Early event", description: "",
+      startAt: at(9), endAt: at(10), allDay: false, recurrence: null,
+      source: "internal", externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+    })
+
+    const wrapper = mount(HomeView)
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.findAll(".schedule-title").map(el => el.text()))
+      .toEqual(["All-day holiday", "Early event", "Late event"])
+    wrapper.unmount()
   })
 
   it("navigates the mini calendar by month and previews event titles", async () => {

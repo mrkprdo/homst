@@ -124,6 +124,28 @@ test.describe("Calendar", () => {
     await expect(page.locator(".week-col-header.today")).toBeVisible()
   })
 
+  test("clicking a week day header opens that day", async ({ page }) => {
+    await goToCalendar(page)
+    await page.locator(".segmented-btn").nth(1).click()
+    await page.waitForTimeout(300)
+    await page.locator(".week-col-header").nth(3).click()
+    await expect(page.locator(".day-view")).toBeVisible()
+  })
+
+  test("calendar stays opaque over the now-playing backdrop", async ({ page }) => {
+    await goToCalendar(page)
+    await page.locator(".segmented-btn").nth(1).click()
+    await page.waitForTimeout(300)
+
+    await page.evaluate(() => document.documentElement.classList.add("vinyl-backdrop"))
+    const background = await page.locator(".calendar-view")
+      .evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(background).not.toBe("rgba(0, 0, 0, 0)")
+    expect(background).not.toBe("transparent")
+
+    await page.evaluate(() => document.documentElement.classList.remove("vinyl-backdrop"))
+  })
+
   test("week view header is sticky", async ({ page }) => {
     await goToCalendar(page)
     await page.locator(".segmented-btn").nth(1).click()

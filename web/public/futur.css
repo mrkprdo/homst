@@ -416,8 +416,8 @@
   box-shadow: 0 5px 0 0 var(--color-ink) !important;
 }
 .futur .day-banner.today {
-  background: var(--color-primary) !important;
-  color: var(--color-textInverse) !important;
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-bgBase)) !important;
+  color: var(--color-textPrimary) !important;
 }
 .futur .day-cell {
   border: 1px solid var(--color-ink);
@@ -444,8 +444,7 @@
 }
 .futur .week-event-block,
 .futur .day-event-block {
-  border: 1px solid color-mix(in srgb, var(--color-ink) 35%, transparent);
-  border-left-width: 3px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 22%, transparent);
 }
 
 /* ── Floating controls ────────────────────────────────────────────────────── */
