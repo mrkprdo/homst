@@ -166,6 +166,85 @@ describe("HomeView", () => {
     }
   })
 
+  it("navigates schedule days and returns to today after two minutes or a screen change", async () => {
+    vi.useFakeTimers()
+    const base = Math.floor(Date.now() / 60_000) * 60_000
+    vi.setSystemTime(base)
+    try {
+      vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))
+      const ev = useEvents()
+      const ui = useUi()
+      ui.setPanel("home")
+
+      const tomorrow = new Date(base)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      tomorrow.setHours(12, 0, 0, 0)
+      const tomorrowEnd = new Date(tomorrow)
+      tomorrowEnd.setHours(13)
+      ev.upsertEvent({
+        id: "schedule-tomorrow", calendarId: "c1", title: "Tomorrow event", description: "",
+        startAt: tomorrow.toISOString(), endAt: tomorrowEnd.toISOString(), allDay: false, recurrence: null,
+        source: "internal", externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+      })
+
+      const wrapper = mount(HomeView)
+      await flushPromises()
+      await nextTick()
+
+      const prev = wrapper.find('[aria-label="Previous day"]')
+      const next = wrapper.find('[aria-label="Next day"]')
+      expect(prev.exists()).toBe(true)
+      expect(next.exists()).toBe(true)
+      expect(wrapper.find(".schedule-nav__label").text()).toBe("Today")
+      expect(wrapper.text()).toContain("Today's Schedule")
+      expect(wrapper.text()).not.toContain("Tomorrow event")
+
+      await prev.trigger("click")
+      await nextTick()
+      expect(wrapper.text()).toContain("Yesterday's Schedule")
+
+      await next.trigger("click")
+      await next.trigger("click")
+      await nextTick()
+      expect(wrapper.text()).toContain("Tomorrow's Schedule")
+      expect(wrapper.text()).toContain("Tomorrow event")
+
+      // Keep going to any date, not just tomorrow.
+      await next.trigger("click")
+      await nextTick()
+      const inTwoDays = new Date(base)
+      inTwoDays.setDate(inTwoDays.getDate() + 2)
+      expect(wrapper.find(".schedule-nav__label").text())
+        .toBe(inTwoDays.toLocaleDateString("en-US", { weekday: "long" }))
+      expect(wrapper.find(".schedule-nav__date").text())
+        .toBe(inTwoDays.toLocaleDateString("en-US", { month: "short", day: "numeric" }))
+
+      // Stays put while the two-minute window is open…
+      await vi.advanceTimersByTimeAsync(119_000)
+      await nextTick()
+      expect(wrapper.text()).not.toContain("Today's Schedule")
+
+      // …then falls back to Today.
+      await vi.advanceTimersByTimeAsync(1_000)
+      await nextTick()
+      expect(wrapper.text()).toContain("Today's Schedule")
+      expect(wrapper.text()).not.toContain("Tomorrow event")
+
+      // Leaving the home screen resets the picker as well.
+      await next.trigger("click")
+      await nextTick()
+      expect(wrapper.text()).toContain("Tomorrow's Schedule")
+      ui.setPanel("calendar")
+      await nextTick()
+      expect(wrapper.text()).toContain("Today's Schedule")
+
+      ui.setPanel("home")
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   const LEGACY_LAYOUT = [
     { id: "datetime", col: 0, row: 0, w: 2, h: 1 },
     { id: "weather",  col: 2, row: 0, w: 2, h: 1 },

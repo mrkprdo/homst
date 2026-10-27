@@ -8,9 +8,11 @@ import { useWeather } from "@/composables/useWeather"
 import { useSpotify } from "@/composables/useSpotify"
 import { useSettings } from "@/composables/useSettings"
 import { useFittedList } from "@/composables/useFittedList"
+import type { Event as CalendarEvent } from "@/composables/useEvents"
 import type { Task } from "@/composables/useTasks"
+import { memberColorHex, type MemberColor } from "@/types/household"
 import { householdApi } from "@/api/household"
-import { PhArrowRight, PhCircle, PhCheckCircle, PhClock, PhCalendarBlank, PhLock, PhLockOpen, PhDotsSix, PhSun, PhCloud, PhCloudRain, PhCloudSnow, PhCloudFog, PhLightning, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
+import { PhArrowRight, PhCircle, PhCheckCircle, PhClock, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhCloud, PhCloudRain, PhCloudSnow, PhCloudFog, PhLightning, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
@@ -244,7 +246,90 @@ const _clockInit = new Date()
 const dateStr = ref(_clockInit.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }))
 const timeStr = ref(_clockInit.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))
 
-// ── Today's schedule ──────────────────────────────────────────────────────────
+// ── Schedule date navigation ──────────────────────────────────────────────────
+/** A glance at another day should not stick around forever on a kiosk. */
+const SCHEDULE_RESET_MS = 2 * 60 * 1000
+const scheduleDayOffset = ref(0)
+let scheduleResetTimer: ReturnType<typeof setTimeout> | null = null
+let prefetchedScheduleMonth = `${new Date().getFullYear()}-${new Date().getMonth()}`
+
+function clearScheduleReset() {
+  if (scheduleResetTimer !== null) {
+    clearTimeout(scheduleResetTimer)
+    scheduleResetTimer = null
+  }
+}
+
+function armScheduleReset() {
+  clearScheduleReset()
+  if (scheduleDayOffset.value !== 0) {
+    scheduleResetTimer = setTimeout(() => {
+      scheduleDayOffset.value = 0
+      scheduleResetTimer = null
+    }, SCHEDULE_RESET_MS)
+  }
+}
+
+function goToScheduleDay(offset: number) {
+  scheduleDayOffset.value = offset
+  armScheduleReset()
+}
+
+function stepScheduleDay(delta: -1 | 1) {
+  goToScheduleDay(scheduleDayOffset.value + delta)
+}
+
+function resetScheduleToToday() {
+  scheduleDayOffset.value = 0
+  clearScheduleReset()
+}
+
+// Moving to another screen (or anything that keeps this view alive off-screen)
+// puts the card back to Today.
+watch(() => ui.activePanel.value, panel => {
+  if (panel !== "home") resetScheduleToToday()
+})
+
+const scheduleDate = computed(() => {
+  const date = new Date(today.value)
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() + scheduleDayOffset.value)
+  return date
+})
+
+// Days outside the initial ±1 month prefetch need their own data on demand.
+watch(scheduleDate, date => {
+  const key = `${date.getFullYear()}-${date.getMonth()}`
+  if (key === prefetchedScheduleMonth) return
+  prefetchedScheduleMonth = key
+  void prefetchAround(date.getFullYear(), date.getMonth())
+})
+
+const scheduleRelativeLabel = computed(() => {
+  const offset = scheduleDayOffset.value
+  if (offset === 0) return "Today"
+  if (offset === -1) return "Yesterday"
+  if (offset === 1) return "Tomorrow"
+  return scheduleDate.value.toLocaleDateString("en-US", { weekday: "long" })
+})
+
+const scheduleDateLabel = computed(() => {
+  const date = scheduleDate.value
+  const sameYear = date.getFullYear() === today.value.getFullYear()
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  })
+})
+
+const scheduleDateLong = computed(() =>
+  scheduleDate.value.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+)
+
+const scheduleTitle = computed(() => `${scheduleRelativeLabel.value}'s Schedule`)
+
+// ── Schedule events ───────────────────────────────────────────────────────────
 function eventCoversDate(e: { startAt: string; endAt: string | null; allDay: boolean }, date: Date): boolean {
   const start = new Date(e.startAt)
   const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0)
@@ -255,9 +340,28 @@ function eventCoversDate(e: { startAt: string; endAt: string | null; allDay: boo
   if (e.allDay && end.getTime() <= start.getTime()) end = new Date(start.getTime() + 1)
   return end >= dayStart
 }
-const todayEvents = computed(() =>
-  events.value.filter(e => eventCoversDate(e, today.value)).slice(0, 5)
-)
+const scheduleEvents = computed(() => {
+  const date = scheduleDate.value
+  return events.value
+    .filter(event => eventCoversDate(event, date))
+    .slice()
+    .sort((a, b) => {
+      // All-day entries lead the day, then timed events run chronologically.
+      if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
+      return new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
+    })
+})
+
+const scheduleEmptyMessage = computed(() => {
+  const label = scheduleRelativeLabel.value
+  return label === "Today" || label === "Yesterday" || label === "Tomorrow"
+    ? `No events ${label.toLowerCase()}`
+    : `No events on ${scheduleDateLabel.value}`
+})
+
+function scheduleTime(event: CalendarEvent): string {
+  return event.allDay ? "All day" : formatEventTime(event.startAt)
+}
 
 // ── Mini calendar ─────────────────────────────────────────────────────────────
 const viewYear = ref(today.value.getFullYear())
@@ -325,9 +429,39 @@ const homeDoing = computed(() => doing.value.slice(0, 3))
 
 // ── Fitted widget lists ───────────────────────────────────────────────────────
 // Cards trim to the rows that fit instead of clipping them or scrolling.
-const scheduleEntries = computed(() =>
-  todayEvents.value.map(event => ({ kind: "row" as const, event })),
-)
+interface ScheduleEntry {
+  kind: "row"
+  event: CalendarEvent
+  assignee: { name: string; color: string } | null
+  isNow: boolean
+  isPast: boolean
+}
+
+const scheduleEntries = computed<ScheduleEntry[]>(() => {
+  const nowMs = today.value.getTime()
+  const showLiveState = scheduleDayOffset.value === 0
+  return scheduleEvents.value.map(event => {
+    const member = event.assigneeId
+      ? members.value.find(m => m.id === event.assigneeId)
+      : undefined
+    const start = new Date(event.startAt).getTime()
+    const end = event.endAt ? new Date(event.endAt).getTime() : start
+    return {
+      kind: "row" as const,
+      event,
+      assignee: member
+        ? {
+            name: member.name,
+            color: member.color.startsWith("#")
+              ? member.color
+              : memberColorHex(member.color as MemberColor),
+          }
+        : null,
+      isNow: showLiveState && !event.allDay && start <= nowMs && nowMs < end,
+      isPast: showLiveState && !event.allDay && end <= nowMs,
+    }
+  })
+})
 const scheduleListEl = ref<HTMLElement | null>(null)
 const {
   visible: visibleScheduleEvents,
@@ -625,6 +759,7 @@ onUnmounted(() => {
   window.removeEventListener(HOME_LAYOUT_EVENT, onLayoutUpdated)
   clearInterval(photoTimer)
   clearInterval(clockTimer)
+  clearScheduleReset()
   ro?.disconnect()
   stopDragListeners()
   stopAutoRefresh()
@@ -678,31 +813,55 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'datetime')" />
       </div>
 
-      <!-- Today's Schedule -->
+      <!-- Schedule for the selected day -->
       <div :ref="(el) => registerWidgetEl('schedule', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'schedule' }"
         :style="{ ...widgetStyle(getWidget('schedule')!), '--wobble-delay': '220ms' }">
         <UiCard class="home-block" :padding="false">
           <div class="block-header">
             <span class="block-title">
-              <PhCalendarBlank :size="18" /><span class="block-title-text">Today's Schedule</span>
+              <PhCalendarBlank :size="18" /><span class="block-title-text">{{ scheduleTitle }}</span>
             </span>
             <UiButton variant="link" size="sm" @click="ui.setPanel('calendar')">
               Calendar
               <PhArrowRight :size="13" />
             </UiButton>
           </div>
-          <div v-if="todayEvents.length" ref="scheduleListEl" class="schedule-list">
-            <div v-for="entry in visibleScheduleEvents" :key="entry.event.id" class="schedule-row">
-              <span class="schedule-time">{{ formatEventTime(entry.event.startAt) }}</span>
-              <span class="schedule-title">{{ entry.event.title }}</span>
-              <span v-if="entry.event.assigneeId && members.find(m => m.id === entry.event.assigneeId)" class="schedule-assignee">
-                {{ members.find(m => m.id === entry.event.assigneeId)!.name }}
+
+          <div class="schedule-nav">
+            <button type="button" class="schedule-nav__arrow" aria-label="Previous day"
+              @click="stepScheduleDay(-1)">
+              <PhCaretLeft :size="14" weight="bold" />
+            </button>
+            <button type="button" class="schedule-nav__active"
+              :class="{ 'is-today': scheduleDayOffset === 0 }"
+              :title="scheduleDayOffset === 0 ? undefined : 'Show today'"
+              :aria-label="scheduleDayOffset === 0 ? scheduleDateLong : `Show today. Currently ${scheduleDateLong}`"
+              @click="resetScheduleToToday()">
+              <span class="schedule-nav__label">{{ scheduleRelativeLabel }}</span>
+              <span class="schedule-nav__date">{{ scheduleDateLabel }}</span>
+            </button>
+            <button type="button" class="schedule-nav__arrow" aria-label="Next day"
+              @click="stepScheduleDay(1)">
+              <PhCaretRight :size="14" weight="bold" />
+            </button>
+          </div>
+
+          <div v-if="scheduleEntries.length" ref="scheduleListEl" class="schedule-list">
+            <div v-for="entry in visibleScheduleEvents" :key="entry.event.id" class="schedule-row"
+              :class="{ 'schedule-row--now': entry.isNow, 'schedule-row--past': entry.isPast }">
+              <span class="schedule-time" :class="{ 'schedule-time--allday': entry.event.allDay }">
+                {{ scheduleTime(entry.event) }}
               </span>
+              <span class="schedule-dot" aria-hidden="true"
+                :style="{ background: entry.assignee?.color ?? 'var(--color-borderStrong)' }" />
+              <span class="schedule-title">{{ entry.event.title }}</span>
+              <span v-if="entry.isNow" class="schedule-now">Now</span>
+              <span v-if="entry.assignee" class="schedule-assignee">{{ entry.assignee.name }}</span>
             </div>
             <p v-if="hiddenScheduleCount > 0" class="list-more">+{{ hiddenScheduleCount }} more</p>
           </div>
-          <UiEmptyState v-else class="widget-empty" message="No events today">
+          <UiEmptyState v-else class="widget-empty" :message="scheduleEmptyMessage">
             <template #icon>
               <PhCheckCircle :size="28" />
             </template>
@@ -1676,7 +1835,91 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
-/* ── Today's Schedule ────────────────────────────────────────────────────────── */
+/* ── Schedule ────────────────────────────────────────────────────────────────── */
+.schedule-nav {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  gap: 2px;
+  margin: 0 var(--space-4) var(--space-2);
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+}
+
+.schedule-nav__arrow {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(24px, 7cqw, 32px);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-textMuted);
+  cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
+}
+
+.schedule-nav__arrow:hover {
+  background: var(--color-bgElevated);
+  color: var(--color-textPrimary);
+}
+
+.schedule-nav__arrow:active {
+  transform: scale(0.92);
+}
+
+.schedule-nav__arrow:focus-visible,
+.schedule-nav__active:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.schedule-nav__active {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(3px, 1cqw, 6px);
+  padding: clamp(2px, 1cqh, 5px) var(--space-2);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  font-family: var(--font-family);
+  color: var(--color-textPrimary);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+
+.schedule-nav__active:hover {
+  background: var(--color-bgElevated);
+}
+
+.schedule-nav__label {
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.schedule-nav__date {
+  min-width: 0;
+  font-size: var(--text-micro-size);
+  line-height: 1.2;
+  color: var(--color-textMuted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-nav__date::before {
+  content: "·";
+  padding-right: clamp(2px, 0.8cqw, 5px);
+  color: var(--color-borderStrong);
+}
+
 .schedule-list {
   flex: 1;
   min-height: 0;
@@ -1690,7 +1933,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 .schedule-row {
   display: flex;
   align-items: center;
-  gap: clamp(4px, 1.5cqw, var(--space-3));
+  gap: clamp(4px, 1.2cqw, var(--space-2));
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
@@ -1701,14 +1944,29 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   background: var(--color-bgSubtle);
 }
 
+.schedule-dot {
+  flex-shrink: 0;
+  width: clamp(5px, 1.4cqw, 7px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
 .schedule-time {
   flex-shrink: 0;
   font-size: var(--text-label-size);
   color: var(--color-textMuted);
   font-variant-numeric: tabular-nums;
   width: auto;
-  min-width: 3.9em;
+  min-width: calc(var(--text-label-size) * 4.4);
   white-space: nowrap;
+}
+
+.schedule-time--allday {
+  font-size: var(--text-micro-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textSecondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .schedule-title {
@@ -1729,6 +1987,38 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.schedule-now {
+  flex-shrink: 0;
+  padding: 1px clamp(4px, 1cqw, 7px);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  color: var(--color-textPrimary);
+  font-size: var(--text-micro-size);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+/* The event in progress gets a quiet accent wash; finished ones recede. */
+.schedule-row--now {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.schedule-row--now:hover {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+.schedule-row--past .schedule-title,
+.schedule-row--past .schedule-time,
+.schedule-row--past .schedule-assignee {
+  opacity: 0.5;
+}
+
+.schedule-row--past .schedule-dot {
+  opacity: 0.35;
 }
 
 /* "+N more" is a designed end to the list, not clipped content. */
@@ -1753,7 +2043,22 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
+/* Small tiles drop the date and keep the day name so the arrows stay tappable. */
+@container w (max-width: 12em) {
+  .schedule-nav {
+    margin-inline: var(--space-2);
+  }
+
+  .schedule-nav__date {
+    display: none;
+  }
+}
+
 @container w (max-height: 9em) {
+  .schedule-nav {
+    margin-bottom: var(--space-1);
+  }
+
   .schedule-row,
   .task-row {
     padding-block: 2px;
