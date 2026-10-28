@@ -301,11 +301,11 @@ describe("SettingsPanel", () => {
     await flushPromises()
 
     const pushToggle = wrapper.findAllComponents({ name: "UiToggle" })
-      .find((toggle) => toggle.element.closest(".settings-row")?.textContent?.includes("Phone & browser"))
-      ?? wrapper.findAllComponents({ name: "UiToggle" })[2]!
-    pushToggle.vm.$emit("update:modelValue", true)
+      .find((toggle) => toggle.element.closest(".setting-row")?.textContent?.includes("Phone & browser"))
+    expect(pushToggle).toBeTruthy()
+    pushToggle!.vm.$emit("update:modelValue", true)
     await flushPromises()
-    pushToggle.vm.$emit("update:modelValue", false)
+    pushToggle!.vm.$emit("update:modelValue", false)
     await flushPromises()
 
     await wrapper.findAll("button").find(b => b.text().includes("Send test to all clients"))!.trigger("click")

@@ -31,7 +31,11 @@ describe("SettingsPanel (notifications & motion)", () => {
     const wrapper = mount(SettingsPanel)
     await flushPromises()
 
-    await toggles(wrapper)[1]!.trigger("click") // On this display
+    const hudToggle = toggles(wrapper).find(
+      (toggle) => toggle.element.closest(".setting-row")?.textContent?.includes("On this display"),
+    )
+    expect(hudToggle).toBeTruthy()
+    await hudToggle!.trigger("click")
     await flushPromises()
 
     const patches = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH")
@@ -106,10 +110,15 @@ describe("SettingsPanel (notifications & motion)", () => {
     await flushPromises()
     expect(getAnimationEnabled()).toBe(true)
 
-    await toggles(wrapper)[3]!.trigger("click") // Motion
+    const motionToggle = toggles(wrapper).find(
+      (toggle) => toggle.element.closest(".setting-row")?.textContent?.includes("Animations"),
+    )
+    expect(motionToggle).toBeTruthy()
+
+    await motionToggle!.trigger("click")
     expect(getAnimationEnabled()).toBe(false)
 
-    await toggles(wrapper)[3]!.trigger("click")
+    await motionToggle!.trigger("click")
     expect(getAnimationEnabled()).toBe(true)
   })
 

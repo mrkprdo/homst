@@ -311,204 +311,206 @@ onUnmounted(() => {
 
 <template>
   <div class="update-card settings-card">
-    <div class="update-head">
-      <div>
-        <h3 class="update-title">Software update</h3>
-        <p class="update-sub">Official stable releases only</p>
+    <header class="card-header">
+      <div class="card-heading">
+        <h3 class="card-title">Software update</h3>
+        <p class="card-desc">Official stable releases only</p>
       </div>
-      <span class="channel-badge" :class="`channel-badge--${current.channel}`">{{ channelLabel }}</span>
-    </div>
+      <span class="selected-badge" :class="`channel-badge--${current.channel}`">{{ channelLabel }}</span>
+    </header>
 
-    <div v-if="loading && !status" class="update-loading">Checking the current version…</div>
+    <div class="card-body">
+      <div v-if="loading && !status" class="update-loading">Checking the current version…</div>
 
-    <template v-else-if="status">
-      <div class="version-line">
-        <span class="version-number">HOMST {{ currentVersion }}</span>
-        <span v-if="shortCommit" class="version-commit">{{ shortCommit }}</span>
-        <span v-if="current.tag" class="version-tag">{{ current.tag }}</span>
-      </div>
-
-      <div v-if="manualMode" class="update-note">
-        <div class="note-heading">
-          <PhClock :size="17" />
-          <strong>{{ manualTitle }}</strong>
+      <template v-else-if="status">
+        <div class="version-line">
+          <span class="version-number">HOMST {{ currentVersion }}</span>
+          <span v-if="shortCommit" class="version-commit">{{ shortCommit }}</span>
+          <span v-if="current.tag" class="version-tag">{{ current.tag }}</span>
         </div>
-        <p class="card-desc">{{ selfUpdate.reason }}</p>
-        <p v-if="latest" class="card-desc">
-          Latest stable: <strong>HOMST {{ latest.version }}</strong>
-        </p>
-        <pre class="command">{{ status?.manual?.current }}</pre>
-        <div class="note-actions">
-          <UiButton size="sm" variant="ghost" @click="copy(status?.manual?.current ?? '')">Copy command</UiButton>
-          <UiButton size="sm" variant="ghost" :disabled="checking" @click="check">
-            <PhArrowsClockwise :size="14" :class="{ spinning: checking }" />
-            {{ checking ? "Checking…" : "Check again" }}
-          </UiButton>
+
+        <div v-if="manualMode" class="update-note">
+          <div class="note-heading">
+            <PhClock :size="17" />
+            <strong>{{ manualTitle }}</strong>
+          </div>
+          <p class="card-desc">{{ selfUpdate.reason }}</p>
+          <p v-if="latest" class="card-desc">
+            Latest stable: <strong>HOMST {{ latest.version }}</strong>
+          </p>
+          <pre class="command">{{ status?.manual?.current }}</pre>
+          <div class="note-actions">
+            <UiButton size="sm" variant="ghost" @click="copy(status?.manual?.current ?? '')">Copy command</UiButton>
+            <UiButton size="sm" variant="ghost" :disabled="checking" @click="check">
+              <PhArrowsClockwise :size="14" :class="{ spinning: checking }" />
+              {{ checking ? "Checking…" : "Check again" }}
+            </UiButton>
+          </div>
+          <template v-if="current.channel === 'nightly' || current.channel === 'pinned'">
+            <p class="card-desc">Stable channel:</p>
+            <pre class="command">{{ status?.manual?.stable }}</pre>
+          </template>
         </div>
-        <template v-if="current.channel === 'nightly' || current.channel === 'pinned'">
-          <p class="card-desc">Stable channel:</p>
-          <pre class="command">{{ status?.manual?.stable }}</pre>
+
+        <template v-else>
+          <div v-if="error" class="update-error" role="alert">{{ error }}</div>
+
+          <div v-if="updateAvailable && latest" class="latest-box">
+            <div>
+              <p class="latest-title">HOMST {{ latest.version }} is available</p>
+              <p class="card-desc">
+                Published {{ formatDate(latest.published_at) || "recently" }}
+                <span v-if="latest.major" class="major-warning">· major version</span>
+              </p>
+            </div>
+            <UiButton size="sm" :disabled="busy" @click="pendingVersion = latest.version">{{ latest.held ? "Retry" : "Update" }}</UiButton>
+          </div>
+          <div v-else-if="status && !status.error" class="up-to-date">
+            <PhCheckCircle :size="18" weight="fill" />
+            <span>You're on the latest stable release.</span>
+          </div>
+
+          <p v-if="status?.error" class="card-desc update-stale">{{ status.error }}</p>
+
+          <div v-if="held.version" class="update-note update-note--warning">
+            <div class="note-heading">
+              <PhWarningCircle :size="17" />
+              <strong>HOMST {{ held.version }} was rolled back.</strong>
+            </div>
+            <p class="card-desc">It is skipped until a newer release or an explicit retry.</p>
+          </div>
+
+          <div class="update-actions">
+            <UiButton size="sm" variant="ghost" :disabled="checking || busy" @click="check">
+              <PhArrowsClockwise :size="14" :class="{ spinning: checking }" />
+              {{ checking ? "Checking…" : "Check for updates" }}
+            </UiButton>
+            <span v-if="checkedLabel" class="checked-at">Checked {{ checkedLabel }}</span>
+          </div>
+
+          <div v-if="history.length" class="update-history">
+            <button
+              class="history-toggle"
+              type="button"
+              :aria-expanded="historyOpen"
+              @click="historyOpen = !historyOpen"
+            >
+              <component :is="historyOpen ? PhCaretDown : PhCaretRight" :size="14" />
+              <span class="section-label">Version history</span>
+              <span class="history-count">{{ history.length }}</span>
+            </button>
+            <div v-if="historyOpen" class="release-list">
+              <div v-for="release in history" :key="release.version" class="release-row">
+                <div class="release-main">
+                  <span class="release-version">HOMST {{ release.version }}</span>
+                  <UiBadge :variant="badgeVariant(release)">{{ releaseBadge(release) }}</UiBadge>
+                  <span class="release-date">{{ formatDate(release.published_at) }}</span>
+                </div>
+                <div class="release-actions">
+                  <UiButton
+                    v-if="release.held"
+                    size="sm"
+                    variant="ghost"
+                    :disabled="busy"
+                    @click="startInstall(release.version, true)"
+                  >
+                    Retry
+                  </UiButton>
+                  <UiButton
+                    v-else-if="!release.current"
+                    size="sm"
+                    variant="ghost"
+                    :disabled="busy"
+                    @click="pendingVersion = release.version"
+                  >
+                    {{ release.newer ? "Update" : "Roll back" }}
+                  </UiButton>
+                  <a v-if="release.html_url" class="release-link" :href="release.html_url" target="_blank" rel="noreferrer">
+                    Notes
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="auto-update">
+            <div class="auto-row">
+              <div>
+                <p class="row-title">Automatic checks</p>
+                <p class="card-desc">Look for new stable releases and ask on connected displays.</p>
+              </div>
+              <UiToggle
+                :model-value="auto.enabled"
+                :disabled="savingAuto"
+                @update:model-value="onAutoToggle"
+              />
+            </div>
+            <div v-if="auto.enabled" class="auto-window">
+              <label class="time-field">
+                <span>Every</span>
+                <select :value="auto.checkIntervalMinutes" @change="onIntervalChange">
+                  <option :value="5">5 minutes</option>
+                  <option :value="15">15 minutes</option>
+                  <option :value="30">30 minutes</option>
+                  <option :value="60">1 hour</option>
+                </select>
+              </label>
+            </div>
+            <p class="card-desc">
+              Displays show a Yes/No reminder when a new version is available. Choosing No hides
+              that reminder; the release stays available here.
+            </p>
+            <p v-if="autoMessage" class="card-desc auto-message">{{ autoMessage }}</p>
+          </div>
         </template>
-      </div>
 
-      <template v-else>
-        <div v-if="error" class="update-error" role="alert">{{ error }}</div>
-
-        <div v-if="updateAvailable && latest" class="latest-box">
-          <div>
-            <p class="latest-title">HOMST {{ latest.version }} is available</p>
-            <p class="update-sub">
-              Published {{ formatDate(latest.published_at) || "recently" }}
-              <span v-if="latest.major" class="major-warning">· major version</span>
+        <div v-if="pendingRelease" class="confirm-box">
+          <PhWarningCircle :size="20" class="confirm-icon" />
+          <div class="confirm-copy">
+            <p class="confirm-title">
+              {{ pendingRelease.held ? "Retry" : (pendingRelease.newer ? "Install" : "Roll back to") }}
+              HOMST {{ pendingRelease.version }}?
+            </p>
+            <p class="card-desc">
+              HOMST will restart and reconnect automatically.
+            </p>
+            <p v-if="pendingRelease.major" class="card-desc major-warning">
+              Major update — review the release notes and back up first.
             </p>
           </div>
-          <UiButton size="sm" :disabled="busy" @click="pendingVersion = latest.version">{{ latest.held ? "Retry" : "Update" }}</UiButton>
-        </div>
-        <div v-else-if="status && !status.error" class="up-to-date">
-          <PhCheckCircle :size="18" weight="fill" />
-          <span>You're on the latest stable release.</span>
-        </div>
-
-        <p v-if="status?.error" class="card-desc update-stale">{{ status.error }}</p>
-
-        <div v-if="held.version" class="update-note update-note--warning">
-          <div class="note-heading">
-            <PhWarningCircle :size="17" />
-            <strong>HOMST {{ held.version }} was rolled back.</strong>
-          </div>
-          <p class="card-desc">It is skipped until a newer release or an explicit retry.</p>
-        </div>
-
-        <div class="update-actions">
-          <UiButton size="sm" variant="ghost" :disabled="checking || busy" @click="check">
-            <PhArrowsClockwise :size="14" :class="{ spinning: checking }" />
-            {{ checking ? "Checking…" : "Check for updates" }}
-          </UiButton>
-          <span v-if="checkedLabel" class="checked-at">Checked {{ checkedLabel }}</span>
-        </div>
-
-        <div v-if="history.length" class="update-history">
-          <button
-            class="history-toggle"
-            type="button"
-            :aria-expanded="historyOpen"
-            @click="historyOpen = !historyOpen"
-          >
-            <component :is="historyOpen ? PhCaretDown : PhCaretRight" :size="14" />
-            <span class="section-label">Version history</span>
-            <span class="history-count">{{ history.length }}</span>
-          </button>
-          <div v-if="historyOpen" class="release-list">
-            <div v-for="release in history" :key="release.version" class="release-row">
-              <div class="release-main">
-                <span class="release-version">HOMST {{ release.version }}</span>
-                <UiBadge :variant="badgeVariant(release)">{{ releaseBadge(release) }}</UiBadge>
-                <span class="release-date">{{ formatDate(release.published_at) }}</span>
-              </div>
-              <div class="release-actions">
-                <UiButton
-                  v-if="release.held"
-                  size="sm"
-                  variant="ghost"
-                  :disabled="busy"
-                  @click="startInstall(release.version, true)"
-                >
-                  Retry
-                </UiButton>
-                <UiButton
-                  v-else-if="!release.current"
-                  size="sm"
-                  variant="ghost"
-                  :disabled="busy"
-                  @click="pendingVersion = release.version"
-                >
-                  {{ release.newer ? "Update" : "Roll back" }}
-                </UiButton>
-                <a v-if="release.html_url" class="release-link" :href="release.html_url" target="_blank" rel="noreferrer">
-                  Notes
-                </a>
-              </div>
-            </div>
+          <div class="confirm-actions">
+            <UiButton size="sm" variant="ghost" @click="pendingVersion = null">Cancel</UiButton>
+            <UiButton size="sm" :disabled="busy" @click="startInstall(pendingRelease.version, pendingRelease.held)">
+              <PhArrowCounterClockwise v-if="!pendingRelease.newer" :size="14" />
+              {{ pendingRelease.held ? "Retry" : (pendingRelease.newer ? "Install" : "Roll back") }}
+            </UiButton>
           </div>
         </div>
 
-        <div class="auto-update">
-          <div class="auto-row">
-            <div>
-              <p class="row-title">Automatic checks</p>
-              <p class="card-desc">Look for new stable releases and ask on connected displays.</p>
-            </div>
-            <UiToggle
-              :model-value="auto.enabled"
-              :disabled="savingAuto"
-              @update:model-value="onAutoToggle"
-            />
+        <div v-if="job" class="job-box" :class="`job-box--${jobTone}`" aria-live="polite">
+          <div class="job-head">
+            <strong>{{ jobTitle(job) }}</strong>
+            <span v-if="jobActive && job.state === 'pulling'" class="job-percent">{{ jobPercent }}%</span>
           </div>
-          <div v-if="auto.enabled" class="auto-window">
-            <label class="time-field">
-              <span>Every</span>
-              <select :value="auto.checkIntervalMinutes" @change="onIntervalChange">
-                <option :value="5">5 minutes</option>
-                <option :value="15">15 minutes</option>
-                <option :value="30">30 minutes</option>
-                <option :value="60">1 hour</option>
-              </select>
-            </label>
+          <div v-if="jobActive && job.state === 'pulling'" class="progress-track">
+            <div class="progress-fill" :style="{ width: `${jobPercent}%` }" />
           </div>
-          <p class="card-desc">
-            Displays show a Yes/No reminder when a new version is available. Choosing No hides
-            that reminder; the release stays available here.
-          </p>
-          <p v-if="autoMessage" class="card-desc auto-message">{{ autoMessage }}</p>
+          <p class="card-desc job-message">{{ job.message }}</p>
+          <p v-if="restarting" class="card-desc job-message">Waiting for HOMST to come back…</p>
+          <p v-if="job.error && !jobActive" class="card-desc job-error">{{ job.error }}</p>
+          <div v-if="!jobActive" class="job-actions">
+            <UiButton v-if="job.state === 'success' || job.state === 'up_to_date'" size="sm" @click="reloadPage">
+              Reload
+            </UiButton>
+            <UiButton size="sm" variant="ghost" @click="dismissJob">Dismiss</UiButton>
+          </div>
         </div>
       </template>
 
-      <div v-if="pendingRelease" class="confirm-box">
-        <PhWarningCircle :size="20" class="confirm-icon" />
-        <div class="confirm-copy">
-          <p class="confirm-title">
-            {{ pendingRelease.held ? "Retry" : (pendingRelease.newer ? "Install" : "Roll back to") }}
-            HOMST {{ pendingRelease.version }}?
-          </p>
-          <p class="card-desc">
-            HOMST will restart and reconnect automatically.
-          </p>
-          <p v-if="pendingRelease.major" class="card-desc major-warning">
-            Major update — review the release notes and back up first.
-          </p>
-        </div>
-        <div class="confirm-actions">
-          <UiButton size="sm" variant="ghost" @click="pendingVersion = null">Cancel</UiButton>
-          <UiButton size="sm" :disabled="busy" @click="startInstall(pendingRelease.version, pendingRelease.held)">
-            <PhArrowCounterClockwise v-if="!pendingRelease.newer" :size="14" />
-            {{ pendingRelease.held ? "Retry" : (pendingRelease.newer ? "Install" : "Roll back") }}
-          </UiButton>
-        </div>
+      <div v-else class="update-actions">
+        <p class="update-error">{{ error || "Update information is unavailable." }}</p>
+        <UiButton size="sm" variant="ghost" @click="load()">Retry</UiButton>
       </div>
-
-      <div v-if="job" class="job-box" :class="`job-box--${jobTone}`" aria-live="polite">
-        <div class="job-head">
-          <strong>{{ jobTitle(job) }}</strong>
-          <span v-if="jobActive && job.state === 'pulling'" class="job-percent">{{ jobPercent }}%</span>
-        </div>
-        <div v-if="jobActive && job.state === 'pulling'" class="progress-track">
-          <div class="progress-fill" :style="{ width: `${jobPercent}%` }" />
-        </div>
-        <p class="card-desc job-message">{{ job.message }}</p>
-        <p v-if="restarting" class="card-desc job-message">Waiting for HOMST to come back…</p>
-        <p v-if="job.error && !jobActive" class="card-desc job-error">{{ job.error }}</p>
-        <div v-if="!jobActive" class="job-actions">
-          <UiButton v-if="job.state === 'success' || job.state === 'up_to_date'" size="sm" @click="reloadPage">
-            Reload
-          </UiButton>
-          <UiButton size="sm" variant="ghost" @click="dismissJob">Dismiss</UiButton>
-        </div>
-      </div>
-    </template>
-
-    <div v-else class="update-actions">
-      <p class="update-error">{{ error || "Update information is unavailable." }}</p>
-      <UiButton size="sm" variant="ghost" @click="load()">Retry</UiButton>
     </div>
   </div>
 </template>
@@ -524,45 +526,57 @@ onUnmounted(() => {
   gap: var(--space-4);
 }
 
-.update-head {
+.card-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.update-title {
-  font-size: var(--text-body-size);
+.card-heading {
+  min-width: 0;
+}
+
+.card-title {
+  font-size: var(--text-heading-size);
   font-weight: var(--font-weight-medium);
+  line-height: var(--text-heading-line-height);
   color: var(--color-textPrimary);
 }
 
-.update-sub {
-  font-size: var(--text-label-size);
-  color: var(--color-textMuted);
-  margin-top: var(--space-1);
-}
-
 .card-desc {
+  margin-top: 2px;
   font-size: var(--text-label-size);
-  color: var(--color-textMuted);
-  margin-top: var(--space-1);
+  line-height: 1.5;
+  color: var(--color-textSecondary);
 }
 
-.channel-badge {
+.card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.selected-badge {
   font-size: var(--text-label-size);
   font-weight: var(--font-weight-medium);
+  color: var(--color-textPrimary);
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bgSurface));
   padding: 2px var(--space-2);
   border-radius: var(--radius-full);
-  background: var(--color-accent-lighter);
-  color: var(--color-primary);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-.channel-badge--nightly { background: var(--color-bgSubtle); color: var(--color-textMuted); }
-.channel-badge--pinned { background: var(--color-accent-lighter); color: var(--color-accent-darker); }
-.channel-badge--custom { background: var(--color-bgSubtle); color: var(--color-textMuted); }
+/* The Futur theme recolours .selected-badge, so channel meanings need to win. */
+.channel-badge--nightly { background: var(--color-bgSubtle) !important; color: var(--color-textSecondary) !important; }
+.channel-badge--pinned {
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bgSurface)) !important;
+  color: var(--color-textPrimary) !important;
+}
+.channel-badge--custom { background: var(--color-bgSubtle) !important; color: var(--color-textSecondary) !important; }
 
 .update-loading { font-size: var(--text-label-size); color: var(--color-textMuted); }
 
@@ -597,10 +611,11 @@ onUnmounted(() => {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-md);
-  background: var(--color-accent-lighter);
+  /* Adaptive tint: a fixed light token would wash out in dark mode. */
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-bgSurface));
 }
 
-.latest-title { font-size: var(--text-body-size); font-weight: var(--font-weight-medium); color: var(--color-primary); }
+.latest-title { font-size: var(--text-body-size); font-weight: var(--font-weight-medium); color: var(--color-textPrimary); }
 .major-warning { color: var(--color-warning); font-weight: var(--font-weight-medium); }
 
 .up-to-date {

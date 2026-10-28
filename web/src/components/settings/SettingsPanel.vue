@@ -21,7 +21,16 @@ import {
   useServerReachability,
 } from "@/composables/useServerReachability"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
-import { PhSun, PhMoon, PhSunHorizon, PhDesktop, PhCheck, PhBell, PhDeviceMobile, PhDownloadSimple, PhMusicNote, PhWarningCircle } from "@phosphor-icons/vue"
+import {
+  PhSun,
+  PhMoon,
+  PhSunHorizon,
+  PhDesktop,
+  PhCheck,
+  PhDeviceMobile,
+  PhDownloadSimple,
+  PhWarningCircle,
+} from "@phosphor-icons/vue"
 import PageHeader from "@/components/ui/PageHeader.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
 import UiToggle from "@/components/ui/UiToggle.vue"
@@ -134,6 +143,10 @@ const activePreset = computed(() =>
   themePresets.find(p => p.value === settings.themePreset.value) ?? themePresets[0]!
 )
 
+const currentAppearanceLabel = computed(() =>
+  appearanceOptions.value.find(opt => opt.value === settings.theme.value)?.label ?? ""
+)
+
 const accentDescription = computed(() =>
   settings.themePreset.value === "futur"
     ? "Sets the field and action color for the flat palette"
@@ -162,6 +175,15 @@ const fontSizeOptions: { label: string; value: FontSize }[] = [
   { label: "L",  value: "large"  },
   { label: "XL", value: "xlarge" },
 ]
+
+const fontSizeNames: Record<FontSize, string> = {
+  small: "Small",
+  medium: "Medium",
+  large: "Large",
+  xlarge: "Extra large",
+}
+
+const currentFontSizeName = computed(() => fontSizeNames[settings.fontSize.value] ?? "")
 
 const selectedColorName = computed(() => colorNames[settings.accentColor.value] ?? "Custom")
 
@@ -320,413 +342,1155 @@ async function sendTest() {
   <div class="settings-panel">
     <PageHeader title="Settings" />
 
-    <!-- ── Theme ── -->
-    <div class="settings-card settings-card--preset">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Theme</h3>
-          <p class="card-desc">Choose the visual language for every screen</p>
+    <div class="settings-bento">
+      <!-- ── Theme ── -->
+      <section class="settings-card settings-card--preset">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Theme</h3>
+            <p class="card-desc">Choose the visual language for every screen</p>
+          </div>
+          <span class="selected-badge">{{ activePreset.label }}</span>
+        </header>
+
+        <div class="card-body">
+          <div class="option-grid option-grid--presets">
+            <button
+              v-for="preset in themePresets"
+              :key="preset.value"
+              class="preset-card option-tile"
+              :class="{ active: settings.themePreset.value === preset.value }"
+              :aria-pressed="settings.themePreset.value === preset.value"
+              @click="settings.updateThemePreset(preset.value)"
+            >
+              <span class="option-media">
+                <span class="preset-preview" :class="`preset-preview--${preset.value}`">
+                  <span
+                    v-for="(swatch, i) in preset.swatches"
+                    :key="i"
+                    class="preset-swatch"
+                    :style="{ backgroundColor: swatch }"
+                  />
+                </span>
+                <span v-if="settings.themePreset.value === preset.value" class="option-check">
+                  <PhCheck :size="13" weight="bold" />
+                </span>
+              </span>
+              <span class="option-copy">
+                <span class="preset-label">{{ preset.label }}</span>
+                <span class="preset-desc">{{ preset.desc }}</span>
+              </span>
+            </button>
+          </div>
         </div>
-        <span class="selected-badge">{{ activePreset.label }}</span>
-      </div>
-      <div class="preset-grid">
-        <button
-          v-for="preset in themePresets"
-          :key="preset.value"
-          class="preset-card"
-          :class="{ active: settings.themePreset.value === preset.value }"
-          :aria-pressed="settings.themePreset.value === preset.value"
-          @click="settings.updateThemePreset(preset.value)"
-        >
-          <span class="preset-preview" :class="`preset-preview--${preset.value}`">
-            <span
-              v-for="(swatch, i) in preset.swatches"
-              :key="i"
-              class="preset-swatch"
-              :style="{ backgroundColor: swatch }"
+      </section>
+
+      <!-- ── Accent Color ── -->
+      <section class="settings-card settings-card--accent">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Accent Color</h3>
+            <p class="card-desc">{{ accentDescription }}</p>
+          </div>
+          <span class="selected-badge">{{ selectedColorName }}</span>
+        </header>
+
+        <div class="card-body card-body--center">
+          <div class="color-grid">
+            <button
+              v-for="color in colorOptions"
+              :key="color.value"
+              class="color-option"
+              :class="{ active: settings.accentColor.value === color.value }"
+              :aria-pressed="settings.accentColor.value === color.value"
+              :aria-label="color.name"
+              @click="settings.updateAccentColor(color.value)"
+            >
+              <span
+                class="color-swatch"
+                :class="{ active: settings.accentColor.value === color.value }"
+                :style="{ backgroundColor: color.hex }"
+                :title="color.name"
+              >
+                <PhCheck
+                  v-if="settings.accentColor.value === color.value"
+                  :size="15"
+                  weight="bold"
+                  class="swatch-check"
+                />
+              </span>
+              <span class="color-name">{{ color.name }}</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Appearance ── -->
+      <section class="settings-card settings-card--appearance">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Appearance</h3>
+            <p class="card-desc">{{ appearanceDescription }}</p>
+          </div>
+          <span class="selected-badge">{{ currentAppearanceLabel }}</span>
+        </header>
+
+        <div class="card-body">
+          <div class="option-grid option-grid--appearance">
+            <button
+              v-for="opt in appearanceOptions"
+              :key="opt.value"
+              class="theme-card option-tile"
+              :class="{ active: settings.theme.value === opt.value }"
+              :aria-pressed="settings.theme.value === opt.value"
+              @click="selectTheme(opt.value)"
+            >
+              <span class="option-media">
+                <span class="theme-icon-field">
+                  <component :is="opt.icon" :size="22" class="theme-icon" />
+                </span>
+                <span v-if="settings.theme.value === opt.value" class="option-check">
+                  <PhCheck :size="13" weight="bold" />
+                </span>
+              </span>
+              <span class="option-copy">
+                <span class="theme-label">{{ opt.label }}</span>
+                <span class="theme-desc">{{ opt.desc }}</span>
+              </span>
+            </button>
+          </div>
+
+          <p v-if="settings.theme.value === 'auto'" class="card-note auto-note">
+            <PhSunHorizon :size="15" />
+            <span v-if="autoSchedule">{{ autoSchedule }}</span>
+            <span v-else-if="hasLocation === false">
+              Add a home address in your profile to use sunrise and sunset.
+            </span>
+            <span v-else>Sunrise and sunset are unavailable for this location today.</span>
+          </p>
+
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">{{ warmTitle }}</p>
+              <p class="row-desc">{{ warmDescription }}</p>
+            </div>
+            <UiToggle
+              :model-value="settings.warm.value"
+              @update:model-value="settings.updateWarm"
             />
-          </span>
-          <span class="preset-copy">
-            <span class="preset-label">{{ preset.label }}</span>
-            <span class="preset-desc">{{ preset.desc }}</span>
-          </span>
-          <PhCheck
-            v-if="settings.themePreset.value === preset.value"
-            :size="16"
-            weight="bold"
-            class="preset-check"
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Text Size ── -->
+      <section class="settings-card settings-card--textsize">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Text Size</h3>
+            <p class="card-desc">Scales all text across the app</p>
+          </div>
+          <span class="selected-badge">{{ currentFontSizeName }}</span>
+        </header>
+
+        <div class="card-body">
+          <UiSegmentedControl
+            class="font-segments"
+            :model-value="settings.fontSize.value"
+            :options="fontSizeOptions"
+            @update:model-value="(v) => settings.updateFontSize(v as FontSize)"
           />
-        </button>
-      </div>
-    </div>
-
-    <!-- ── Accent Color ── -->
-    <div class="settings-card settings-card--accent">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Accent Color</h3>
-          <p class="card-desc">{{ accentDescription }}</p>
+          <div class="font-preview">
+            <p class="preview-heading">The quick brown fox</p>
+            <p class="preview-body">Jumps over the lazy dog. Plan your day, share your space.</p>
+          </div>
         </div>
-        <span class="selected-badge">{{ selectedColorName }}</span>
-      </div>
-      <div class="color-grid">
-        <button
-          v-for="color in colorOptions"
-          :key="color.value"
-          class="color-swatch"
-          :class="{ active: settings.accentColor.value === color.value }"
-          :style="{ backgroundColor: color.hex }"
-          :aria-label="color.name"
-          :title="color.name"
-          @click="settings.updateAccentColor(color.value)"
-        >
-          <PhCheck v-if="settings.accentColor.value === color.value" :size="16" weight="bold" class="swatch-check" />
-        </button>
-      </div>
-    </div>
+      </section>
 
-    <!-- ── Appearance ── -->
-    <div class="settings-card settings-card--appearance">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Appearance</h3>
-          <p class="card-desc">{{ appearanceDescription }}</p>
-        </div>
-      </div>
-      <div class="theme-cards">
-        <button
-          v-for="opt in appearanceOptions"
-          :key="opt.value"
-          class="theme-card"
-          :class="{ active: settings.theme.value === opt.value }"
-          @click="selectTheme(opt.value)"
-        >
-          <component :is="opt.icon" :size="20" class="theme-icon" />
-          <span class="theme-label">{{ opt.label }}</span>
-          <span class="theme-desc">{{ opt.desc }}</span>
-        </button>
-      </div>
-      <p v-if="settings.theme.value === 'auto'" class="auto-note">
-        <PhSunHorizon :size="15" />
-        <span v-if="autoSchedule">{{ autoSchedule }}</span>
-        <span v-else-if="hasLocation === false">
-          Add a home address in your profile to use sunrise and sunset.
-        </span>
-        <span v-else>Sunrise and sunset are unavailable for this location today.</span>
-      </p>
-      <div class="setting-row">
-        <div>
-          <p class="row-title">{{ warmTitle }}</p>
-          <p class="card-desc">{{ warmDescription }}</p>
-        </div>
-        <UiToggle
-          :model-value="settings.warm.value"
-          @update:model-value="settings.updateWarm"
-        />
-      </div>
-    </div>
+      <!-- ── Reminders ── -->
+      <section class="settings-card settings-card--reminders">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Reminders</h3>
+            <p class="card-desc">Upcoming events announce themselves before they start</p>
+          </div>
+        </header>
 
-    <!-- ── Text Size ── -->
-    <div class="settings-card settings-card--textsize">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Text Size</h3>
-          <p class="card-desc">Scales all text across the app</p>
-        </div>
-      </div>
-      <UiSegmentedControl
-        :model-value="settings.fontSize.value"
-        :options="fontSizeOptions"
-        @update:model-value="(v) => settings.updateFontSize(v as FontSize)"
-      />
-      <div class="font-preview">
-        <p class="preview-heading">The quick brown fox</p>
-        <p class="preview-body">Jumps over the lazy dog. Plan your day, share your space.</p>
-      </div>
-    </div>
+        <div class="card-body">
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">On this display</p>
+              <p class="row-desc">A reminder card appears on screen</p>
+            </div>
+            <UiToggle
+              :model-value="settings.hudEnabled.value"
+              @update:model-value="onHudToggle"
+            />
+          </div>
 
-    <!-- ── Reminders ── -->
-    <div class="settings-card settings-card--reminders">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Reminders</h3>
-          <p class="card-desc">Upcoming events announce themselves before they start</p>
-        </div>
-        <PhBell :size="18" class="reminder-bell" />
-      </div>
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Phone &amp; browser</p>
+              <p class="row-desc">
+                Push reminders to this device, even when HOMST is closed
+                <span v-if="pushSubscribed" class="push-on">· on for this device</span>
+              </p>
+            </div>
+            <UiToggle
+              :model-value="pushSubscribed"
+              :disabled="!pushSupported || pushBusy"
+              @update:model-value="onPushToggle"
+            />
+          </div>
 
-      <div class="setting-row">
-        <div>
-          <p class="row-title">On this display</p>
-          <p class="card-desc">A reminder card appears on screen</p>
-        </div>
-        <UiToggle
-          :model-value="settings.hudEnabled.value"
-          @update:model-value="onHudToggle"
-        />
-      </div>
-
-      <div class="setting-row">
-        <div>
-          <p class="row-title">Phone &amp; browser</p>
-          <p class="card-desc">
-            Push reminders to this device, even when HOMST is closed
-            <span v-if="pushSubscribed" class="push-on">· on for this device</span>
+          <p v-if="pushError" class="card-note card-note--danger push-error">{{ pushError }}</p>
+          <p v-else-if="!pushSupported" class="card-note push-hint">
+            Push is unavailable here{{ pushSupportDetail ? ` — ${pushSupportDetail}` : "" }}.
+            Open HOMST as an installed app over HTTPS; on iPhone or iPad, add it to your Home Screen first.
           </p>
-        </div>
-        <UiToggle
-          :model-value="pushSubscribed"
-          :disabled="!pushSupported || pushBusy"
-          @update:model-value="onPushToggle"
-        />
-      </div>
-      <p v-if="pushError" class="card-desc push-error">{{ pushError }}</p>
-      <p v-else-if="!pushSupported" class="card-desc push-hint">
-        Push is unavailable here{{ pushSupportDetail ? ` — ${pushSupportDetail}` : "" }}.
-        Open HOMST as an installed app over HTTPS; on iPhone or iPad, add it to your Home Screen first.
-      </p>
 
-      <div class="setting-row">
-        <div>
-          <p class="row-title">Default reminder</p>
-          <p class="card-desc">New events start with this reminder time</p>
-        </div>
-        <UiSelect
-          :model-value="defaultReminder"
-          class="reminder-default-select"
-          @update:model-value="onDefaultReminderChange"
-        >
-          <option v-for="opt in REMINDER_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </UiSelect>
-      </div>
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Default reminder</p>
+              <p class="row-desc">New events start with this reminder time</p>
+            </div>
+            <UiSelect
+              :model-value="defaultReminder"
+              class="reminder-default-select"
+              @update:model-value="onDefaultReminderChange"
+            >
+              <option v-for="opt in REMINDER_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </UiSelect>
+          </div>
 
-      <div class="reminder-test">
-        <div class="reminder-test-actions">
-          <UiButton size="sm" :disabled="testing" @click="sendTest">
-            <PhDeviceMobile :size="14" />{{ testing ? "Sending…" : "Send test to all clients" }}
-          </UiButton>
+          <div class="test-panel">
+            <UiButton size="sm" :disabled="testing" @click="sendTest">
+              <PhDeviceMobile :size="14" />{{ testing ? "Sending…" : "Send test to all clients" }}
+            </UiButton>
+            <div v-if="testResults" class="reminder-results">
+              <p v-for="(detail, channel) in testResults" :key="channel" class="reminder-result">
+                <strong>{{ CHANNEL_LABELS[channel] ?? channel }}:</strong> {{ detail }}
+              </p>
+            </div>
+            <p v-if="testUnreachable || !serverReachable" class="reminder-notice" role="status">
+              <strong>{{ SERVER_UNREACHABLE_TITLE }}.</strong>
+            </p>
+          </div>
         </div>
-        <div v-if="testResults" class="reminder-results">
-          <p v-for="(detail, channel) in testResults" :key="channel" class="reminder-result">
-            <strong>{{ CHANNEL_LABELS[channel] ?? channel }}:</strong> {{ detail }}
-          </p>
-        </div>
-        <p v-if="testUnreachable || !serverReachable" class="reminder-notice" role="status">
-          <strong>{{ SERVER_UNREACHABLE_TITLE }}.</strong>
+
+        <p class="card-foot">
+          Push reminders reach every phone and browser with push turned on —
+          no mail account or extra setup needed. The test reaches every open
+          screen and every subscribed device.
         </p>
-      </div>
+      </section>
 
-      <p class="card-desc reminder-hint">
-        Push reminders reach every phone and browser with push turned on —
-        no mail account or extra setup needed. The test reaches every open
-        screen and every subscribed device.
-      </p>
-    </div>
+      <!-- ── Devices ── -->
+      <section class="settings-card settings-card--devices">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Add to your devices</h3>
+            <p class="card-desc">Install HOMST and turn on notifications on any phone or browser</p>
+          </div>
+        </header>
 
-    <!-- ── Devices ── -->
-    <div class="settings-card settings-card--devices">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Add to your devices</h3>
-          <p class="card-desc">Install HOMST and turn on notifications on any phone or browser</p>
+        <div class="card-body">
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">HTTPS certificate</p>
+              <p class="row-desc">
+                Phones and browsers only allow install and push over a trusted certificate.
+              </p>
+            </div>
+            <a class="download-btn" href="/ca.pem" download="homst-ca.pem">
+              <PhDownloadSimple :size="14" />Download
+            </a>
+          </div>
+
+          <ol class="install-steps">
+            <li class="install-step">
+              <span class="step-index">1</span>
+              <div class="row-copy">
+                <p class="row-title">Download the certificate</p>
+                <p class="row-desc">Save it somewhere you can reach from the device.</p>
+              </div>
+            </li>
+            <li class="install-step">
+              <span class="step-index">2</span>
+              <div class="row-copy">
+                <p class="row-title">Install it as a CA certificate</p>
+                <p class="row-desc">Open the file on the device and trust it for the system.</p>
+              </div>
+            </li>
+            <li class="install-step">
+              <span class="step-index">3</span>
+              <div class="row-copy">
+                <p class="row-title">Open HOMST on that device</p>
+                <p class="row-desc">Use it like an app, then enable push.</p>
+              </div>
+            </li>
+          </ol>
         </div>
-        <PhDeviceMobile :size="18" class="reminder-bell" />
-      </div>
 
-      <div class="setting-row">
-        <div>
-          <p class="row-title">HTTPS certificate</p>
-          <p class="card-desc">
-            Phones and browsers only allow install and push over a trusted certificate.
-            Download it, then install it as a <strong>CA certificate</strong> on each device
-            before opening HOMST there.
+        <p class="card-foot">
+          On Android: Settings → Security &amp; privacy → More security settings →
+          Encryption &amp; credentials → Install a certificate → <strong>CA certificate</strong>.
+        </p>
+      </section>
+
+      <!-- ── Music ── -->
+      <section class="settings-card settings-card--music">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Music</h3>
+            <p class="card-desc">While music plays on a display</p>
+          </div>
+        </header>
+
+        <div class="card-body">
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Synced lyrics</p>
+              <p class="row-desc">Two lines of the song scroll along the bottom of the screen</p>
+            </div>
+            <UiToggle
+              :model-value="settings.lyricsEnabled.value"
+              @update:model-value="(v: boolean) => onMusicToggle('lyrics', v)"
+            />
+          </div>
+
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Album cover background</p>
+              <p class="row-desc">The playing album fills the screen behind the dashboard</p>
+            </div>
+            <UiToggle
+              :model-value="settings.musicBackground.value"
+              @update:model-value="(v: boolean) => onMusicToggle('background', v)"
+            />
+          </div>
+
+          <div v-if="settings.musicBackground.value" class="setting-row setting-row--nested">
+            <div class="row-copy">
+              <p class="row-title">Spin the cover</p>
+              <p class="row-desc">Turn the background like a record on a turntable</p>
+            </div>
+            <UiToggle
+              :model-value="settings.musicBackgroundSpin.value"
+              @update:model-value="(v: boolean) => onMusicToggle('backgroundSpin', v)"
+            />
+          </div>
+
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Spinning album art</p>
+              <p class="row-desc">The cover in the now-playing card turns with the music</p>
+            </div>
+            <UiToggle
+              :model-value="settings.musicCardSpin.value"
+              @update:model-value="(v: boolean) => onMusicToggle('cardSpin', v)"
+            />
+          </div>
+        </div>
+
+        <p class="card-foot">
+          Lyrics come from LRCLIB. A track without synced lyrics shows nothing.
+        </p>
+      </section>
+
+      <!-- ── Motion ── -->
+      <section class="settings-card settings-card--motion">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Motion</h3>
+            <p class="card-desc">Bouncy animations and transitions across the app</p>
+          </div>
+        </header>
+
+        <div class="card-body">
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Animations</p>
+              <p class="row-desc">Buttons, cards, and panels spring into place</p>
+            </div>
+            <UiToggle v-model="animationsEnabled" />
+          </div>
+
+          <div class="motion-preview" :class="{ 'is-on': animationsEnabled }" aria-hidden="true">
+            <span class="motion-block" />
+            <span class="motion-block" />
+            <span class="motion-block" />
+            <span class="motion-block" />
+          </div>
+
+          <p v-if="systemReducedMotion" class="card-note motion-locked">
+            Your system asks for reduced motion. This switch overrides that for HOMST.
           </p>
         </div>
-        <a class="download-btn" href="/ca.pem" download="homst-ca.pem">
-          <PhDownloadSimple :size="14" />Download
-        </a>
-      </div>
-      <p class="card-desc">
-        On Android: Settings → Security &amp; privacy → More security settings →
-        Encryption &amp; credentials → Install a certificate → <strong>CA certificate</strong>.
-      </p>
-    </div>
+      </section>
 
-    <!-- ── Motion ── -->
-    <div class="settings-card settings-card--motion">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Motion</h3>
-          <p class="card-desc">Enable bouncy animations and transitions</p>
-        </div>
-        <UiToggle v-model="animationsEnabled" />
-      </div>
-      <p v-if="systemReducedMotion" class="card-desc motion-locked">
-        Your system asks for reduced motion. This switch overrides that for HOMST.
-      </p>
-    </div>
-
-    <!-- ── Music ── -->
-    <div class="settings-card settings-card--music">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Music</h3>
-          <p class="card-desc">While music plays on a display</p>
-        </div>
-        <PhMusicNote :size="18" class="reminder-bell" />
-      </div>
-
-      <div class="setting-row">
-        <div>
-          <p class="row-title">Synced lyrics</p>
-          <p class="card-desc">Two lines of the song scroll along the bottom of the screen</p>
-        </div>
-        <UiToggle
-          :model-value="settings.lyricsEnabled.value"
-          @update:model-value="(v: boolean) => onMusicToggle('lyrics', v)"
-        />
-      </div>
-
-      <div class="setting-row">
-        <div>
-          <p class="row-title">Album cover background</p>
-          <p class="card-desc">The playing album fills the screen behind the dashboard</p>
-        </div>
-        <UiToggle
-          :model-value="settings.musicBackground.value"
-          @update:model-value="(v: boolean) => onMusicToggle('background', v)"
-        />
-      </div>
-
-      <div v-if="settings.musicBackground.value" class="setting-row setting-row--nested">
-        <div>
-          <p class="row-title">Spin the cover</p>
-          <p class="card-desc">Turn the background like a record on a turntable</p>
-        </div>
-        <UiToggle
-          :model-value="settings.musicBackgroundSpin.value"
-          @update:model-value="(v: boolean) => onMusicToggle('backgroundSpin', v)"
-        />
-      </div>
-
-      <div class="setting-row">
-        <div>
-          <p class="row-title">Spinning album art</p>
-          <p class="card-desc">The cover in the now-playing card turns with the music</p>
-        </div>
-        <UiToggle
-          :model-value="settings.musicCardSpin.value"
-          @update:model-value="(v: boolean) => onMusicToggle('cardSpin', v)"
-        />
-      </div>
-
-      <p class="card-desc">
-        Lyrics come from LRCLIB. A track without synced lyrics shows nothing.
-      </p>
-    </div>
-
-    <!-- ── Home screen ── -->
-    <div class="settings-card settings-card--home">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Home Screen</h3>
-          <p class="card-desc">Restore the default card arrangement and sizes</p>
-        </div>
-        <UiButton size="sm" variant="ghost" :disabled="resettingLayout" @click="askToResetLayout">
-          Reset layout
-        </UiButton>
-      </div>
-
-      <div v-if="confirmingLayoutReset" class="confirm-box">
-        <PhWarningCircle :size="20" class="confirm-icon" />
-        <div class="confirm-copy">
-          <p class="confirm-title">Reset the home screen layout?</p>
-          <p class="card-desc">All cards will move back to their default positions and sizes.</p>
-        </div>
-        <div class="confirm-actions">
-          <UiButton size="sm" variant="ghost" :disabled="resettingLayout" @click="confirmingLayoutReset = false">
-            Cancel
+      <!-- ── Home screen ── -->
+      <section class="settings-card settings-card--home">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Home Screen</h3>
+            <p class="card-desc">Restore the default card arrangement and sizes</p>
+          </div>
+          <UiButton size="sm" variant="ghost" :disabled="resettingLayout" @click="askToResetLayout">
+            Reset layout
           </UiButton>
-          <UiButton size="sm" :disabled="resettingLayout" @click="resetHomeLayout">
-            {{ resettingLayout ? "Resetting…" : "Reset" }}
-          </UiButton>
+        </header>
+
+        <div class="card-body">
+          <div
+            class="layout-preview"
+            role="img"
+            aria-label="The default home screen arrangement of seven cards"
+          >
+            <span
+              v-for="card in DEFAULT_LAYOUT"
+              :key="card.id"
+              class="layout-block"
+              :class="`layout-block--${card.id}`"
+              :style="{
+                gridColumn: `${card.col + 1} / span ${card.w}`,
+                gridRow: `${card.row + 1} / span ${card.h}`,
+              }"
+            />
+          </div>
+
+          <div v-if="confirmingLayoutReset" class="confirm-box">
+            <PhWarningCircle :size="20" class="confirm-icon" />
+            <div class="confirm-copy">
+              <p class="confirm-title">Reset the home screen layout?</p>
+              <p class="row-desc">All cards will move back to their default positions and sizes.</p>
+            </div>
+            <div class="confirm-actions">
+              <UiButton size="sm" variant="ghost" :disabled="resettingLayout" @click="confirmingLayoutReset = false">
+                Cancel
+              </UiButton>
+              <UiButton size="sm" :disabled="resettingLayout" @click="resetHomeLayout">
+                {{ resettingLayout ? "Resetting…" : "Reset" }}
+              </UiButton>
+            </div>
+          </div>
+
+          <p v-if="resetLayoutMessage" class="card-foot reset-message" role="status">{{ resetLayoutMessage }}</p>
+          <p v-if="resetLayoutError" class="card-foot reset-error" role="alert">{{ resetLayoutError }}</p>
         </div>
-      </div>
+      </section>
 
-      <p v-if="resetLayoutMessage" class="card-desc reset-message" role="status">{{ resetLayoutMessage }}</p>
-      <p v-if="resetLayoutError" class="card-desc reset-error" role="alert">{{ resetLayoutError }}</p>
+      <!-- ── Software update ── -->
+      <SoftwareUpdateCard class="settings-card--software" />
     </div>
-
-    <!-- ── Software update ── -->
-    <SoftwareUpdateCard class="settings-card--software" />
-
   </div>
 </template>
 
 <style scoped>
 .settings-panel {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Bento layout ─────────────────────────────────────────────────────────────
+   Paired by purpose: identity, display, alerts, ambience, system. Cards fill
+   their cell, so shorter tiles spread or centre their content instead of
+   leaving a hole at the bottom. */
+.settings-bento {
   display: grid;
-  grid-template-columns: minmax(0, 640px);
-  justify-content: center;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "preset"
+    "accent"
+    "appearance"
+    "textsize"
+    "reminders"
+    "devices"
+    "music"
+    "motion"
+    "home"
+    "software";
   align-items: stretch;
   gap: var(--space-4);
 }
 
-/* The page title spans the whole bento */
-.settings-panel > .page-header {
-  grid-column: 1 / -1;
-}
+.settings-card--preset     { grid-area: preset; }
+.settings-card--accent     { grid-area: accent; }
+.settings-card--appearance { grid-area: appearance; }
+.settings-card--textsize   { grid-area: textsize; }
+.settings-card--reminders  { grid-area: reminders; }
+.settings-card--devices    { grid-area: devices; }
+.settings-card--music      { grid-area: music; }
+.settings-card--motion     { grid-area: motion; }
+.settings-card--home       { grid-area: home; }
+.settings-card--software   { grid-area: software; }
 
-/* ── Bento layout ─────────────────────────────────────────────────────────────
-   Two columns on mid-size displays, three on wide kiosk screens. Cards fill
-   their grid cell; shorter cards spread their content instead of leaving a gap. */
-@media (min-width: 1000px) {
-  .settings-panel {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    justify-content: stretch;
+@media (min-width: 860px) {
+  .settings-bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "preset    preset"
+      "accent    textsize"
+      "appearance appearance"
+      "reminders devices"
+      "music     motion"
+      "home      software";
   }
-
-  .settings-card--preset     { grid-column: 1 / -1; }
-  .settings-card--accent     { grid-column: span 2; }
-  .settings-card--appearance { grid-column: span 4; }
-  .settings-card--textsize   { grid-column: span 2; }
-  .settings-card--reminders  { grid-column: span 4; }
-  .settings-card--devices    { grid-column: span 4; }
-  .settings-card--motion     { grid-column: span 2; }
-  .settings-card--music      { grid-column: 1 / -1; }
-  .settings-card--home       { grid-column: 1 / -1; }
-  .settings-card--software   { grid-column: 1 / -1; }
 }
 
-@media (min-width: 1400px) {
-  .settings-panel {
+@media (min-width: 1180px) {
+  .settings-bento {
     grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-areas:
+      "preset preset preset preset preset preset preset accent accent accent accent accent"
+      "appearance appearance appearance appearance appearance appearance appearance textsize textsize textsize textsize textsize"
+      "reminders reminders reminders reminders reminders reminders reminders devices devices devices devices devices"
+      "music music music music music music music music motion motion motion motion"
+      "home home home home software software software software software software software software";
+  }
+}
+
+/* ── Card shell ── */
+.settings-card {
+  min-width: 0;
+  background: var(--color-bgSurface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ── Shared card anatomy: header, body, foot ── */
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.card-heading {
+  min-width: 0;
+}
+
+.card-title {
+  font-size: var(--text-heading-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--text-heading-line-height);
+  color: var(--color-textPrimary);
+}
+
+.card-desc {
+  margin-top: 2px;
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+  color: var(--color-textSecondary);
+  max-width: 58ch;
+}
+
+.card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.card-body--center {
+  justify-content: center;
+}
+
+.settings-card--textsize .card-body {
+  justify-content: space-between;
+}
+
+/* Header actions keep their label on one line and never shrink into a stack. */
+.settings-card--home .card-header :deep(.ui-btn) {
+  flex-shrink: 0;
+}
+
+.settings-card--home .card-header :deep(.ui-btn__inner) {
+  white-space: nowrap;
+}
+
+.card-foot {
+  font-size: var(--text-label-size);
+  line-height: 1.55;
+  color: var(--color-textSecondary);
+  max-width: 70ch;
+}
+
+.selected-badge {
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textPrimary);
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bgSurface));
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Option grids ── */
+.option-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.option-grid--presets {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.option-grid--appearance {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* The appearance picker falls to two columns whenever its own card is narrow,
+   not when the viewport is: the bento pairs it with Accent on mid-size screens. */
+.settings-card--appearance {
+  container-type: inline-size;
+}
+
+@container (max-width: 520px) {
+  .option-grid--appearance {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .option-grid--presets { grid-template-columns: 1fr; }
+}
+
+/* One tile anatomy for both pickers: media on top, label and description below. */
+.option-tile {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bgElevated);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--duration-fast),
+    background var(--duration-fast),
+    box-shadow var(--duration-fast),
+    transform var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.option-tile:hover {
+  border-color: var(--color-borderStrong);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 0 0 var(--shadow-lip), 0 6px 16px -4px var(--shadow-drop);
+}
+
+.option-tile:active {
+  transform: translateY(0);
+}
+
+.option-tile:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.option-tile.active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-bgSurface));
+  box-shadow: 0 2px 0 0 var(--shadow-accent-lip), 0 6px 20px -4px var(--shadow-accent-drop);
+}
+
+.option-media {
+  position: relative;
+  display: block;
+}
+
+.option-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-full);
+  background: var(--color-bgSurface);
+  color: var(--color-textPrimary);
+}
+
+.option-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.preset-label,
+.theme-label {
+  font-size: var(--text-body-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.35;
+  color: var(--color-textPrimary);
+}
+
+.preset-desc,
+.theme-desc {
+  font-size: var(--text-label-size);
+  line-height: 1.4;
+  color: var(--color-textSecondary);
+}
+
+/* ── Theme previews ── */
+.preset-preview {
+  display: flex;
+  gap: 5px;
+  width: 100%;
+  height: 84px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bgSubtle);
+}
+
+.preset-preview--futur {
+  background: #f3edd6;
+  box-shadow: inset 0 0 0 2px #15171c;
+  border-radius: 8px;
+}
+
+.preset-swatch {
+  flex: 1;
+  border-radius: 5px;
+}
+
+.theme-icon-field {
+  display: grid;
+  place-items: center;
+  height: 84px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bgSubtle);
+  color: var(--color-textSecondary);
+}
+
+.theme-icon {
+  transition: color var(--duration-fast);
+}
+
+.option-tile.active .theme-icon {
+  color: var(--color-primary);
+}
+
+/* ── Accent colors ── */
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+@media (max-width: 420px) {
+  .color-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.color-option {
+  min-width: 0;
+  min-height: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast);
+}
+
+.color-option:hover {
+  background: var(--color-bgSubtle);
+}
+
+.color-option.active {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-bgSurface));
+}
+
+.color-swatch {
+  width: 40px;
+  height: 40px;
+  min-width: unset;
+  min-height: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid transparent;
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 0 0 var(--shadow-lip), 0 4px 12px -2px var(--shadow-drop),
+              inset 0 1px 2px var(--shadow-shine);
+  transition:
+    transform var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.color-option:hover .color-swatch {
+  transform: scale(1.06);
+}
+
+.color-option.active .color-swatch {
+  transform: scale(1.08);
+  box-shadow:
+    0 3px 0 0 var(--shadow-lip),
+    0 8px 24px -2px var(--shadow-drop),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.6),
+    inset 0 1px 3px rgba(255, 255, 255, 0.65);
+}
+
+.color-option:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.color-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-label-size);
+  line-height: 1.3;
+  color: var(--color-textSecondary);
+}
+
+.color-option.active .color-name {
+  color: var(--color-textPrimary);
+  font-weight: var(--font-weight-medium);
+}
+
+.swatch-check {
+  color: rgba(255, 255, 255, 0.9);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+/* ── Setting rows ── */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 48px;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.row-copy {
+  min-width: 0;
+}
+
+.row-title {
+  font-size: var(--text-body-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.35;
+  color: var(--color-textPrimary);
+}
+
+.row-desc {
+  margin-top: 2px;
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+  color: var(--color-textSecondary);
+  max-width: 56ch;
+}
+
+/* Sub-option of the row above it (the cover spin follows the cover background). */
+.setting-row--nested {
+  padding-left: var(--space-6);
+}
+
+/* ── Inline notes ── */
+.card-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bgSubtle);
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+  color: var(--color-textSecondary);
+}
+
+.card-note svg {
+  color: var(--color-primary);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.card-note--danger {
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  color: var(--color-danger);
+}
+
+.auto-note {
+  align-items: center;
+}
+
+/* ── Text size ── */
+.settings-card--textsize :deep(.segmented-control) {
+  display: flex;
+  width: 100%;
+}
+
+.settings-card--textsize :deep(.segmented-btn) {
+  flex: 1;
+  min-height: 44px;
+  padding-inline: 0;
+}
+
+.font-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 112px;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bgSubtle);
+}
+
+.preview-heading {
+  font-size: var(--text-heading-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+  color: var(--color-textPrimary);
+}
+
+.preview-body {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+  color: var(--color-textSecondary);
+}
+
+/* ── Reminders ── */
+.push-on {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.test-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.reminder-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.reminder-result {
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+  color: var(--color-textSecondary);
+}
+
+.reminder-result strong {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textPrimary);
+}
+
+.reminder-notice {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+  color: var(--color-textSecondary);
+}
+
+.reminder-notice strong {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textPrimary);
+}
+
+/* Override UiSelect's default width:100% — as a row item it overflows the
+   card and squeezes the label text. Size it to its widest option instead. */
+.setting-row .reminder-default-select {
+  width: auto;
+  max-width: 100%;
+  min-width: 170px;
+  flex-shrink: 0;
+}
+
+/* On a phone the select needs the full row so the label keeps a readable measure. */
+@media (max-width: 560px) {
+  .setting-row--stack {
+    flex-wrap: wrap;
+    align-items: stretch;
   }
 
-  .settings-card--preset     { grid-column: 1 / -1; }
-  .settings-card--accent     { grid-column: span 4; }
-  .settings-card--appearance { grid-column: span 8; }
-  .settings-card--textsize   { grid-column: span 4; }
-  .settings-card--reminders  { grid-column: span 8; }
-  .settings-card--devices    { grid-column: span 8; }
-  .settings-card--motion     { grid-column: span 4; }
-  .settings-card--music      { grid-column: 1 / -1; }
-  .settings-card--home       { grid-column: 1 / -1; }
-  .settings-card--software   { grid-column: 1 / -1; }
+  .setting-row--stack .reminder-default-select {
+    flex: 1 0 100%;
+    width: 100%;
+    min-width: 0;
+  }
 }
 
-/* Short cards paired with taller neighbours keep their controls optically centred */
-.settings-card--accent .color-grid {
-  margin-block: auto;
+/* ── Devices ── */
+.download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-bgSurface));
+  color: var(--color-textPrimary);
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform var(--duration-fast);
 }
 
-.settings-card--textsize .font-preview {
-  margin-block: auto;
+.download-btn:hover { transform: translateY(-1px); }
+.download-btn:active { transform: scale(0.96); }
+
+.install-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
 }
 
-.settings-card--motion {
+.install-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.step-index {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bgSurface));
+  color: var(--color-textPrimary);
+  font-size: var(--text-micro-size);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ── Motion preview ── */
+.motion-preview {
+  flex: 1;
+  min-height: 124px;
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bgSubtle);
+  overflow: hidden;
+}
+
+.motion-block {
+  width: 30px;
+  height: 34px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--color-primary) 55%, var(--color-bgSurface));
+  box-shadow: 0 2px 0 0 var(--shadow-lip);
+}
+
+.motion-block:nth-child(2) {
+  height: 54px;
+  background: var(--color-primary);
+}
+
+.motion-block:nth-child(3) {
+  height: 42px;
+  background: color-mix(in srgb, var(--color-primary) 75%, var(--color-bgSurface));
+}
+
+.motion-block:nth-child(4) {
+  height: 30px;
+  background: color-mix(in srgb, var(--color-primary) 45%, var(--color-bgSurface));
+}
+
+.motion-preview.is-on .motion-block {
+  animation: motion-bob 1.8s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+.motion-preview.is-on .motion-block:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.motion-preview.is-on .motion-block:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.motion-preview.is-on .motion-block:nth-child(4) {
+  animation-delay: 360ms;
+}
+
+/* A perpetual animation on a low-power display flickers: hold the demo still. */
+:global(html.low-power) .motion-preview.is-on .motion-block {
+  animation: none !important;
+}
+
+@keyframes motion-bob {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50%      { transform: translateY(-10px) scaleY(1.06); }
+}
+
+.motion-locked {
+  font-style: italic;
+}
+
+/* ── Home layout preview ── */
+.layout-preview {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+  min-height: 220px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bgSubtle);
+}
+
+.layout-block {
+  min-width: 0;
+  min-height: 0;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-bgSurface));
+}
+
+.layout-block--photos {
+  background: color-mix(in srgb, var(--color-primary) 34%, var(--color-bgSurface));
+}
+
+.layout-block--calendar,
+.layout-block--schedule {
+  background: color-mix(in srgb, var(--color-primary) 26%, var(--color-bgSurface));
 }
 
 /* ── Layout reset confirmation ── */
@@ -772,414 +1536,4 @@ async function sendTest() {
 .reset-error {
   color: var(--color-danger);
 }
-
-/* ── Card ── */
-.settings-card {
-  background: var(--color-bgSurface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.card-title {
-  font-size: var(--text-body-size);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-textPrimary);
-}
-
-.card-desc {
-  font-size: var(--text-label-size);
-  color: var(--color-textMuted);
-  margin-top: var(--space-1);
-}
-
-/* Segmented controls sit at their natural width instead of stretching across the card */
-.settings-card :deep(.segmented-control) {
-  align-self: flex-start;
-}
-
-.download-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-shrink: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-accent-lighter);
-  color: var(--color-accent-darker);
-  font-size: var(--text-label-size);
-  font-weight: var(--font-weight-medium);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: transform var(--duration-fast);
-}
-
-.download-btn:hover { transform: translateY(-1px); }
-.download-btn:active { transform: scale(0.96); }
-
-.selected-badge {
-  font-size: var(--text-label-size);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-primary);
-  background: var(--color-accent-lighter);
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* ── Color swatches ── */
-.color-grid {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.color-swatch {
-  width: 44px;
-  height: 44px;
-  min-width: unset;
-  min-height: unset;
-  border: 2px solid transparent;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94),
-              box-shadow var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  box-shadow: 0 2px 0 0 var(--shadow-lip), 0 4px 12px -2px var(--shadow-drop),
-              inset 0 1px 2px var(--shadow-shine);
-}
-
-.color-swatch:hover { transform: scale(1.1); }
-.color-swatch:active { transform: scale(0.92); transition-duration: 60ms; }
-
-.color-swatch.active {
-  transform: scale(1.16);
-  box-shadow:
-    0 3px 0 0 var(--shadow-lip),
-    0 8px 24px -2px var(--shadow-drop),
-    inset 0 0 0 2px rgba(255,255,255,0.6),
-    inset 0 1px 3px rgba(255,255,255,0.65);
-}
-
-.swatch-check {
-  color: rgba(255, 255, 255, 0.9);
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
-}
-
-/* ── Theme preset cards ── */
-.preset-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-.preset-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bgElevated);
-  cursor: pointer;
-  min-width: unset;
-  min-height: unset;
-  position: relative;
-  text-align: left;
-  transition: border-color var(--duration-fast), background var(--duration-fast),
-              box-shadow var(--duration-fast), transform var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.preset-card:hover {
-  border-color: var(--color-borderStrong);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 0 0 var(--shadow-lip), 0 6px 16px -4px var(--shadow-drop);
-}
-
-.preset-card:active { transform: translateY(0); }
-
-.preset-card:focus-visible {
-  outline: 3px solid var(--color-primary);
-  outline-offset: 3px;
-}
-
-.preset-card.active {
-  border-color: var(--color-primary);
-  background: var(--color-accent-lighter);
-  box-shadow: 0 2px 0 0 var(--shadow-accent-lip), 0 6px 20px -4px var(--shadow-accent-drop);
-}
-
-.preset-preview {
-  display: flex;
-  gap: 4px;
-  width: 92px;
-  height: 56px;
-  flex-shrink: 0;
-  padding: 7px;
-  border-radius: 10px;
-  background: var(--color-bgSubtle);
-}
-
-.preset-preview--futur {
-  background: #f3edd6;
-  box-shadow: inset 0 0 0 2px #15171c;
-  border-radius: 8px;
-}
-
-.preset-swatch {
-  flex: 1;
-  border-radius: 5px;
-}
-
-.preset-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.preset-label {
-  font-size: var(--text-body-size);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-textPrimary);
-}
-
-.preset-desc {
-  font-size: var(--text-micro-size);
-  color: var(--color-textMuted);
-  line-height: 1.3;
-}
-
-.preset-check {
-  margin-left: auto;
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-@media (max-width: 560px) {
-  .preset-grid { grid-template-columns: 1fr; }
-  .preset-preview { width: 72px; height: 48px; }
-}
-
-/* ── Theme cards ── */
-.theme-cards {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-@media (max-width: 560px) {
-  .theme-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-.auto-note {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-label-size);
-  color: var(--color-textMuted);
-  margin-top: calc(-1 * var(--space-2));
-}
-
-.auto-note svg {
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.theme-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-3);
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bgElevated);
-  cursor: pointer;
-  min-width: unset;
-  min-height: unset;
-  transition: border-color var(--duration-fast), background var(--duration-fast),
-              box-shadow var(--duration-fast), transform var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.theme-card:hover {
-  border-color: var(--color-borderStrong);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 0 0 var(--shadow-lip), 0 6px 16px -4px var(--shadow-drop);
-}
-
-.theme-card:active { transform: translateY(0); }
-
-.theme-card.active {
-  border-color: var(--color-primary);
-  background: var(--color-accent-lighter);
-  box-shadow: 0 2px 0 0 var(--shadow-accent-lip), 0 6px 20px -4px var(--shadow-accent-drop);
-}
-
-.theme-icon {
-  color: var(--color-textMuted);
-  transition: color var(--duration-fast);
-}
-
-.theme-card.active .theme-icon {
-  color: var(--color-primary);
-}
-
-.theme-label {
-  font-size: var(--text-body-size);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-textPrimary);
-}
-
-.theme-desc {
-  font-size: var(--text-micro-size);
-  color: var(--color-textMuted);
-}
-
-/* ── Toggle row ── */
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
-}
-
-.row-title {
-  font-size: var(--text-body-size);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-textPrimary);
-}
-
-/* Sub-option of the row above it (the cover spin follows the cover background). */
-.setting-row--nested {
-  padding-left: var(--space-3);
-  margin-left: var(--space-1);
-  border-left: 2px solid var(--color-border);
-}
-
-/* ── Font preview ── */
-.font-preview {
-  background: var(--color-bgElevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-4) var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.preview-heading {
-  font-size: var(--text-heading-size);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-textPrimary);
-  line-height: 1.3;
-}
-
-.preview-body {
-  font-size: var(--text-body-size);
-  color: var(--color-textSecondary);
-  line-height: var(--text-body-line-height);
-}
-
-.motion-locked {
-  color: var(--color-textMuted);
-  font-style: italic;
-}
-
-/* ── Reminders ── */
-.reminder-bell {
-  color: var(--color-textMuted);
-  flex-shrink: 0;
-}
-
-.reminder-test {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
-  align-items: flex-start;
-}
-
-.reminder-test-actions {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-/* Override UiSelect's default width:100% — as a row item it overflows the
-   card and squeezes the label text. Size it to its widest option instead. */
-.setting-row .reminder-default-select {
-  width: auto;
-  max-width: 100%;
-  min-width: 170px;
-  flex-shrink: 0;
-}
-
-.reminder-results {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.reminder-result {
-  font-size: var(--text-label-size);
-  color: var(--color-textSecondary);
-  line-height: 1.5;
-}
-
-.reminder-result strong {
-  font-weight: var(--font-weight-medium);
-  color: var(--color-textPrimary);
-}
-
-.reminder-notice {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid var(--color-warning, #caa681);
-  border-radius: var(--radius-xs);
-  background: color-mix(in srgb, var(--color-warning, #caa681) 12%, transparent);
-  color: var(--color-textSecondary);
-  font-size: var(--text-label-size);
-  line-height: 1.5;
-}
-
-.reminder-notice strong {
-  font-weight: var(--font-weight-medium);
-  color: var(--color-textPrimary);
-}
-
-.reminder-hint {
-  margin-top: calc(-1 * var(--space-2));
-}
-
-.push-on {
-  color: var(--color-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.push-error {
-  color: var(--color-danger, #c0392b);
-}
-
-.push-hint {
-  margin-top: calc(-1 * var(--space-2));
-}
-
 </style>

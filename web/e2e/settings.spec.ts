@@ -131,7 +131,7 @@ test.describe("Settings", () => {
   test("settings sections exist", async ({ page }) => {
     await openSettings(page)
     const sections = page.locator(".settings-card")
-    await expect(sections).toHaveCount(9)
+    await expect(sections).toHaveCount(10)
   })
 
   test("resetting the home layout asks for confirmation and saves the default", async ({ page }) => {

@@ -148,8 +148,9 @@ test("full user journey: onboarding → events → views → edit", async ({ pag
   await page.locator('.nav-item[aria-label="Settings"]').click()
   await page.waitForTimeout(300)
   await expect(page.locator(".settings-panel")).toBeVisible()
-  // Theme, Accent Color, Appearance, Text Size, Reminders, Devices, Motion, Home Screen
-  await expect(page.locator(".card-title")).toHaveCount(8)
+  // Theme, Accent Color, Appearance, Text Size, Reminders, Devices, Music,
+  // Motion, Home Screen, Software update
+  await expect(page.locator(".card-title")).toHaveCount(10)
 
   // Change accent color
   await page.locator(".color-swatch").nth(2).click()

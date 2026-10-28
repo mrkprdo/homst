@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends string">
-import { ref, watch, nextTick, onMounted } from "vue"
+import { ref, watch, nextTick, onMounted, onUnmounted } from "vue"
 import { animate, springs } from "@/lib/motion"
 import { useSettings } from "@/composables/useSettings"
 
@@ -57,8 +57,31 @@ watch(() => settings.fontSize.value, () => {
   nextTick(() => positionIndicator(props.modelValue))
 })
 
+let resizeObserver: ResizeObserver | null = null
+let lastWidth = 0
+
 onMounted(() => {
-  nextTick(() => positionIndicator(props.modelValue))
+  nextTick(() => {
+    positionIndicator(props.modelValue)
+    lastWidth = groupEl.value?.offsetWidth ?? 0
+  })
+
+  // A responsive column change or rotation resizes the control without
+  // changing the model, so re-measure the pill whenever the width moves.
+  if (typeof ResizeObserver !== "undefined" && groupEl.value) {
+    resizeObserver = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0
+      if (Math.abs(width - lastWidth) < 1) return
+      lastWidth = width
+      positionIndicator(props.modelValue)
+    })
+    resizeObserver.observe(groupEl.value)
+  }
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
 })
 
 function select(value: T) {
