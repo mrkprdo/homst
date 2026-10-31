@@ -89,10 +89,12 @@ format:
 
 # ── Dev stack (Docker) ───────────────────────────────────
 # Full rebuild: fresh images, no cache, then start in the background.
+# Anonymous volumes are renewed so a rebuilt web image installs its current
+# node_modules (the web-dev service mounts one at /app/node_modules).
 dev-build: tokens
 	$(DEV) down --rmi local --remove-orphans
 	$(DEV) build --no-cache
-	$(DEV) up -d
+	$(DEV) up -d --renew-anon-volumes
 
 dev-up: tokens
 	$(DEV) up -d
