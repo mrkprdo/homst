@@ -35,6 +35,7 @@ import PageHeader from "@/components/ui/PageHeader.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
 import UiToggle from "@/components/ui/UiToggle.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import UiInput from "@/components/ui/UiInput.vue"
 import UiSelect from "@/components/ui/UiSelect.vue"
 import SoftwareUpdateCard from "@/components/settings/SoftwareUpdateCard.vue"
 
@@ -256,6 +257,12 @@ onMounted(async () => {
     settings.updateHudEnabled(n.hud !== false)
     settings.updateDefaultReminderMinutes(n.defaultReminderMinutes ?? null)
   }
+  if (s?.camera) {
+    cameraUrl.value = s.camera.url ?? ""
+    cameraUsername.value = s.camera.username ?? ""
+    cameraRotation.value = String(s.camera.rotation ?? 0)
+    settings.applyCameraSettings(s.camera)
+  }
   defaultReminder.value = settings.defaultReminderMinutes.value != null
     ? String(settings.defaultReminderMinutes.value)
     : ""
@@ -309,6 +316,46 @@ function onMusicToggle(key: keyof typeof musicSetters, value: boolean) {
       cardSpin: settings.musicCardSpin.value,
     },
   }).catch(() => {})
+}
+
+// ── Camera ──
+const cameraUrl = ref("")
+const cameraUsername = ref("")
+const cameraPassword = ref("")
+const cameraRotation = ref("0")
+const cameraSaving = ref(false)
+const cameraMessage = ref("")
+const cameraError = ref("")
+
+async function saveCamera() {
+  cameraSaving.value = true
+  cameraMessage.value = ""
+  cameraError.value = ""
+  const url = cameraUrl.value.trim()
+  const camera: { url: string; username: string; rotation: number; password?: string } = {
+    url,
+    username: cameraUsername.value.trim(),
+    rotation: Number(cameraRotation.value),
+  }
+  if (cameraPassword.value) camera.password = cameraPassword.value
+  try {
+    const res = await householdApi.updateSettings({ camera })
+    if (res.settings) applyHouseholdSettings(res.settings)
+    cameraPassword.value = ""
+    cameraMessage.value = url ? "Camera saved." : "Camera removed."
+  } catch (err) {
+    cameraError.value = err instanceof Error ? err.message : "Could not save the camera."
+  } finally {
+    cameraSaving.value = false
+  }
+}
+
+function removeCamera() {
+  cameraUrl.value = ""
+  cameraUsername.value = ""
+  cameraPassword.value = ""
+  cameraRotation.value = "0"
+  void saveCamera()
 }
 
 /** Keep the shared settings store in sync so event forms pre-fill immediately. */
@@ -697,6 +744,89 @@ async function sendTest() {
         </p>
       </section>
 
+      <!-- ── Camera ── -->
+      <section class="settings-card settings-card--camera">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Camera</h3>
+            <p class="card-desc">Show an RTSP stream on the home screen</p>
+          </div>
+        </header>
+
+        <div class="card-body">
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Stream URL</p>
+              <p class="row-desc">rtsp://, rtsps://, http:// or https://</p>
+            </div>
+            <UiInput
+              v-model="cameraUrl"
+              class="camera-input"
+              placeholder="rtsp://192.168.1.20:554/stream1"
+            />
+          </div>
+
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Username</p>
+              <p class="row-desc">Optional — leave blank for anonymous access</p>
+            </div>
+            <UiInput v-model="cameraUsername" class="camera-input" placeholder="admin" />
+          </div>
+
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Rotation</p>
+              <p class="row-desc">Turn the picture if the camera is mounted sideways</p>
+            </div>
+            <UiSelect v-model="cameraRotation" class="camera-rotation-select">
+              <option value="0">0°</option>
+              <option value="90">90°</option>
+              <option value="180">180°</option>
+              <option value="270">270°</option>
+            </UiSelect>
+          </div>
+
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Password</p>
+              <p class="row-desc">
+                {{ settings.cameraPasswordSet.value ? "A password is saved. Leave blank to keep it." : "Optional" }}
+              </p>
+            </div>
+            <UiInput
+              v-model="cameraPassword"
+              type="password"
+              class="camera-input"
+              :placeholder="settings.cameraPasswordSet.value ? '••••••••' : ''"
+            />
+          </div>
+
+          <div class="camera-actions">
+            <UiButton size="sm" :disabled="cameraSaving" @click="saveCamera">
+              {{ cameraSaving ? "Saving…" : "Save camera" }}
+            </UiButton>
+            <UiButton
+              v-if="settings.cameraUrl.value"
+              size="sm"
+              variant="ghost"
+              :disabled="cameraSaving"
+              @click="removeCamera"
+            >
+              Remove
+            </UiButton>
+          </div>
+
+          <p v-if="cameraMessage" class="card-foot reset-message" role="status">{{ cameraMessage }}</p>
+          <p v-if="cameraError" class="card-foot reset-error" role="alert">{{ cameraError }}</p>
+        </div>
+
+        <p class="card-foot">
+          The server transcodes the stream to HLS, so it plays in every browser.
+          Credentials stay on the server and are never sent back to clients.
+        </p>
+      </section>
+
       <!-- ── Motion ── -->
       <section class="settings-card settings-card--motion">
         <header class="card-header">
@@ -744,7 +874,7 @@ async function sendTest() {
           <div
             class="layout-preview"
             role="img"
-            aria-label="The default home screen arrangement of seven cards"
+            aria-label="The default home screen arrangement of eight cards"
           >
             <span
               v-for="card in DEFAULT_LAYOUT"
@@ -807,6 +937,7 @@ async function sendTest() {
     "reminders"
     "devices"
     "music"
+    "camera"
     "motion"
     "home"
     "software";
@@ -821,6 +952,7 @@ async function sendTest() {
 .settings-card--reminders  { grid-area: reminders; }
 .settings-card--devices    { grid-area: devices; }
 .settings-card--music      { grid-area: music; }
+.settings-card--camera     { grid-area: camera; }
 .settings-card--motion     { grid-area: motion; }
 .settings-card--home       { grid-area: home; }
 .settings-card--software   { grid-area: software; }
@@ -834,6 +966,7 @@ async function sendTest() {
       "appearance appearance"
       "reminders devices"
       "music     motion"
+      "camera    camera"
       "home      software";
   }
 }
@@ -846,6 +979,7 @@ async function sendTest() {
       "appearance appearance appearance appearance appearance appearance appearance textsize textsize textsize textsize textsize"
       "reminders reminders reminders reminders reminders reminders reminders devices devices devices devices devices"
       "music music music music music music music music motion motion motion motion"
+      "camera camera camera camera camera camera camera camera camera camera camera camera"
       "home home home home software software software software software software software software";
   }
 }
@@ -1210,6 +1344,29 @@ async function sendTest() {
   padding-left: var(--space-6);
 }
 
+/* ── Camera ── */
+.settings-card--camera .setting-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.camera-input {
+  flex: 1;
+}
+
+.camera-rotation-select {
+  max-width: 12rem;
+}
+
+.camera-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
 /* ── Inline notes ── */
 .card-note {
   display: flex;
@@ -1489,7 +1646,8 @@ async function sendTest() {
 }
 
 .layout-block--calendar,
-.layout-block--schedule {
+.layout-block--schedule,
+.layout-block--camera {
   background: color-mix(in srgb, var(--color-primary) 26%, var(--color-bgSurface));
 }
 

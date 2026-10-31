@@ -1,6 +1,6 @@
 import { nextTick, ref } from "vue"
 import { householdApi } from "@/api/household"
-import type { HouseholdSettings } from "@/api/household"
+import type { CameraSettings, HouseholdSettings } from "@/api/household"
 import { photosApi } from "@/api/photos"
 import { HOME_LAYOUT_EVENT } from "@/lib/homeLayout"
 
@@ -82,6 +82,12 @@ const musicBackgroundSpin = ref(false)
 const musicCardSpin = ref(true)
 const houseName = ref("")
 const photos = ref<PhotoEntry[]>([])
+/** RTSP camera details exposed by the server (never the password itself). */
+const cameraUrl = ref("")
+const cameraUsername = ref("")
+const cameraPasswordSet = ref(false)
+const cameraRotation = ref(0)
+const cameraStreamPath = ref<string | null>(null)
 /** Household default reminder lead (minutes before start); null = no default. */
 const defaultReminderMinutes = ref<number | null>(null)
 /** Last accent picked in each preset, so switching back restores it. */
@@ -202,6 +208,14 @@ function updateHouseName(name: string) {
   houseName.value = name
 }
 
+function applyCameraSettings(camera: CameraSettings | null) {
+  cameraUrl.value = camera?.url ?? ""
+  cameraUsername.value = camera?.username ?? ""
+  cameraPasswordSet.value = camera?.passwordSet === true
+  cameraRotation.value = camera?.rotation ?? 0
+  cameraStreamPath.value = camera?.streamPath ?? null
+}
+
 function updateDefaultReminderMinutes(minutes: number | null) {
   defaultReminderMinutes.value = minutes
 }
@@ -234,6 +248,7 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
     if (s.autoSunrise !== undefined) autoSunrise.value = s.autoSunrise ?? null
     if (s.autoSunset !== undefined) autoSunset.value = s.autoSunset ?? null
     if (s.houseName !== undefined) updateHouseName(s.houseName)
+    if (s.camera !== undefined) applyCameraSettings(s.camera)
     if (s.notifications) {
       if (s.notifications.hud !== undefined) updateHudEnabled(s.notifications.hud !== false)
       updateDefaultReminderMinutes(s.notifications.defaultReminderMinutes ?? null)
@@ -283,13 +298,14 @@ export function useSettings() {
   return {
     theme, themePreset, accentColor, fontSize, warm, hudEnabled, houseName, photos,
     lyricsEnabled, musicBackground, musicBackgroundSpin, musicCardSpin,
+    cameraUrl, cameraUsername, cameraPasswordSet, cameraRotation, cameraStreamPath,
     defaultReminderMinutes,
     autoThemeDark, autoSunrise, autoSunset,
     accentPalette, accentSets, fontSizeScale,
     applyAccentToDOM, applyFontSizeToDOM,
     updateTheme, updateThemePreset, updateAccentColor, updateFontSize, updateWarm, updateHudEnabled,
     updateLyricsEnabled, updateMusicBackground, updateMusicBackgroundSpin, updateMusicCardSpin,
-    updateHouseName, updateDefaultReminderMinutes,
+    updateHouseName, updateDefaultReminderMinutes, applyCameraSettings,
     applyHouseholdSettings, refreshFromServer, refreshPhotos,
   }
 }
@@ -310,6 +326,11 @@ export function _resetSettings() {
   musicCardSpin.value = true
   houseName.value = ""
   photos.value = []
+  cameraUrl.value = ""
+  cameraUsername.value = ""
+  cameraPasswordSet.value = false
+  cameraRotation.value = 0
+  cameraStreamPath.value = null
   defaultReminderMinutes.value = null
   serverApplyDepth = 0
   accentMemory.default = presetDefaultAccent.default

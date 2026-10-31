@@ -16,6 +16,7 @@ import { PhArrowRight, PhCircle, PhCheckCircle, PhClock, PhCalendarBlank, PhCare
 import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
+import CameraCard from "@/components/home/CameraCard.vue"
 import { animate, stagger, springs, ease } from "@/lib/motion"
 import { syncVinyl } from "@/lib/vinyl"
 import {
@@ -129,11 +130,23 @@ const LEGACY_OVERLAPPING_LAYOUT: WidgetDef[] = [
   { id: "photos",   col: 0, row: 4, w: 4, h: 1 },
 ]
 
+/** The default before the camera card existed (photos filled 4×4). */
+const PRE_CAMERA_DEFAULT_LAYOUT: WidgetDef[] = [
+  { id: "datetime", col: 3, row: 0, w: 1, h: 2 },
+  { id: "weather",  col: 2, row: 0, w: 1, h: 2 },
+  { id: "schedule", col: 0, row: 3, w: 2, h: 3 },
+  { id: "todos",    col: 5, row: 0, w: 1, h: 2 },
+  { id: "calendar", col: 0, row: 0, w: 2, h: 3 },
+  { id: "photos",   col: 2, row: 2, w: 4, h: 4 },
+  { id: "spotify",  col: 4, row: 0, w: 1, h: 2 },
+]
+
 const OUTDATED_DEFAULT_LAYOUTS = [
   BALANCED_SIX_COLUMN_LAYOUT,
   FOUR_COLUMN_DEFAULT_LAYOUT,
   ORIGINAL_DEFAULT_LAYOUT,
   LEGACY_OVERLAPPING_LAYOUT,
+  PRE_CAMERA_DEFAULT_LAYOUT,
 ]
 
 function matchesLayout(layout: WidgetDef[], reference: WidgetDef[]): boolean {
@@ -152,29 +165,6 @@ function isOutdatedDefaultLayout(layout: WidgetDef[]): boolean {
 // Layout cache — read synchronously so refresh doesn't flash default positions
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function readCachedLayout(): WidgetDef[] | null {
-  try {
-    const raw = localStorage.getItem(HOME_LAYOUT_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return null
-    if (parsed.some((w: any) =>
-      typeof w?.id !== 'string' ||
-      [w?.col, w?.row, w?.w, w?.h].some(n => typeof n !== 'number')
-    )) return null
-    const layout = parsed as WidgetDef[]
-    return isOutdatedDefaultLayout(layout)
-      ? DEFAULT_LAYOUT.map(w => ({ ...w }))
-      : layout
-  } catch {
-    return null
-  }
-}
-
-const cachedLayout = readCachedLayout()
-const widgets = reactive<WidgetDef[]>((cachedLayout ?? DEFAULT_LAYOUT).map(w => ({ ...w })))
-const layoutReady = ref(!!cachedLayout)
-
 function findFreeSlot(w: number, h: number, existing: WidgetDef[]): { col: number; row: number } | null {
   for (let row = 0; row <= GRID_ROWS - h; row++) {
     for (let col = 0; col <= GRID_COLS - w; col++) {
@@ -189,6 +179,60 @@ function findFreeSlot(w: number, h: number, existing: WidgetDef[]): { col: numbe
   return null
 }
 
+/** Add any newly shipped cards to a layout saved before they existed. */
+function withDefaultWidgets(layout: WidgetDef[]): { layout: WidgetDef[]; added: boolean } {
+  const merged = layout.map(w => ({ ...w }))
+  let added = false
+  for (const def of DEFAULT_LAYOUT) {
+    if (merged.some(w => w.id === def.id)) continue
+    // Prefer the shipped size, but shrink rather than overlap another card.
+    const sizes: Array<[number, number]> = [
+      [def.w, def.h],
+      [2, 2],
+      [2, 1],
+      [1, 1],
+    ]
+    let placed = false
+    for (const [w, h] of sizes) {
+      const slot = findFreeSlot(w, h, merged)
+      if (slot) {
+        merged.push({ ...def, col: slot.col, row: slot.row, w, h })
+        placed = true
+        break
+      }
+    }
+    if (!placed) merged.push({ ...def })
+    added = true
+  }
+  return { layout: merged, added }
+}
+
+function readCachedLayout(): WidgetDef[] | null {
+  try {
+    const raw = localStorage.getItem(HOME_LAYOUT_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    if (parsed.some((w: any) =>
+      typeof w?.id !== 'string' ||
+      [w?.col, w?.row, w?.w, w?.h].some(n => typeof n !== 'number')
+    )) return null
+    const layout = parsed as WidgetDef[]
+    const source = isOutdatedDefaultLayout(layout)
+      ? DEFAULT_LAYOUT.map(w => ({ ...w }))
+      : layout
+    // A cached layout from before a card shipped must still render that card
+    // immediately, even if the server settings request is slow or offline.
+    return withDefaultWidgets(source).layout
+  } catch {
+    return null
+  }
+}
+
+const cachedLayout = readCachedLayout()
+const widgets = reactive<WidgetDef[]>((cachedLayout ?? DEFAULT_LAYOUT).map(w => ({ ...w })))
+const layoutReady = ref(!!cachedLayout)
+
 function applyLayout(layout: WidgetDef[]) {
   const migrated = isOutdatedDefaultLayout(layout)
   const source = migrated ? DEFAULT_LAYOUT : layout
@@ -196,22 +240,10 @@ function applyLayout(layout: WidgetDef[]) {
   const required = ["datetime", "schedule", "weather", "calendar", "todos"]
   if (!required.every(id => ids.includes(id))) return
   if (source.some(w => [w.col, w.row, w.w, w.h].some(n => typeof n !== "number"))) return
-  const merged = source.map(w => ({ ...w }))
-  let changed = migrated
-  for (const def of DEFAULT_LAYOUT) {
-    if (!merged.some(w => w.id === def.id)) {
-      const slot = findFreeSlot(def.w, def.h, merged)
-      if (slot) {
-        merged.push({ ...def, col: slot.col, row: slot.row })
-      } else {
-        merged.push({ ...def })
-      }
-      changed = true
-    }
-  }
+  const { layout: merged, added } = withDefaultWidgets(source)
   widgets.splice(0, widgets.length, ...merged)
   writeCachedHomeLayout(widgets.map(({ id, col, row, w, h }) => ({ id, col, row, w, h })))
-  if (changed) saveLayout()
+  if (migrated || added) saveLayout()
 }
 
 function saveLayout() {
@@ -1199,6 +1231,17 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
           <PhDotsSix :size="14" />
         </div>
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'spotify')" />
+      </div>
+
+      <!-- RTSP camera -->
+      <div v-if="getWidget('camera')" :ref="(el) => registerWidgetEl('camera', el as HTMLElement | null)" class="widget"
+        :class="{ 'is-dragging': draggingId === 'camera' }"
+        :style="{ ...widgetStyle(getWidget('camera')!), '--wobble-delay': '400ms' }">
+        <CameraCard />
+        <div v-if="unlocked" class="drag-handle" @pointerdown="onDragHandleDown($event, 'camera')">
+          <PhDotsSix :size="14" />
+        </div>
+        <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'camera')" />
       </div>
     </div>
 

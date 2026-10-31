@@ -82,13 +82,14 @@ async function freshMount(opts: Opts = {}) {
   return { wrapper, motion, ...composables }
 }
 
-/** The five widgets `applyLayout` refuses to drop. */
+/** The five widgets `applyLayout` refuses to drop, plus the camera card. */
 const required = (overrides: Record<string, any>[] = []) => [
   { id: "datetime", col: 0, row: 0, w: 1, h: 1 },
   { id: "schedule", col: 1, row: 0, w: 1, h: 1 },
   { id: "weather", col: 2, row: 0, w: 1, h: 1 },
   { id: "calendar", col: 3, row: 0, w: 1, h: 1 },
   { id: "todos", col: 0, row: 1, w: 1, h: 1 },
+  { id: "camera", col: 2, row: 3, w: 2, h: 1 },
   ...overrides,
 ]
 
@@ -115,6 +116,7 @@ describe("HomeView — layout engine & edit mode", () => {
           { id: "todos",    col: 0, row: 4, w: 1, h: 1 },
           { id: "photos",   col: 4, row: 2, w: 2, h: 2 },
           { id: "spotify",  col: 3, row: 2, w: 1, h: 1 },
+          { id: "camera",   col: 0, row: 5, w: 1, h: 1 },
         ],
       },
     })
@@ -127,8 +129,8 @@ describe("HomeView — layout engine & edit mode", () => {
     await wrapper.find(".lock-toggle").trigger("click")
     const dragHandles = wrapper.findAll(".drag-handle")
     const resizeHandles = wrapper.findAll(".resize-handle")
-    expect(dragHandles.length).toBe(7)
-    expect(resizeHandles.length).toBe(7)
+    expect(dragHandles.length).toBe(8)
+    expect(resizeHandles.length).toBe(8)
 
     // Both handle for every widget
     for (const handle of [...dragHandles, ...resizeHandles]) {
@@ -192,7 +194,7 @@ describe("HomeView — layout engine & edit mode", () => {
       },
     })
     // Rejected → the default layout survives (Date & Time is one column wide)
-    expect(wrapper.findAll(".widget").length).toBe(7)
+    expect(wrapper.findAll(".widget").length).toBe(8)
     expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 4 / span 1")
     wrapper.unmount()
   })
@@ -209,10 +211,11 @@ describe("HomeView — layout engine & edit mode", () => {
         ],
       },
     })
-    // spotify & photos were appended with their *default* coords (no slot found)
-    expect(wrapper.findAll(".widget").length).toBe(7)
+    // photos, spotify & camera were appended with their *default* coords (no slot found)
+    expect(wrapper.findAll(".widget").length).toBe(8)
     expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-column: 3 / span 4")
     expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-column: 5 / span 1")
+    expect(wrapper.findAll(".widget")[7].attributes("style")).toContain("grid-column: 3 / span 4")
     wrapper.unmount()
   })
 
@@ -296,7 +299,9 @@ describe("HomeView — cached layout (import time)", () => {
       const { wrapper } = await freshMount({ body: { houseName: "Cached Home" } })
       // layoutReady starts true → canvas is in the DOM right after mount
       expect(wrapper.find(".widget-canvas").exists()).toBe(true)
-      expect(wrapper.findAll(".widget").length).toBe(7)
+      // The cached layout predates the camera card, so it is merged in
+      // synchronously instead of waiting for the server.
+      expect(wrapper.findAll(".widget").length).toBe(8)
       const canvas = wrapper.find(".widget-canvas").element
       expect(observed).toBe(canvas)
 
@@ -328,7 +333,7 @@ describe("HomeView — cached layout (import time)", () => {
     for (const raw of malformed) {
       localStorage.setItem(LAYOUT_KEY, raw)
       const { wrapper } = await freshMount({ body: {} })
-      expect(wrapper.findAll(".widget").length).toBe(7)
+      expect(wrapper.findAll(".widget").length).toBe(8)
       wrapper.unmount()
     }
   })
@@ -358,11 +363,12 @@ describe("HomeView — widget data edge cases", () => {
     { id: "todos", col: 0, row: 2, w: 2, h: 1 },
     { id: "photos", col: 0, row: 3, w: 2, h: 1 },
     { id: "spotify", col: 0, row: 4, w: 2, h: 1 },
+    { id: "camera", col: 2, row: 3, w: 2, h: 1 },
   ]
 
   it("accepts a complete server layout without saving it back", async () => {
     const { wrapper } = await freshMount({ body: { houseName: "Complete", widgetLayout: COMPLETE_LAYOUT } })
-    expect(wrapper.findAll(".widget").length).toBe(7)
+    expect(wrapper.findAll(".widget").length).toBe(8)
     // schedule sits where the server put it → applyLayout kept the response as-is
     expect(wrapper.findAll(".widget")[1].attributes("style")).toContain("grid-column: 1 / span 2")
     expect(wrapper.findAll(".widget")[2].attributes("style")).toContain("grid-column: 3 / span 2")

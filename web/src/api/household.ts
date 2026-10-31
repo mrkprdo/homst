@@ -31,6 +31,18 @@ export interface HouseholdSettings {
   notifications?: NotificationPreferences
   music?: MusicPreferences
   updates?: UpdatePreferences
+  camera?: CameraSettings | null
+}
+
+/** The server keeps the password; clients only learn whether one is saved. */
+export interface CameraSettings {
+  url?: string
+  username?: string
+  password?: string
+  passwordSet?: boolean
+  /** Clockwise rotation in degrees: 0, 90, 180 or 270. */
+  rotation?: number
+  streamPath?: string | null
 }
 
 /** Now-playing display choices, shared by every screen in the household. */

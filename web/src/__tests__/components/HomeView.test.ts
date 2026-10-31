@@ -439,6 +439,7 @@ describe("HomeView", () => {
       { id: "spotify",  col: 0, row: 1, w: 2, h: 2 },
       { id: "calendar", col: 2, row: 1, w: 2, h: 2 },
       { id: "photos",   col: 0, row: 4, w: 4, h: 1 },
+      { id: "camera",   col: 4, row: 1, w: 2, h: 2 },
     ]
     window.dispatchEvent(new CustomEvent("homst:widget-layout-updated", { detail: custom }))
     await flushPromises()
