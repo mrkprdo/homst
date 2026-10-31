@@ -13,12 +13,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.camera import shutdown_camera_stream
 from app.config import settings
 from app.db import Base, engine
 from app.mdns import homst_mdns
 from app.redis_client import close_redis, get_redis
 from app.routers import calendar, holidays, stream, tasks, users
 from app.routers.announcements import router as announcements_router
+from app.routers.camera import router as camera_router
 from app.routers.notifications import router as notifications_router
 from app.routers.photos import router as photos_router
 from app.routers.push import router as push_router
@@ -106,6 +108,7 @@ async def lifespan(app: FastAPI):
     yield
     if settings.mdns_enabled:
         await homst_mdns.stop()
+    await shutdown_camera_stream()
     await close_redis()
     await engine.dispose()
 
@@ -190,6 +193,7 @@ app.include_router(calendar.router, prefix="/api/v1", tags=["calendar"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(holidays.router, prefix="/api/v1", tags=["holidays"])
 app.include_router(settings_router, prefix="/api/v1/household", tags=["settings"])
+app.include_router(camera_router, prefix="/api/v1/camera", tags=["camera"])
 app.include_router(stream.router, prefix="/api", tags=["stream"])
 app.include_router(photos_router, prefix="/api/v1", tags=["photos"])
 app.include_router(announcements_router, prefix="/api/v1", tags=["announcements"])

@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       openssl \
       tini \
       ca-certificates \
+      ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=python-deps /opt/venv /opt/venv

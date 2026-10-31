@@ -1,9 +1,15 @@
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auto_theme import auto_theme_state
+from app.camera import (
+    CameraError,
+    merge_camera_settings,
+    public_camera_settings,
+    release_camera_stream,
+)
 from app.db import get_db
 from app.events.publisher import publish_event
 from app.models.all import Household
@@ -88,7 +94,18 @@ async def update_settings(
         hh.name = req.name
     merged = {**(hh.settings or {})}
     if req.settings is not None:
+        previous_camera = merged.get("camera")
         merged.update(req.settings)
+
+        if "camera" in req.settings:
+            try:
+                camera = merge_camera_settings(req.settings["camera"], previous_camera)
+            except CameraError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+            if camera is None:
+                merged.pop("camera", None)
+            else:
+                merged["camera"] = camera
 
         # Only re-geocode when one of the address inputs changed. Unrelated
         # settings (theme, notifications, update preferences) shouldn't make an
@@ -120,12 +137,25 @@ async def update_settings(
 
     hh.settings = merged
     await db.commit()
-    payload = {**merged, **auto_state}
+
+    # A camera change invalidates the running HLS stream: release the shared
+    # lock so the next playlist request starts ffmpeg with the new source.
+    if req.settings is not None and "camera" in req.settings:
+        await release_camera_stream()
+
+    payload = _public_settings({**merged, **auto_state})
     try:
         await publish_event(DEFAULT_HOUSEHOLD_ID, "settings.updated", {"settings": payload})
     except Exception:
         pass
     return {"message": "Settings updated", "settings": payload}
+
+
+def _public_settings(settings: dict) -> dict:
+    """Copy settings with the camera password replaced by a presence flag."""
+    out = dict(settings)
+    out["camera"] = public_camera_settings(out.get("camera"))
+    return out
 
 
 @router.get("/settings")
@@ -134,4 +164,4 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
     settings = dict(hh.settings or {})
     # Keep the resolved state fresh for clients that reload between flips.
     settings.update(auto_theme_state(settings))
-    return settings
+    return _public_settings(settings)

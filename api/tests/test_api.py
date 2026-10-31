@@ -800,7 +800,7 @@ async def test_settings_and_members_onboarding_flow(client):
 async def test_get_settings_defaults_to_empty(client):
     r = await client.get("/api/v1/household/settings")
     assert r.status_code == 200
-    assert r.json() == {}
+    assert r.json() == {"camera": None}
 
 
 @pytest.mark.asyncio

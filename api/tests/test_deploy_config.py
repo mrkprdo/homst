@@ -21,8 +21,8 @@ PROD_CSP = (
     "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; "
     "font-src 'self' data:; connect-src 'self' https://api.spotify.com "
     "https://accounts.spotify.com https://lrclib.net https://api.open-meteo.com "
-    "https://geocoding-api.open-meteo.com; worker-src 'self'; "
-    "manifest-src 'self';"
+    "https://geocoding-api.open-meteo.com; media-src 'self' blob:; "
+    "worker-src 'self' blob:; manifest-src 'self';"
 )
 PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=()"
 
