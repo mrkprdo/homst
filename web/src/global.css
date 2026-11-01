@@ -109,12 +109,17 @@ html.low-power.vinyl-backdrop .ms-nav {
 }
 
 /* The calendar timeline has no card surface to fall back on. Paint the same
-   panel tint it normally inherits so the grid stays legible over the record. */
-html.vinyl-backdrop .calendar-view {
+   panel tint it normally inherits so the grid stays legible over the record.
+   The toolbar is left unpainted so the record shows through behind it. */
+html.vinyl-backdrop .month-view,
+html.vinyl-backdrop .week-view,
+html.vinyl-backdrop .day-view {
   background-color: var(--color-bgSubtle);
 }
 
-html.dark.vinyl-backdrop .calendar-view {
+html.dark.vinyl-backdrop .month-view,
+html.dark.vinyl-backdrop .week-view,
+html.dark.vinyl-backdrop .day-view {
   background-color: var(--color-bgBase);
 }
 

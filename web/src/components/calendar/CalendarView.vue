@@ -9,6 +9,7 @@ import { PhPlus, PhCaretLeft, PhCaretRight } from "@phosphor-icons/vue"
 import EventChip from "@/components/ui/EventChip.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
+import NowPlayingBar from "@/components/shared/NowPlayingBar.vue"
 import { expandEvents } from "@/utils/recurrence"
 
 type ViewMode = "month" | "week" | "day"
@@ -433,6 +434,9 @@ function onEventClick(eventId: string) {
         </Transition>
         <h2 v-else class="nav-label">{{ navLabel }}</h2>
       </div>
+      <div class="calendar-now-playing">
+        <NowPlayingBar />
+      </div>
       <div class="calendar-actions">
         <UiSegmentedControl
           :model-value="viewMode"
@@ -639,9 +643,11 @@ function onEventClick(eventId: string) {
 
 <style scoped>
 .calendar-view{display:flex;flex-direction:column;height:100%;position:relative}
-.calendar-toolbar{display:flex;align-items:center;justify-content:space-between;padding-bottom:var(--space-4);flex-shrink:0}
-.calendar-nav{display:flex;align-items:center;gap:var(--space-2)}
-.nav-label{font-size:var(--text-title-size);font-weight:var(--font-weight-regular);white-space:nowrap}
+.calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:var(--space-3);padding-bottom:var(--space-4);flex-shrink:0;background:transparent}
+.calendar-nav{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+.calendar-now-playing{justify-self:center;min-width:0;--now-playing-width:clamp(240px,28vw,440px)}
+.calendar-actions{justify-self:end}
+.nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:var(--text-title-size);font-weight:var(--font-weight-regular);white-space:nowrap}
 .nav-arrow{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:none;border-radius:var(--radius-full);background:var(--color-bgSubtle);color:var(--color-textSecondary);cursor:pointer;transition:all var(--duration-fast) cubic-bezier(0.25,0.46,0.45,0.94)}
 .nav-arrow:hover{background:var(--color-bgElevated);transform:scale(1.08)}
 .nav-arrow:active{transform:scale(0.92);transition-duration:60ms}

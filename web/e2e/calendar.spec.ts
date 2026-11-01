@@ -132,16 +132,20 @@ test.describe("Calendar", () => {
     await expect(page.locator(".day-view")).toBeVisible()
   })
 
-  test("calendar stays opaque over the now-playing backdrop", async ({ page }) => {
+  test("calendar grid stays opaque over the now-playing backdrop", async ({ page }) => {
     await goToCalendar(page)
     await page.locator(".segmented-btn").nth(1).click()
     await page.waitForTimeout(300)
 
     await page.evaluate(() => document.documentElement.classList.add("vinyl-backdrop"))
-    const background = await page.locator(".calendar-view")
+    const background = await page.locator(".week-view")
       .evaluate((el) => getComputedStyle(el).backgroundColor)
     expect(background).not.toBe("rgba(0, 0, 0, 0)")
     expect(background).not.toBe("transparent")
+
+    const toolbar = await page.locator(".calendar-toolbar")
+      .evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(toolbar)
 
     await page.evaluate(() => document.documentElement.classList.remove("vinyl-backdrop"))
   })
