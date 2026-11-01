@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from "vue"
 import { useEvents, type Event } from "@/composables/useEvents"
 import { useMembers } from "@/composables/useMembers"
+import { expandEvents } from "@/utils/recurrence"
 import { memberColorHex, type MemberColor } from "@/types/household"
 import { PhCalendarBlank, PhCaretLeft, PhCaretRight } from "@phosphor-icons/vue"
 
@@ -134,8 +135,16 @@ function eventCoversDate(ev: Event, date: Date): boolean {
   return end >= dayStart
 }
 
+const displayEvents = computed(() => {
+  const from = new Date(weekStart.value)
+  from.setDate(from.getDate() - 1)
+  const to = new Date(weekStart.value)
+  to.setDate(to.getDate() + 8)
+  return expandEvents(events.value, from, to)
+})
+
 const dayEvents = computed(() => {
-  return events.value
+  return displayEvents.value
     .filter(e => eventCoversDate(e, selectedDate.value))
     .sort((a, b) => {
       if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
@@ -219,7 +228,7 @@ const eventCountLabel = computed(() => {
           class="mc-event"
           :class="{ 'mc-event--allday': ev.allDay }"
           type="button"
-          @click="emit('selectEvent', ev.id)"
+          @click="emit('selectEvent', ev.id.split('::')[0])"
         >
           <span class="mc-event-time" :class="{ 'mc-event-time--allday': ev.allDay }">
             {{ ev.allDay ? "All day" : formatEventTime(ev.startAt) }}

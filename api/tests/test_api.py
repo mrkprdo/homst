@@ -257,6 +257,28 @@ async def test_list_events_date_filter(client):
 
 
 @pytest.mark.asyncio
+async def test_list_events_keeps_recurring_series_in_later_windows(client):
+    cal_id = await _make_calendar(client)
+    await client.post("/api/v1/events", json={
+        "calendar_id": cal_id, "title": "Weekly",
+        "start_at": "2026-05-04T10:00:00Z", "end_at": "2026-05-04T11:00:00Z",
+        "recurrence": {"freq": "weekly"},
+    })
+    await client.post("/api/v1/events", json={
+        "calendar_id": cal_id, "title": "One-off",
+        "start_at": "2026-05-05T10:00:00Z", "end_at": "2026-05-05T11:00:00Z",
+    })
+
+    # The series' base occurrence is over, but it still repeats in June.
+    r = await client.get("/api/v1/events?from=2026-06-01&to=2026-06-30")
+    assert [e["title"] for e in r.json()] == ["Weekly"]
+
+    # It must not leak into a window that ends before it starts.
+    r = await client.get("/api/v1/events?to=2026-05-01")
+    assert r.json() == []
+
+
+@pytest.mark.asyncio
 async def test_update_event(client):
     cal_id = await _make_calendar(client)
     r = await client.post("/api/v1/events", json={"calendar_id": cal_id, "title": "Old", "start_at": "2026-05-03T10:00:00Z"})

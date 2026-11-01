@@ -294,6 +294,44 @@ describe("HomeView", () => {
     wrapper.unmount()
   })
 
+  it("shows recurring events across days, not just their base date", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))
+    const ev = useEvents()
+    const ui = useUi()
+
+    const start = new Date()
+    start.setHours(9, 0, 0, 0)
+    const end = new Date(start)
+    end.setHours(9, 30)
+    ev.upsertEvent({
+      id: "rec-weekly", calendarId: "c1", title: "Weekly standup", description: "",
+      startAt: start.toISOString(), endAt: end.toISOString(), allDay: false,
+      recurrence: { freq: "weekly", count: 4 },
+      source: "internal", externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+    })
+
+    const wrapper = mount(HomeView)
+    await flushPromises()
+    await nextTick()
+
+    // The mini calendar marks the base occurrence.
+    expect(wrapper.findAll(".mini-cal-chip").map(chip => chip.text())).toContain("Weekly standup")
+
+    const next = wrapper.find('[aria-label="Next day"]')
+    for (let i = 0; i < 7; i++) (next.element as HTMLButtonElement).click()
+    await nextTick()
+
+    // A week later is a real occurrence, so the schedule lists it…
+    const row = wrapper.findAll(".schedule-row").find(r => r.text().includes("Weekly standup"))
+    expect(row).toBeTruthy()
+
+    // …and opening it targets the base event so the detail panel can load it.
+    await row!.trigger("click")
+    expect(ui.calendarTarget.value?.eventId).toBe("rec-weekly")
+
+    wrapper.unmount()
+  })
+
   it("navigates the mini calendar by month and previews event titles", async () => {
     vi.useFakeTimers()
     const base = Math.floor(Date.now() / 60_000) * 60_000

@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -160,7 +160,15 @@ async def list_events(
             query = query.where(Event.calendar_id.in_(ids))
     if from_date:
         dt_from = datetime.fromisoformat(from_date.replace("Z", "+00:00"))
-        query = query.where(func.coalesce(Event.end_at, Event.start_at) >= dt_from)
+        # A recurring series keeps producing occurrences long after its base
+        # row's end_at, so those rows have to be fetched for any window that
+        # overlaps the series (the frontend expands them into real dates).
+        query = query.where(
+            or_(
+                func.coalesce(Event.end_at, Event.start_at) >= dt_from,
+                Event.recurrence["freq"].as_string().isnot(None),
+            )
+        )
     if to_date:
         dt_to = datetime.fromisoformat(to_date.replace("Z", "+00:00"))
         query = query.where(Event.start_at <= dt_to)

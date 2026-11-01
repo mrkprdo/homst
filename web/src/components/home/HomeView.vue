@@ -8,6 +8,7 @@ import { useWeather } from "@/composables/useWeather"
 import { useSpotify } from "@/composables/useSpotify"
 import { useSettings } from "@/composables/useSettings"
 import { useFittedList } from "@/composables/useFittedList"
+import { expandEvents } from "@/utils/recurrence"
 import type { Event as CalendarEvent } from "@/composables/useEvents"
 import type { Task } from "@/composables/useTasks"
 import { memberColorHex, type MemberColor } from "@/types/household"
@@ -362,6 +363,28 @@ const scheduleDateLong = computed(() =>
 const scheduleTitle = computed(() => `${scheduleRelativeLabel.value}'s Schedule`)
 
 // ── Schedule events ───────────────────────────────────────────────────────────
+// Mini-calendar month (the recurrence window below needs it)
+const viewYear  = ref(today.value.getFullYear())
+const viewMonth = ref(today.value.getMonth())
+
+/**
+ * Recurring events are stored as a single base row, so expand them into real
+ * occurrences before the schedule list and mini calendar filter by date.
+ * The window covers both the viewed month and the selected schedule day.
+ */
+const displayEvents = computed<CalendarEvent[]>(() => {
+  const monthStart = new Date(viewYear.value, viewMonth.value, 1)
+  const monthEnd   = new Date(viewYear.value, viewMonth.value + 1, 0, 23, 59, 59, 999)
+  const dayStart   = new Date(scheduleDate.value)
+  const dayEnd     = new Date(scheduleDate.value)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+  dayEnd.setMilliseconds(-1)
+  // Pad by a day so occurrences spanning a boundary still land in the window.
+  const from = new Date(Math.min(monthStart.getTime(), dayStart.getTime()) - 86_400_000)
+  const to   = new Date(Math.max(monthEnd.getTime(), dayEnd.getTime()) + 86_400_000)
+  return expandEvents(events.value, from, to)
+})
+
 function eventCoversDate(e: { startAt: string; endAt: string | null; allDay: boolean }, date: Date): boolean {
   const start = new Date(e.startAt)
   const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0)
@@ -381,7 +404,7 @@ function compareEventsByStart(a: CalendarEvent, b: CalendarEvent) {
 
 const scheduleEvents = computed(() => {
   const date = scheduleDate.value
-  return events.value
+  return displayEvents.value
     .filter(event => eventCoversDate(event, date))
     .slice()
     .sort(compareEventsByStart)
@@ -399,13 +422,12 @@ function scheduleTime(event: CalendarEvent): string {
 }
 
 function openScheduleEvent(event: CalendarEvent) {
-  ui.openCalendar(event.startAt, event.id)
+  // Expanded occurrences carry an `::<index>` suffix; the detail panel wants
+  // the base event id.
+  ui.openCalendar(event.startAt, event.id.split("::")[0])
 }
 
 // ── Mini calendar ─────────────────────────────────────────────────────────────
-const viewYear = ref(today.value.getFullYear())
-const viewMonth = ref(today.value.getMonth())
-
 const monthName = computed(() =>
   new Date(viewYear.value, viewMonth.value, 1).toLocaleString("en-US", { month: "long", year: "numeric" })
 )
@@ -442,7 +464,7 @@ const calendarDays = computed<MiniCalendarDay[]>(() => {
   for (let i = 0; i < firstDay; i++) days.push({ date: null, n: null, events: [] })
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d)
-    const dayEvents = events.value
+    const dayEvents = displayEvents.value
       .filter(event => eventCoversDate(event, date))
       .sort(compareEventsByStart)
     days.push({ date, n: d, events: dayEvents })

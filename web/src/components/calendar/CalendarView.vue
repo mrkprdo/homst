@@ -9,6 +9,7 @@ import { PhPlus, PhCaretLeft, PhCaretRight } from "@phosphor-icons/vue"
 import EventChip from "@/components/ui/EventChip.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
+import { expandEvents } from "@/utils/recurrence"
 
 type ViewMode = "month" | "week" | "day"
 
@@ -215,63 +216,8 @@ function nextWeek() {
 const RECUR_FROM = new Date(new Date().getFullYear() - 1, 0, 1)
 const RECUR_TO   = new Date(new Date().getFullYear() + 2, 11, 31)
 
-function expandRecurring(ev: Event, from: Date, to: Date): Event[] {
-  const rec = ev.recurrence as { freq?: string; until?: string; count?: number } | null
-  if (!rec?.freq) return [ev]
-
-  const origStart  = new Date(ev.startAt)
-  const durationMs = Math.max(new Date(ev.endAt ?? ev.startAt).getTime() - origStart.getTime(), 0)
-  const endBound   = rec.until ? new Date(rec.until) : to
-  const maxPush    = rec.count ?? 730  // cap on pushed instances, not iterations
-
-  function stepCursor(d: Date): Date {
-    const next = new Date(d)
-    switch (rec!.freq) {
-      case "daily":    next.setDate(next.getDate() + 1); break
-      case "weekly":   next.setDate(next.getDate() + 7); break
-      case "biweekly": next.setDate(next.getDate() + 14); break
-      case "monthly":  next.setMonth(next.getMonth() + 1); break
-      case "yearly":   next.setFullYear(next.getFullYear() + 1); break
-      default:         return new Date(endBound.getTime() + 1)  // unknown freq — exits loop
-    }
-    return next
-  }
-
-  let cursor = new Date(origStart)
-  let n = 0
-
-  // Fast-forward: skip iterations before `from` for fixed-day-count frequencies
-  if (cursor < from) {
-    const msStep = rec.freq === "daily"    ? 86400_000
-      : rec.freq === "weekly"   ? 7  * 86400_000
-      : rec.freq === "biweekly" ? 14 * 86400_000
-      : 0
-    if (msStep > 0) {
-      const skip = Math.max(0, Math.floor((from.getTime() - cursor.getTime()) / msStep) - 1)
-      cursor = new Date(cursor.getTime() + skip * msStep)
-      n = skip
-    }
-  }
-
-  const instances: Event[] = []
-  while (cursor <= endBound && instances.length < maxPush) {
-    if (cursor >= from) {
-      instances.push({
-        ...ev,
-        id: `${ev.id}::${n}`,
-        startAt: cursor.toISOString(),
-        endAt: new Date(cursor.getTime() + durationMs).toISOString(),
-      })
-    }
-    cursor = stepCursor(cursor)
-    n++
-  }
-
-  return instances.length ? instances : [ev]
-}
-
 const expandedEvents = computed<Event[]>(() =>
-  events.value.flatMap(ev => ev.recurrence ? expandRecurring(ev, RECUR_FROM, RECUR_TO) : [ev])
+  expandEvents(events.value, RECUR_FROM, RECUR_TO)
 )
 
 // Auto-scroll to the useful part of the day when switching views: current
