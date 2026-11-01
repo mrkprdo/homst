@@ -104,8 +104,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
       :aria-label="`Now playing: ${label}`"
     >
       <div
-        ref="bindDisc"
-        class="now-playing__disc vinyl-disc"
+        :ref="bindDisc"        class="now-playing__disc vinyl-disc"
         :class="{
           'now-playing__disc--paused': !track.isPlaying,
           'now-playing__disc--still': !settings.musicCardSpin.value,

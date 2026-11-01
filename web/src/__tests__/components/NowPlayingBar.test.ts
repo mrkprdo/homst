@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest"
+import { nextTick } from "vue"
 import { mount } from "@vue/test-utils"
 import NowPlayingBar from "@/components/shared/NowPlayingBar.vue"
 import { useSpotify } from "@/composables/useSpotify"
@@ -53,5 +54,36 @@ describe("NowPlayingBar", () => {
     expect(wrapper.find(".now-playing").classes()).toContain("now-playing--paused")
     expect(wrapper.find(".now-playing__disc").classes()).toContain("now-playing__disc--paused")
     expect(wrapper.find(".now-playing__fill").attributes("style")).toContain("scaleX(0)")
+  })
+
+  it("marquees the title and artist when they do not fit", async () => {
+    const track = {
+      id: "t3",
+      name: "A Song Title That Is Far Too Long",
+      artists: "An Artist With A Long Name",
+      albumArt: "",
+      progressMs: 30_000,
+      durationMs: 240_000,
+      isPlaying: true,
+    }
+    useSpotify().currentTrack.value = { ...track }
+
+    const wrapper = mount(NowPlayingBar)
+
+    // jsdom has no layout: give the box a narrow width and the copy a long one.
+    const box = wrapper.find(".now-playing__text").element as HTMLElement
+    const copy = wrapper.find(".now-playing__copy").element as HTMLElement
+    Object.defineProperty(box, "clientWidth", { configurable: true, value: 120 })
+    Object.defineProperty(copy, "offsetWidth", { configurable: true, value: 360 })
+
+    // The name watcher re-measures after the next render.
+    useSpotify().currentTrack.value = { ...track, name: `${track.name}!` }
+    await nextTick()
+
+    expect(wrapper.find(".now-playing__text").classes()).toContain("now-playing__text--marquee")
+    expect(wrapper.findAll(".now-playing__copy")).toHaveLength(2)
+    expect(wrapper.find(".now-playing__line").attributes("style")).toContain(
+      "--marquee-duration: 15s",
+    )
   })
 })
