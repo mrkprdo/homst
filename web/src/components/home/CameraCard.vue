@@ -5,12 +5,15 @@ import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { useSettings } from "@/composables/useSettings"
 import { useCameraStream } from "@/composables/useCameraStream"
+import { useVideoBackdrop } from "@/composables/useVideoBackdrop"
 
 const settings = useSettings()
 const streamPath = computed(() => settings.cameraStreamPath.value)
 const { video, status, error, retry } = useCameraStream(streamPath)
 const configured = computed(() => !!settings.cameraUrl.value)
 const rotation = computed(() => settings.cameraRotation.value)
+const backdropActive = computed(() => configured.value && status.value === "playing")
+const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
 </script>
 
 <template>
@@ -30,6 +33,7 @@ const rotation = computed(() => settings.cameraRotation.value)
     </div>
 
     <div v-else class="camera-body">
+      <canvas ref="backdrop" class="camera-backdrop" aria-hidden="true" />
       <video
         ref="video"
         class="camera-video"
@@ -145,7 +149,20 @@ const rotation = computed(() => settings.cameraRotation.value)
   background: var(--color-bgSubtle);
 }
 
+.camera-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(28px) saturate(1.15) brightness(0.55);
+  transform: scale(1.12);
+  pointer-events: none;
+}
+
 .camera-video {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: 100%;

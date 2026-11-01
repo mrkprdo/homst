@@ -51,6 +51,7 @@ describe("CameraCard", () => {
     await nextTick()
 
     expect(wrapper.find(".camera-video").exists()).toBe(true)
+    expect(wrapper.find(".camera-backdrop").exists()).toBe(true)
     expect(wrapper.find(".camera-video").classes()).toContain("camera-video--rotate-90")
     expect(wrapper.find(".camera-error").text()).toBe("This browser cannot play HLS video.")
 
