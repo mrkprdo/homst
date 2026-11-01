@@ -645,7 +645,7 @@ function onEventClick(eventId: string) {
 .calendar-view{display:flex;flex-direction:column;height:100%;position:relative}
 .calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:var(--space-3);padding-bottom:var(--space-4);flex-shrink:0;background:transparent}
 .calendar-nav{display:flex;align-items:center;gap:var(--space-2);min-width:0}
-.calendar-now-playing{justify-self:center;min-width:0;--now-playing-width:clamp(240px,28vw,440px)}
+.calendar-now-playing{justify-self:center;min-width:0}
 .calendar-actions{justify-self:end}
 .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:var(--text-title-size);font-weight:var(--font-weight-regular);white-space:nowrap}
 .nav-arrow{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:none;border-radius:var(--radius-full);background:var(--color-bgSubtle);color:var(--color-textSecondary);cursor:pointer;transition:all var(--duration-fast) cubic-bezier(0.25,0.46,0.45,0.94)}

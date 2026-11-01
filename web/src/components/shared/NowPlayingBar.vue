@@ -163,7 +163,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
   display: flex;
   align-items: center;
   gap: 9px;
-  width: var(--now-playing-width, clamp(190px, 23vw, 350px));
+  width: clamp(240px, 28vw, 440px);
   min-width: 0;
   padding: 6px 14px 6px 7px;
   border: 1px solid var(--color-border);
