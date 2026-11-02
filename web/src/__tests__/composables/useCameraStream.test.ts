@@ -10,7 +10,11 @@ const hls = vi.hoisted(() => {
     static isSupported() {
       return FakeHls.supported
     }
-    static Events = { ERROR: "error", MANIFEST_PARSED: "manifest" }
+    static Events = {
+      ERROR: "error",
+      MANIFEST_PARSED: "manifest",
+      FRAG_LOADED: "frag",
+    }
     static ErrorTypes = { NETWORK_ERROR: "network", MEDIA_ERROR: "media" }
     config: any
     handlers: Record<string, (event: string, data: any) => void> = {}
@@ -59,6 +63,14 @@ function mountStream(path: Ref<string | null>, withVideo = true) {
   return { wrapper, api }
 }
 
+/** Get the current hls.js instance and report a parsed manifest. */
+function playingInstance(api: ReturnType<typeof useCameraStream>) {
+  const instance = hls.instances.at(-1)!
+  instance.handlers["manifest"]!("manifest", {})
+  expect(api.status.value).toBe("playing")
+  return instance
+}
+
 describe("useCameraStream", () => {
   beforeEach(() => {
     hls.instances.length = 0
@@ -70,6 +82,7 @@ describe("useCameraStream", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
     document.body.innerHTML = ""
   })
 
@@ -209,18 +222,96 @@ describe("useCameraStream", () => {
 
   it("times out a stream that never produces a manifest", async () => {
     vi.useFakeTimers()
-    try {
-      const path = ref("/live.m3u8")
-      const { wrapper, api } = mountStream(path)
-      await nextTick()
-      expect(api.status.value).toBe("loading")
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+    expect(api.status.value).toBe("loading")
 
-      await vi.advanceTimersByTimeAsync(15_000)
-      expect(api.status.value).toBe("error")
-      expect(api.error.value).toContain("did not start")
-      wrapper.unmount()
-    } finally {
-      vi.useRealTimers()
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(api.status.value).toBe("error")
+    expect(api.error.value).toContain("did not start")
+    wrapper.unmount()
+  })
+
+  it("flags a stalled stream as retrieving and recovers when frames return", async () => {
+    vi.useFakeTimers()
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+
+    const instance = playingInstance(api)
+
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(api.status.value).toBe("retrieving")
+    expect(api.error.value).toBe("retrieving stream...")
+    expect(instance.startLoads).toBe(1)
+
+    instance.handlers["frag"]!("frag", {})
+    expect(api.status.value).toBe("playing")
+    expect(api.error.value).toBe("")
+
+    wrapper.unmount()
+  })
+
+  it("gives up after three failed recoveries and reconnects every minute", async () => {
+    vi.useFakeTimers()
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+
+    playingInstance(api)
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await vi.advanceTimersByTimeAsync(5_000)
     }
+    expect(api.status.value).toBe("failed")
+    expect(api.error.value).toBe("failed retrieving stream")
+
+    const instancesBefore = hls.instances.length
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(hls.instances.length).toBe(instancesBefore + 1)
+    expect(api.status.value).toBe("loading")
+
+    wrapper.unmount()
+  })
+
+  it("manual retry cancels the scheduled reconnect", async () => {
+    vi.useFakeTimers()
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+
+    playingInstance(api)
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await vi.advanceTimersByTimeAsync(5_000)
+    }
+    expect(api.status.value).toBe("failed")
+
+    const instancesBefore = hls.instances.length
+    api.retry()
+    await nextTick()
+    expect(hls.instances.length).toBe(instancesBefore + 1)
+    expect(api.status.value).toBe("loading")
+
+    wrapper.unmount()
+  })
+
+  it("reloads the video element when native HLS stalls", async () => {
+    vi.useFakeTimers()
+    vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("maybe")
+    const path = ref("/native.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+    expect(api.status.value).toBe("playing")
+
+    vi.mocked(HTMLMediaElement.prototype.load).mockClear()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(api.status.value).toBe("retrieving")
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalled()
+
+    await wrapper.find("video").trigger("timeupdate")
+    expect(api.status.value).toBe("playing")
+
+    wrapper.unmount()
   })
 })

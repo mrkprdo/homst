@@ -12,7 +12,8 @@ const streamPath = computed(() => settings.cameraStreamPath.value)
 const { video, status, error, retry } = useCameraStream(streamPath)
 const configured = computed(() => !!settings.cameraUrl.value)
 const rotation = computed(() => settings.cameraRotation.value)
-const backdropActive = computed(() => configured.value && status.value === "playing")
+const stalled = computed(() => status.value === "retrieving" || status.value === "failed")
+const backdropActive = computed(() => configured.value && (status.value === "playing" || stalled.value))
 const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
 </script>
 
@@ -37,13 +38,24 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
       <video
         ref="video"
         class="camera-video"
-        :class="`camera-video--rotate-${rotation}`"
+        :class="[
+          `camera-video--rotate-${rotation}`,
+          { 'camera-video--stalled': stalled },
+        ]"
         autoplay
         muted
         playsinline
       />
       <div v-if="status === 'loading'" class="camera-overlay">
         <span class="camera-loading">Connecting…</span>
+      </div>
+      <div v-else-if="status === 'retrieving'" class="camera-overlay">
+        <span class="camera-loading">retrieving stream...</span>
+      </div>
+      <div v-else-if="status === 'failed'" class="camera-overlay camera-overlay--error">
+        <PhWarningCircle :size="22" />
+        <p class="camera-error">failed retrieving stream</p>
+        <UiButton size="sm" @click="retry">Try again</UiButton>
       </div>
       <div v-else-if="status === 'error'" class="camera-overlay camera-overlay--error">
         <PhWarningCircle :size="22" />
@@ -171,6 +183,11 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
 
 .camera-video--rotate-180 {
   transform: rotate(180deg);
+}
+
+/* Keep the last frame visible but clearly signal it is stale. */
+.camera-video--stalled {
+  filter: blur(10px) brightness(0.65);
 }
 
 /* Rotating swaps the displayed axes. Size the video from the container's

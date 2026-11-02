@@ -16,6 +16,7 @@ import logging
 import re
 import shutil
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -43,6 +44,11 @@ WORKER_ID = uuid.uuid4().hex
 
 # Shared by every gunicorn worker in the same container.
 CAMERA_ROOT = Path(tempfile.gettempdir()) / "homst-camera"
+
+HEALTH_CHECK_INTERVAL = 5.0
+HEALTH_STALL_THRESHOLD = 15.0
+HEALTH_RETRY_INTERVAL = 60.0
+MAX_HEALTH_RETRIES = 3
 
 
 class CameraError(RuntimeError):
@@ -198,6 +204,76 @@ def _read_ffmpeg_log(directory: Path, source: str) -> str:
     return lines[-1][:240] if lines else ""
 
 
+class CameraHealthMonitor:
+    """Watch the HLS output for stalled segments and restart ffmpeg.
+
+    ffmpeg can keep its RTSP input open while the camera silently stops
+    sending frames, so the old playlist never grows. The newest segment's
+    mtime is the cheapest reliable signal that frames are still arriving.
+    """
+
+    def __init__(self, stream: "CameraStream") -> None:
+        self._stream = stream
+        self._task: asyncio.Task | None = None
+        self._token: str | None = None
+        self._attempts = 0
+
+    @property
+    def running(self) -> bool:
+        return self._task is not None and not self._task.done()
+
+    def start(self, token: str) -> None:
+        self.stop()
+        self._token = token
+        self._attempts = 0
+        self._task = asyncio.create_task(self._run(token))
+
+    def stop(self) -> None:
+        task, self._task = self._task, None
+        self._token = None
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+
+    async def _run(self, token: str) -> None:
+        try:
+            while True:
+                await asyncio.sleep(HEALTH_CHECK_INTERVAL)
+                try:
+                    await self.check(token)
+                except Exception:
+                    logger.warning("Camera health check failed", exc_info=True)
+        except asyncio.CancelledError:
+            raise
+
+    async def check(self, token: str) -> bool:
+        """Return True when fresh segments are still arriving."""
+        if self._fresh(token):
+            self._attempts = 0
+            return True
+        self._attempts += 1
+        if self._attempts > MAX_HEALTH_RETRIES:
+            # Give up on rapid retries and fall back to one restart a minute.
+            self._attempts = 0
+            await asyncio.sleep(HEALTH_RETRY_INTERVAL)
+        await self._stream.restart()
+        return False
+
+    @staticmethod
+    def _fresh(token: str) -> bool:
+        try:
+            newest = max(
+                (p.stat().st_mtime for p in output_dir(token).glob("seg_*.ts")),
+                default=0.0,
+            )
+        except OSError:
+            # A transient filesystem blip is not a camera failure.
+            return True
+        if newest == 0.0:
+            # Nothing produced yet; startup owns that timeout.
+            return True
+        return time.time() - newest <= HEALTH_STALL_THRESHOLD
+
+
 class CameraStream:
     """Owns this worker's ffmpeg process and the shared HLS lock."""
 
@@ -208,6 +284,7 @@ class CameraStream:
         self._source: str | None = None
         self._token: str | None = None
         self._refresh_task: asyncio.Task | None = None
+        self._health_monitor = CameraHealthMonitor(self)
 
     def _get_lock(self) -> asyncio.Lock:
         """Re-create the lock when tests (or a reload) use a new event loop."""
@@ -258,6 +335,7 @@ class CameraStream:
                     await self._stop_locked()
                     raise CameraError("Camera streaming is unavailable.", 503) from exc
                 self._refresh_task = asyncio.create_task(self._keep_ownership(source))
+                self._health_monitor.start(token)
             return output_dir(token)
 
     async def _refresh_owner(self) -> None:
@@ -371,6 +449,24 @@ class CameraStream:
                 raise CameraError(f"{exc} ffmpeg: {detail}") from exc
             raise
 
+    async def restart(self) -> None:
+        """Restart ffmpeg for the current source, keeping the health monitor."""
+        async with self._get_lock():
+            source = self._source
+            token = self._token
+            if not source or not token:
+                return
+            await self._stop_locked(keep_monitor=True)
+            await self._start_locked(source, token)
+            try:
+                redis = await get_redis()
+                await redis.set(OWNER_KEY, WORKER_ID, ex=LOCK_TTL_SECONDS)
+            except Exception:
+                logger.warning(
+                    "Could not reclaim camera stream ownership", exc_info=True
+                )
+            self._refresh_task = asyncio.create_task(self._keep_ownership(source))
+
     async def _keep_ownership(self, source: str) -> None:
         while True:
             await asyncio.sleep(REFRESH_SECONDS)
@@ -390,13 +486,16 @@ class CameraStream:
         async with self._get_lock():
             await self._stop_locked()
 
-    async def _stop_locked(self) -> None:
+    async def _stop_locked(self, keep_monitor: bool = False) -> None:
         task = self._refresh_task
         self._refresh_task = None
         if task is not None and task is not asyncio.current_task():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+
+        if not keep_monitor:
+            self._health_monitor.stop()
 
         process = self._process
         token = self._token

@@ -1,6 +1,8 @@
 """Tests for the RTSP -> HLS camera bridge and its HTTP endpoints."""
 
 import asyncio
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -92,6 +94,8 @@ async def camera_root(redis, monkeypatch, tmp_path):
     stream._refresh_task = None
     stream._lock = None
     stream._lock_loop = None
+    stream._health_monitor.stop()
+    stream._health_monitor._attempts = 0
     yield root
     await stream.stop()
     stream._process = None
@@ -300,6 +304,7 @@ async def test_ensure_starts_stream_and_stop_cleans_up(
     assert (directory / camera.PLAYLIST_NAME).is_file()
     assert redis.data[camera.OWNER_KEY] == camera.WORKER_ID
     assert camera.camera_stream._refresh_task is not None
+    assert camera.camera_stream._health_monitor.running is True
 
     # A second request for the same source only refreshes the lock.
     again = await camera.camera_stream.ensure(CAMERA)
@@ -310,6 +315,7 @@ async def test_ensure_starts_stream_and_stop_cleans_up(
     assert not directory.exists()
     assert camera.OWNER_KEY not in redis.data
     assert camera.camera_stream._refresh_task is None
+    assert camera.camera_stream._health_monitor.running is False
 
 
 @pytest.mark.asyncio
@@ -875,3 +881,152 @@ async def test_settings_broadcast_masks_the_camera_password(client, db_session, 
     await client.patch("/api/v1/household/settings", json={"settings": {"camera": CAMERA}})
     assert published[-1]["settings"]["camera"]["passwordSet"] is True
     assert "password" not in published[-1]["settings"]["camera"]
+
+
+# ── Camera health monitor ──────────────────────────────────────────────────
+
+HEALTH_TOKEN = "0123456789abcdef"
+
+
+class FakeStream:
+    def __init__(self) -> None:
+        self.restarts = 0
+
+    async def restart(self) -> None:
+        self.restarts += 1
+
+
+class BrokenStream:
+    async def restart(self) -> None:
+        raise RuntimeError("restart failed")
+
+
+def _write_segment(token: str, mtime: float | None = None) -> Path:
+    directory = camera.output_dir(token)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "seg_000001.ts"
+    path.write_bytes(b"ts")
+    if mtime is not None:
+        os.utime(path, (mtime, mtime))
+    return path
+
+
+def test_health_monitor_treats_missing_segments_as_healthy(camera_root):
+    monitor = camera.CameraHealthMonitor(FakeStream())
+    assert monitor._fresh(HEALTH_TOKEN) is True
+
+
+def test_health_monitor_treats_stat_errors_as_healthy(camera_root, monkeypatch):
+    class BrokenDir:
+        def glob(self, pattern):
+            raise OSError("gone")
+
+    monkeypatch.setattr(camera, "output_dir", lambda token: BrokenDir())
+    assert camera.CameraHealthMonitor._fresh(HEALTH_TOKEN) is True
+
+
+@pytest.mark.asyncio
+async def test_health_monitor_accepts_fresh_segments(camera_root):
+    stream = FakeStream()
+    monitor = camera.CameraHealthMonitor(stream)
+    _write_segment(HEALTH_TOKEN, mtime=time.time())
+    monitor._attempts = 2
+
+    assert await monitor.check(HEALTH_TOKEN) is True
+    assert monitor._attempts == 0
+    assert stream.restarts == 0
+
+
+@pytest.mark.asyncio
+async def test_health_monitor_restarts_stalled_stream(camera_root, monkeypatch):
+    monkeypatch.setattr(camera, "HEALTH_RETRY_INTERVAL", 0)
+    stream = FakeStream()
+    monitor = camera.CameraHealthMonitor(stream)
+    _write_segment(HEALTH_TOKEN, mtime=time.time() - camera.HEALTH_STALL_THRESHOLD - 5)
+
+    assert await monitor.check(HEALTH_TOKEN) is False
+    assert stream.restarts == 1
+    assert monitor._attempts == 1
+
+    # MAX_HEALTH_RETRIES more stalls exhaust the fast budget and reset it.
+    for _ in range(camera.MAX_HEALTH_RETRIES):
+        assert await monitor.check(HEALTH_TOKEN) is False
+    assert stream.restarts == camera.MAX_HEALTH_RETRIES + 1
+    assert monitor._attempts == 0
+
+
+@pytest.mark.asyncio
+async def test_health_monitor_runs_until_stopped(camera_root, monkeypatch):
+    monkeypatch.setattr(camera, "HEALTH_CHECK_INTERVAL", 0.01)
+    monitor = camera.CameraHealthMonitor(FakeStream())
+    _write_segment(HEALTH_TOKEN, mtime=time.time())
+
+    monitor.start(HEALTH_TOKEN)
+    assert monitor.running is True
+    await asyncio.sleep(0.05)
+    assert monitor.running is True
+
+    monitor.stop()
+    assert monitor.running is False
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_health_monitor_survives_restart_errors(camera_root, monkeypatch):
+    monkeypatch.setattr(camera, "HEALTH_CHECK_INTERVAL", 0.01)
+    monitor = camera.CameraHealthMonitor(BrokenStream())
+    _write_segment(HEALTH_TOKEN, mtime=time.time() - camera.HEALTH_STALL_THRESHOLD - 5)
+
+    monitor.start(HEALTH_TOKEN)
+    await asyncio.sleep(0.05)
+    assert monitor.running is True
+
+    monitor.stop()
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_restart_without_a_source_is_a_noop(camera_root):
+    await camera.camera_stream.restart()
+    assert camera.camera_stream._process is None
+
+
+@pytest.mark.asyncio
+async def test_restart_replaces_the_ffmpeg_process(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first, second = FakeProcess(), FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(second)
+    )
+    await camera.camera_stream.restart()
+
+    assert first.terminated is True
+    assert camera.camera_stream._process is second
+    assert redis.data[camera.OWNER_KEY] == camera.WORKER_ID
+    assert camera.camera_stream._health_monitor.running is True
+
+
+@pytest.mark.asyncio
+async def test_restart_survives_a_redis_failure(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first, second = FakeProcess(), FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+
+    redis.fail_set = True
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(second)
+    )
+    await camera.camera_stream.restart()
+
+    assert camera.camera_stream._process is second
+

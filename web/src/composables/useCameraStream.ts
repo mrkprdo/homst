@@ -1,7 +1,13 @@
 import { onBeforeUnmount, ref, watch, type Ref } from "vue"
 import Hls from "hls.js"
 
-export type CameraStatus = "idle" | "loading" | "playing" | "error"
+export type CameraStatus =
+  | "idle"
+  | "loading"
+  | "playing"
+  | "retrieving"
+  | "failed"
+  | "error"
 
 const STREAM_ERROR = "The camera stream stopped. Check the URL and credentials in Settings."
 const NETWORK_ERROR = "Could not reach the camera stream. Check the URL and credentials in Settings."
@@ -10,9 +16,27 @@ const NOT_FOUND_ERROR = "Camera stream not found. Check the camera URL in Settin
 const TIMEOUT_ERROR = "The camera stream did not start. Check the URL and credentials in Settings."
 const START_TIMEOUT_MS = 15_000
 
+const RETRIEVING_MESSAGE = "retrieving stream..."
+const FAILED_RETRIEVING_MESSAGE = "failed retrieving stream"
+
+/** How often the watchdog checks whether a new frame arrived. */
+export const HEALTH_CHECK_INTERVAL_MS = 1_000
+/** How long frames may be missing before the stream counts as stalled. */
+export const STALL_TIMEOUT_MS = 5_000
+/** Reconnect cadence after every immediate recovery attempt has failed. */
+export const RETRY_INTERVAL_MS = 60_000
+/** Immediate recovery attempts before falling back to the slow cadence. */
+export const MAX_RETRIES = 3
+
 /**
- * Attach an HLS stream to a <video> element. Native HLS is used where the
- * browser supports it (Safari, iOS); everything else goes through hls.js.
+ * Attach an HLS stream to a <video> element and watchdog it. Native HLS is
+ * used where the browser supports it (Safari, iOS); everything else goes
+ * through hls.js.
+ *
+ * When no frame arrives for `STALL_TIMEOUT_MS`, the stream is flagged as
+ * "retrieving" and the pipeline is nudged. After `MAX_RETRIES` failed nudges
+ * it stays "failed" and reconnects every `RETRY_INTERVAL_MS` until frames
+ * return.
  */
 export function useCameraStream(streamPath: Ref<string | null>) {
   const video = ref<HTMLVideoElement | null>(null)
@@ -22,6 +46,10 @@ export function useCameraStream(streamPath: Ref<string | null>) {
   let networkRetries = 0
   let mediaRetries = 0
   let startTimer: ReturnType<typeof setTimeout> | null = null
+  let watchdogTimer: ReturnType<typeof setInterval> | null = null
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let retrieveAttempts = 0
+  let lastFrameAt = 0
 
   function clearStartTimer() {
     if (startTimer !== null) {
@@ -30,21 +58,47 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     }
   }
 
-  function destroy() {
+  function stopWatchdog() {
+    if (watchdogTimer !== null) {
+      clearInterval(watchdogTimer)
+      watchdogTimer = null
+    }
+  }
+
+  function clearRetryTimer() {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer)
+      retryTimer = null
+    }
+  }
+
+  function clearTimers() {
     clearStartTimer()
+    stopWatchdog()
+    clearRetryTimer()
+  }
+
+  function play(el: HTMLVideoElement) {
+    const result = el.play()
+    if (result && typeof result.catch === "function") result.catch(() => {})
+  }
+
+  /** Tear down the current pipeline without touching the status. */
+  function teardown() {
     if (hls) {
       hls.destroy()
       hls = null
     }
     const el = video.value
     if (!el) return
+    el.removeEventListener("timeupdate", onTimeUpdate)
     el.removeAttribute("src")
     if (typeof el.load === "function") el.load()
   }
 
-  function play(el: HTMLVideoElement) {
-    const result = el.play()
-    if (result && typeof result.catch === "function") result.catch(() => {})
+  function destroy() {
+    clearTimers()
+    teardown()
   }
 
   function fail(message: string) {
@@ -69,11 +123,66 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     return NETWORK_ERROR
   }
 
-  function start() {
-    destroy()
+  function startWatchdog() {
+    stopWatchdog()
+    watchdogTimer = setInterval(() => {
+      const stalled = status.value === "playing" || status.value === "retrieving"
+      if (stalled && Date.now() - lastFrameAt >= STALL_TIMEOUT_MS) handleStall()
+    }, HEALTH_CHECK_INTERVAL_MS)
+  }
+
+  /** Called whenever the video advances or a fragment is loaded. */
+  function markFrame() {
+    lastFrameAt = Date.now()
+    if (status.value !== "retrieving") return
+    status.value = "playing"
     error.value = ""
-    networkRetries = 0
-    mediaRetries = 0
+    retrieveAttempts = 0
+    clearRetryTimer()
+  }
+
+  function onTimeUpdate() {
+    markFrame()
+  }
+
+  /** Nudge the current pipeline so it fetches fresh segments. */
+  function recoverStream() {
+    if (hls) {
+      hls.startLoad()
+    } else {
+      const el = video.value
+      if (el) {
+        el.load()
+        play(el)
+      }
+    }
+  }
+
+  function scheduleRetry() {
+    clearRetryTimer()
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      start()
+    }, RETRY_INTERVAL_MS)
+  }
+
+  function handleStall() {
+    retrieveAttempts += 1
+    if (retrieveAttempts > MAX_RETRIES) {
+      status.value = "failed"
+      error.value = FAILED_RETRIEVING_MESSAGE
+      stopWatchdog()
+      scheduleRetry()
+      return
+    }
+    status.value = "retrieving"
+    error.value = RETRIEVING_MESSAGE
+    lastFrameAt = Date.now()
+    recoverStream()
+    startWatchdog()
+  }
+
+  function beginPlayback() {
     const path = streamPath.value
     const el = video.value
     if (!path || !el) {
@@ -87,10 +196,13 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     }, START_TIMEOUT_MS)
 
     if (el.canPlayType("application/vnd.apple.mpegurl")) {
+      el.addEventListener("timeupdate", onTimeUpdate)
       el.src = path
       play(el)
       status.value = "playing"
       clearStartTimer()
+      lastFrameAt = Date.now()
+      startWatchdog()
       return
     }
 
@@ -107,6 +219,9 @@ export function useCameraStream(streamPath: Ref<string | null>) {
       maxBufferLength: 10,
     })
     hls = instance
+    instance.on(Hls.Events.FRAG_LOADED, () => {
+      markFrame()
+    })
     instance.on(Hls.Events.ERROR, (_event, data) => {
       if (!data.fatal) return
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
@@ -137,9 +252,21 @@ export function useCameraStream(streamPath: Ref<string | null>) {
       status.value = "playing"
       clearStartTimer()
       play(el)
+      lastFrameAt = Date.now()
+      startWatchdog()
     })
     instance.loadSource(path)
     instance.attachMedia(el)
+  }
+
+  /** (Re)connect from scratch, resetting the recovery budget. */
+  function start() {
+    destroy()
+    error.value = ""
+    networkRetries = 0
+    mediaRetries = 0
+    retrieveAttempts = 0
+    beginPlayback()
   }
 
   watch([streamPath, video], start, { immediate: true })
