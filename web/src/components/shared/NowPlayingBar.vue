@@ -97,16 +97,15 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 <template>
   <Transition name="now-playing">
     <div
-      v-if="track"
+      v-if="track && track.isPlaying"
       class="now-playing"
-      :class="{ 'now-playing--paused': !track.isPlaying }"
       role="group"
       :aria-label="`Now playing: ${label}`"
     >
       <div
-        :ref="bindDisc"        class="now-playing__disc vinyl-disc"
+        :ref="bindDisc"
+        class="now-playing__disc vinyl-disc"
         :class="{
-          'now-playing__disc--paused': !track.isPlaying,
           'now-playing__disc--still': !settings.musicCardSpin.value,
         }"
         aria-hidden="true"
@@ -174,10 +173,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
     0 2px 8px -2px var(--shadow-drop);
 }
 
-.now-playing--paused {
-  opacity: 0.6;
-}
-
 /* Album cover spinning like a tiny record, in phase with the card and the
    full-app backdrop (see lib/vinyl.ts). */
 .now-playing__disc {
@@ -196,7 +191,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
   animation: now-playing-spin var(--vinyl-spin-duration, 20s) linear infinite;
 }
 
-.now-playing__disc--paused,
 .now-playing__disc--still {
   animation-play-state: paused;
 }
@@ -250,10 +244,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 
 .now-playing__text--marquee .now-playing__copy {
   padding-right: 2.5em;
-}
-
-.now-playing--paused .now-playing__line {
-  animation-play-state: paused;
 }
 
 .now-playing__title {

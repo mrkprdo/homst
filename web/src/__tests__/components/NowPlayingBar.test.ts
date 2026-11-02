@@ -38,7 +38,7 @@ describe("NowPlayingBar", () => {
     expect(wrapper.find(".now-playing").classes()).not.toContain("now-playing--paused")
   })
 
-  it("dims the strip when playback is paused", () => {
+  it("hides the strip when playback is paused", () => {
     useSpotify().currentTrack.value = {
       id: "t2",
       name: "Almost There",
@@ -51,9 +51,7 @@ describe("NowPlayingBar", () => {
 
     const wrapper = mount(NowPlayingBar)
 
-    expect(wrapper.find(".now-playing").classes()).toContain("now-playing--paused")
-    expect(wrapper.find(".now-playing__disc").classes()).toContain("now-playing__disc--paused")
-    expect(wrapper.find(".now-playing__fill").attributes("style")).toContain("scaleX(0)")
+    expect(wrapper.find(".now-playing").exists()).toBe(false)
   })
 
   it("marquees the title and artist when they do not fit", async () => {
