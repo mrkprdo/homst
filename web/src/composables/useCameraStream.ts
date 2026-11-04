@@ -22,7 +22,7 @@ const FAILED_RETRIEVING_MESSAGE = "failed retrieving stream"
 /** How often the watchdog checks whether a new frame arrived. */
 export const HEALTH_CHECK_INTERVAL_MS = 1_000
 /** How long frames may be missing before the stream counts as stalled. */
-export const STALL_TIMEOUT_MS = 5_000
+export const STALL_TIMEOUT_MS = 8_000
 /** Reconnect cadence after every immediate recovery attempt has failed. */
 export const RETRY_INTERVAL_MS = 60_000
 /** Immediate recovery attempts before falling back to the slow cadence. */
@@ -131,7 +131,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     }, HEALTH_CHECK_INTERVAL_MS)
   }
 
-  /** Called whenever the video advances or a fragment is loaded. */
+  /** Called whenever the video advances. */
   function markFrame() {
     lastFrameAt = Date.now()
     if (status.value !== "retrieving") return
@@ -214,14 +214,22 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     }
 
     const instance = new Hls({
-      lowLatencyMode: true,
-      liveSyncDurationCount: 2,
-      maxBufferLength: 10,
+      // The server produces ordinary 2s HLS segments, not LL-HLS parts. Keep
+      // more buffer and start further from the live edge so a slower client
+      // (or a congested Wi-Fi link) rides out slow segment downloads instead
+      // of stalling and reconnecting.
+      lowLatencyMode: false,
+      liveSyncDurationCount: 3,
+      liveMaxLatencyDurationCount: 10,
+      maxBufferLength: 20,
+      maxMaxBufferLength: 40,
+      backBufferLength: 10,
     })
     hls = instance
-    instance.on(Hls.Events.FRAG_LOADED, () => {
-      markFrame()
-    })
+    // Playback progress is the real "frames are arriving" signal. Counting
+    // FRAG_LOADED events wrongly treats a buffered stream or one slow
+    // segment download as a stall.
+    el.addEventListener("timeupdate", onTimeUpdate)
     instance.on(Hls.Events.ERROR, (_event, data) => {
       if (!data.fatal) return
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {

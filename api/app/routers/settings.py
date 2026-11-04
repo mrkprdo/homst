@@ -141,7 +141,7 @@ async def update_settings(
     # A camera change invalidates the running HLS stream: release the shared
     # lock so the next playlist request starts ffmpeg with the new source.
     if req.settings is not None and "camera" in req.settings:
-        await release_camera_stream()
+        await release_camera_stream(force=True)
 
     payload = _public_settings({**merged, **auto_state})
     try:

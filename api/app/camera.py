@@ -5,6 +5,11 @@ transcodes its stream into a short HLS playlist that the dashboard plays with
 hls.js. Only one API worker owns the ffmpeg process at a time; a Redis key
 elects that worker and the shared ``/tmp`` directory lets every worker serve
 the resulting playlist and segments.
+
+This is a fan-out, not a per-viewer proxy: ffmpeg opens the camera once and
+writes each segment to disk, and every HLS client downloads those same files.
+Adding viewers therefore adds HTTP traffic (and, in front, nginx work) but
+never a second ffmpeg process or a second RTSP connection to the camera.
 """
 
 from __future__ import annotations
@@ -32,7 +37,13 @@ TOKEN_PATTERN = re.compile(r"^[a-f0-9]{16}$")
 START_TIMEOUT = 10.0
 POLL_INTERVAL = 0.2
 LOCK_TTL_SECONDS = 20
+# A restart can spend up to STOP_TIMEOUT + START_TIMEOUT; hold the election
+# long enough that no other worker can start a competing ffmpeg mid-restart.
+RESTART_LOCK_TTL_SECONDS = 60
 REFRESH_SECONDS = 5
+# Playlist requests arrive from every viewer, so only renew the shared lock
+# when a meaningful part of its TTL has elapsed instead of once per request.
+OWNER_REFRESH_INTERVAL = REFRESH_SECONDS / 2
 STOP_TIMEOUT = 5.0
 
 MAX_URL_LENGTH = 2048
@@ -49,6 +60,22 @@ HEALTH_CHECK_INTERVAL = 5.0
 HEALTH_STALL_THRESHOLD = 15.0
 HEALTH_RETRY_INTERVAL = 60.0
 MAX_HEALTH_RETRIES = 3
+
+# One conservative rendition: the camera card is a small tile, and some
+# household clients are low-powered (older Raspberry Pis). 540p at 15 fps with
+# a capped bitrate keeps decode and Wi-Fi load well below 720p20.
+VIDEO_WIDTH = 960
+VIDEO_HEIGHT = 540
+VIDEO_FPS = 15
+VIDEO_BITRATE = "1200k"
+VIDEO_BUFSIZE = "2400k"
+
+# Keep a long enough live window that a client on a slow link can fall behind
+# without the segment it needs being deleted. The extra delete threshold keeps
+# a few more segments on disk after they leave the playlist.
+HLS_SEGMENT_SECONDS = 2
+HLS_LIST_SIZE = 20
+HLS_DELETE_THRESHOLD = 4
 
 
 class CameraError(RuntimeError):
@@ -284,6 +311,7 @@ class CameraStream:
         self._source: str | None = None
         self._token: str | None = None
         self._refresh_task: asyncio.Task | None = None
+        self._owner_refreshed_at = 0.0
         self._health_monitor = CameraHealthMonitor(self)
 
     def _get_lock(self) -> asyncio.Lock:
@@ -304,7 +332,7 @@ class CameraStream:
         async with self._get_lock():
             running = self._process is not None and self._process.returncode is None
             if running and self._source == source:
-                await self._refresh_owner()
+                await self._maybe_refresh_owner()
                 return output_dir(token)
 
             try:
@@ -324,26 +352,66 @@ class CameraStream:
                 if not claimed:
                     await self._wait_for_playlist(token)
                     return output_dir(token)
+                self._owner_refreshed_at = time.monotonic()
 
             # We own the lock. Restart if the source changed or ffmpeg died.
             if not running or self._source != source:
-                await self._stop_locked()
-                await self._start_locked(source, token)
+                # Keep the election key while ffmpeg is torn down and rebuilt.
+                # Releasing it first lets another worker claim ownership and
+                # start a second ffmpeg against the same camera. A freshly
+                # claimed key already has a full TTL, so only an existing
+                # owner needs the longer restart lease.
+                if owner == WORKER_ID:
+                    await self._lease_restart(redis)
+
+                await self._stop_locked(keep_owner=True)
+                try:
+                    await self._start_locked(source, token)
+                except Exception:
+                    await self._stop_locked()
+                    raise
                 try:
                     await redis.set(OWNER_KEY, WORKER_ID, ex=LOCK_TTL_SECONDS)
                 except Exception as exc:
                     await self._stop_locked()
                     raise CameraError("Camera streaming is unavailable.", 503) from exc
+                self._owner_refreshed_at = time.monotonic()
                 self._refresh_task = asyncio.create_task(self._keep_ownership(source))
                 self._health_monitor.start(token)
             return output_dir(token)
+
+    async def _lease_restart(self, redis) -> None:
+        """Extend the election lease so a restart never overlaps another owner."""
+        failed = False
+        try:
+            await redis.set(OWNER_KEY, WORKER_ID, ex=RESTART_LOCK_TTL_SECONDS)
+        except Exception as exc:
+            failed = True
+            raise CameraError("Camera streaming is unavailable.", 503) from exc
+        finally:
+            # Run cleanup even while the CameraError above propagates.
+            if failed:
+                await self._stop_locked()
+        self._owner_refreshed_at = time.monotonic()
 
     async def _refresh_owner(self) -> None:
         try:
             redis = await get_redis()
             await redis.expire(OWNER_KEY, LOCK_TTL_SECONDS)
+            self._owner_refreshed_at = time.monotonic()
         except Exception:
             logger.warning("Could not refresh camera stream ownership", exc_info=True)
+
+    async def _maybe_refresh_owner(self) -> None:
+        """Renew the election at most once per ``OWNER_REFRESH_INTERVAL``.
+
+        Every viewer polls the playlist every few seconds. Renewing Redis on
+        each of those requests is pointless because ``_keep_ownership`` already
+        renews well inside the TTL; throttling keeps many viewers cheap.
+        """
+        if time.monotonic() - self._owner_refreshed_at < OWNER_REFRESH_INTERVAL:
+            return
+        await self._refresh_owner()
 
     async def _wait_for_playlist(
         self, token: str, process: asyncio.subprocess.Process | None = None
@@ -362,7 +430,9 @@ class CameraStream:
             await asyncio.sleep(POLL_INTERVAL)
         raise CameraError("The camera stream did not start in time.")
 
-    async def _start_locked(self, source: str, token: str) -> None:
+    async def _start_locked(
+        self, source: str, token: str, keep_monitor: bool = False
+    ) -> None:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             raise CameraError(
@@ -397,18 +467,26 @@ class CameraStream:
             "-pix_fmt",
             "yuv420p",
             "-vf",
-            "scale=1280:720:force_original_aspect_ratio=decrease,"
-            "pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+            f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=decrease,"
+            f"pad={VIDEO_WIDTH}:{VIDEO_HEIGHT}:(ow-iw)/2:(oh-ih)/2",
             "-r",
-            "20",
+            str(VIDEO_FPS),
             "-g",
-            "40",
+            str(VIDEO_FPS * HLS_SEGMENT_SECONDS),
+            "-b:v",
+            VIDEO_BITRATE,
+            "-maxrate",
+            VIDEO_BITRATE,
+            "-bufsize",
+            VIDEO_BUFSIZE,
             "-f",
             "hls",
             "-hls_time",
-            "2",
+            str(HLS_SEGMENT_SECONDS),
             "-hls_list_size",
-            "6",
+            str(HLS_LIST_SIZE),
+            "-hls_delete_threshold",
+            str(HLS_DELETE_THRESHOLD),
             "-hls_flags",
             "delete_segments+omit_endlist+independent_segments",
             "-hls_segment_filename",
@@ -444,7 +522,7 @@ class CameraStream:
             detail = _read_ffmpeg_log(directory, source)
             if detail:
                 logger.warning("Camera ffmpeg failed: %s", detail)
-            await self._stop_locked()
+            await self._stop_locked(keep_monitor=keep_monitor)
             if detail:
                 raise CameraError(f"{exc} ffmpeg: {detail}") from exc
             raise
@@ -456,15 +534,48 @@ class CameraStream:
             token = self._token
             if not source or not token:
                 return
-            await self._stop_locked(keep_monitor=True)
-            await self._start_locked(source, token)
+
+            # The election may have moved to another worker while this one was
+            # unhealthy. Never start a competing ffmpeg in that case: just
+            # stop the local process and let the new owner serve viewers.
+            redis = None
             try:
                 redis = await get_redis()
-                await redis.set(OWNER_KEY, WORKER_ID, ex=LOCK_TTL_SECONDS)
+                owner = _as_text(await redis.get(OWNER_KEY))
             except Exception:
                 logger.warning(
-                    "Could not reclaim camera stream ownership", exc_info=True
+                    "Could not check camera stream ownership", exc_info=True
                 )
+                owner = WORKER_ID
+            if owner not in (None, WORKER_ID):
+                await self._stop_locked(keep_owner=True)
+                return
+
+            if redis is not None:
+                try:
+                    await redis.set(
+                        OWNER_KEY, WORKER_ID, ex=RESTART_LOCK_TTL_SECONDS
+                    )
+                    self._owner_refreshed_at = time.monotonic()
+                except Exception:
+                    logger.warning(
+                        "Could not reclaim camera stream ownership", exc_info=True
+                    )
+
+            await self._stop_locked(keep_monitor=True, keep_owner=True)
+            try:
+                await self._start_locked(source, token, keep_monitor=True)
+            except Exception:
+                await self._stop_locked(keep_monitor=True)
+                raise
+            if redis is not None:
+                try:
+                    await redis.set(OWNER_KEY, WORKER_ID, ex=LOCK_TTL_SECONDS)
+                    self._owner_refreshed_at = time.monotonic()
+                except Exception:
+                    logger.warning(
+                        "Could not reclaim camera stream ownership", exc_info=True
+                    )
             self._refresh_task = asyncio.create_task(self._keep_ownership(source))
 
     async def _keep_ownership(self, source: str) -> None:
@@ -476,9 +587,13 @@ class CameraStream:
                 redis = await get_redis()
                 owner = _as_text(await redis.get(OWNER_KEY))
                 if owner != WORKER_ID:
-                    await self.stop()
+                    # Handoff: keep the shared key and output while stopping,
+                    # otherwise this worker would delete the new owner's files.
+                    async with self._get_lock():
+                        await self._stop_locked(keep_owner=True)
                     return
                 await redis.expire(OWNER_KEY, LOCK_TTL_SECONDS)
+                self._owner_refreshed_at = time.monotonic()
             except Exception:
                 logger.warning("Could not refresh camera stream ownership", exc_info=True)
 
@@ -486,7 +601,15 @@ class CameraStream:
         async with self._get_lock():
             await self._stop_locked()
 
-    async def _stop_locked(self, keep_monitor: bool = False) -> None:
+    async def _stop_locked(
+        self, keep_monitor: bool = False, keep_owner: bool = False
+    ) -> None:
+        """Stop this worker's ffmpeg.
+
+        ``keep_owner`` leaves the shared output directory and the Redis
+        election key untouched, so a restart can rebuild the stream without
+        opening a window where another worker starts a competing ffmpeg.
+        """
         task = self._refresh_task
         self._refresh_task = None
         if task is not None and task is not asyncio.current_task():
@@ -502,6 +625,7 @@ class CameraStream:
         self._process = None
         self._source = None
         self._token = None
+        self._owner_refreshed_at = 0.0
 
         if process is not None and process.returncode is None:
             with contextlib.suppress(ProcessLookupError):
@@ -515,6 +639,9 @@ class CameraStream:
                     await process.wait()
             except ProcessLookupError:
                 pass
+
+        if keep_owner:
+            return
 
         if token:
             shutil.rmtree(output_dir(token), ignore_errors=True)
@@ -531,11 +658,18 @@ class CameraStream:
 camera_stream = CameraStream()
 
 
-async def release_camera_stream() -> None:
-    """Release the shared lock and stop this worker's ffmpeg process."""
+async def release_camera_stream(force: bool = False) -> None:
+    """Stop this worker's ffmpeg and release the shared lock.
+
+    ``force`` removes the election from whichever worker holds it; settings
+    changes use it because the PATCH request may land on a non-owner worker.
+    A normal shutdown only clears the key when this worker actually owns it.
+    """
     try:
         redis = await get_redis()
-        await redis.delete(OWNER_KEY)
+        owner = _as_text(await redis.get(OWNER_KEY))
+        if force or owner == WORKER_ID:
+            await redis.delete(OWNER_KEY)
     except Exception:
         logger.warning("Could not release camera stream lock", exc_info=True)
     await camera_stream.stop()

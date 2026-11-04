@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { defineComponent, h, nextTick, ref, type Ref } from "vue"
 import { mount } from "@vue/test-utils"
-import { useCameraStream } from "@/composables/useCameraStream"
+import { useCameraStream, STALL_TIMEOUT_MS } from "@/composables/useCameraStream"
 
 const hls = vi.hoisted(() => {
   const instances: any[] = []
@@ -126,7 +126,9 @@ describe("useCameraStream", () => {
 
     expect(api.status.value).toBe("loading")
     const instance = hls.instances[0]
-    expect(instance.config.lowLatencyMode).toBe(true)
+    expect(instance.config.lowLatencyMode).toBe(false)
+    expect(instance.config.liveSyncDurationCount).toBe(3)
+    expect(instance.config.maxBufferLength).toBe(20)
     expect(instance.loaded).toBe("/live.m3u8")
     expect(instance.attached).toBe(true)
 
@@ -241,14 +243,33 @@ describe("useCameraStream", () => {
 
     const instance = playingInstance(api)
 
-    await vi.advanceTimersByTimeAsync(6_000)
+    await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS)
     expect(api.status.value).toBe("retrieving")
     expect(api.error.value).toBe("retrieving stream...")
     expect(instance.startLoads).toBe(1)
 
-    instance.handlers["frag"]!("frag", {})
+    await wrapper.find("video").trigger("timeupdate")
     expect(api.status.value).toBe("playing")
     expect(api.error.value).toBe("")
+
+    wrapper.unmount()
+  })
+
+  it("does not treat buffered playback as stalled", async () => {
+    vi.useFakeTimers()
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+
+    playingInstance(api)
+
+    // hls.js can stop downloading while its buffer is full. As long as the
+    // video keeps advancing, the stream is healthy.
+    for (let step = 0; step < 4; step++) {
+      await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS - 1_000)
+      await wrapper.find("video").trigger("timeupdate")
+    }
+    expect(api.status.value).toBe("playing")
 
     wrapper.unmount()
   })
@@ -262,7 +283,7 @@ describe("useCameraStream", () => {
     playingInstance(api)
 
     for (let attempt = 0; attempt < 4; attempt++) {
-      await vi.advanceTimersByTimeAsync(5_000)
+      await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS)
     }
     expect(api.status.value).toBe("failed")
     expect(api.error.value).toBe("failed retrieving stream")
@@ -283,7 +304,7 @@ describe("useCameraStream", () => {
 
     playingInstance(api)
     for (let attempt = 0; attempt < 4; attempt++) {
-      await vi.advanceTimersByTimeAsync(5_000)
+      await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS)
     }
     expect(api.status.value).toBe("failed")
 
@@ -305,7 +326,7 @@ describe("useCameraStream", () => {
     expect(api.status.value).toBe("playing")
 
     vi.mocked(HTMLMediaElement.prototype.load).mockClear()
-    await vi.advanceTimersByTimeAsync(5_000)
+    await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS)
     expect(api.status.value).toBe("retrieving")
     expect(HTMLMediaElement.prototype.load).toHaveBeenCalled()
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { mount, flushPromises } from "@vue/test-utils"
 import { nextTick } from "vue"
 import CameraCard from "@/components/home/CameraCard.vue"
+import { STALL_TIMEOUT_MS } from "@/composables/useCameraStream"
 import { useSettings } from "@/composables/useSettings"
 
 const hls = vi.hoisted(() => {
@@ -107,7 +108,7 @@ describe("CameraCard", () => {
     await nextTick()
     expect(wrapper.find(".camera-overlay").exists()).toBe(false)
 
-    await vi.advanceTimersByTimeAsync(6_000)
+    await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS)
     await nextTick()
     expect(wrapper.text()).toContain("retrieving stream...")
     expect(wrapper.find(".camera-video").classes()).toContain("camera-video--stalled")
@@ -127,7 +128,7 @@ describe("CameraCard", () => {
     await nextTick()
 
     for (let attempt = 0; attempt < 4; attempt++) {
-      await vi.advanceTimersByTimeAsync(5_000)
+      await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS)
     }
     await nextTick()
 

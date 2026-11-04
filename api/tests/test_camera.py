@@ -94,6 +94,7 @@ async def camera_root(redis, monkeypatch, tmp_path):
     stream._refresh_task = None
     stream._lock = None
     stream._lock_loop = None
+    stream._owner_refreshed_at = 0.0
     stream._health_monitor.stop()
     stream._health_monitor._attempts = 0
     yield root
@@ -404,6 +405,24 @@ async def test_ensure_failure_to_refresh_lock_stops_stream(
 
 
 @pytest.mark.asyncio
+async def test_ensure_releases_ownership_when_restart_lease_fails(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first = FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+
+    first.returncode = 1
+    redis.fail_set = True
+    with pytest.raises(camera.CameraError) as exc:
+        await camera.camera_stream.ensure(CAMERA)
+    assert exc.value.status_code == 503
+    assert camera.OWNER_KEY not in redis.data
+
+
+@pytest.mark.asyncio
 async def test_ensure_restarts_when_source_changes(camera_root, redis, ffmpeg, monkeypatch):
     processes = [FakeProcess(), FakeProcess()]
     monkeypatch.setattr(
@@ -421,6 +440,82 @@ async def test_ensure_restarts_when_source_changes(camera_root, redis, ffmpeg, m
     await camera.camera_stream.ensure({**CAMERA, "url": "rtsp://camera/other"})
     assert processes[0].terminated is True
     assert processes[1].terminated is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_keeps_ownership_while_restarting(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first = FakeProcess()
+    seen: list[str | None] = []
+
+    def factory(process):
+        async def create(*args, **kwargs):
+            seen.append(redis.data.get(camera.OWNER_KEY))
+            playlist = Path(args[-1])
+            playlist.parent.mkdir(parents=True, exist_ok=True)
+            playlist.write_text("#EXTM3U\n", encoding="utf-8")
+            return process
+
+        return create
+
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+    first.returncode = 1
+
+    second = FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", factory(second)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+
+    assert camera.camera_stream._process is second
+    # The election key must not be released between stopping and starting
+    # ffmpeg, otherwise another worker could open a second camera connection.
+    assert seen == [camera.WORKER_ID, camera.WORKER_ID]
+
+
+@pytest.mark.asyncio
+async def test_ensure_releases_ownership_when_restart_fails(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first = FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+    first.returncode = 1
+
+    failed = FakeProcess(returncode=1)
+    monkeypatch.setattr(
+        camera.asyncio,
+        "create_subprocess_exec",
+        _fake_process_factory(failed, write_playlist=False),
+    )
+    with pytest.raises(camera.CameraError):
+        await camera.camera_stream.ensure(CAMERA)
+    assert camera.OWNER_KEY not in redis.data
+
+
+@pytest.mark.asyncio
+async def test_maybe_refresh_owner_is_throttled(camera_root, redis):
+    calls = 0
+
+    async def expire(key, ttl):
+        nonlocal calls
+        calls += 1
+        return True
+
+    redis.expire = expire
+    camera.camera_stream._owner_refreshed_at = time.monotonic()
+    await camera.camera_stream._maybe_refresh_owner()
+    assert calls == 0
+
+    camera.camera_stream._owner_refreshed_at = 0.0
+    await camera.camera_stream._maybe_refresh_owner()
+    assert calls == 1
 
 
 @pytest.mark.asyncio
@@ -627,8 +722,25 @@ async def test_release_camera_stream_clears_lock_and_stops(camera_root, redis, f
 
 @pytest.mark.asyncio
 async def test_release_camera_stream_survives_redis_failure(camera_root, redis):
+    redis.data[camera.OWNER_KEY] = camera.WORKER_ID
     redis.fail_delete = True
     await camera.release_camera_stream()
+
+
+@pytest.mark.asyncio
+async def test_release_camera_stream_keeps_another_workers_lock(camera_root, redis):
+    redis.data[camera.OWNER_KEY] = "other-worker"
+    await camera.release_camera_stream()
+    assert redis.data[camera.OWNER_KEY] == "other-worker"
+
+
+@pytest.mark.asyncio
+async def test_force_release_camera_stream_clears_another_workers_lock(
+    camera_root, redis,
+):
+    redis.data[camera.OWNER_KEY] = "other-worker"
+    await camera.release_camera_stream(force=True)
+    assert camera.OWNER_KEY not in redis.data
 
 
 @pytest.mark.asyncio
@@ -857,8 +969,8 @@ async def test_camera_rejects_invalid_settings(client, db_session):
 async def test_camera_change_releases_the_stream(client, db_session, monkeypatch):
     released = []
 
-    async def release():
-        released.append(True)
+    async def release(force=False):
+        released.append(force)
 
     monkeypatch.setattr("app.routers.settings.release_camera_stream", release)
     r = await client.patch("/api/v1/household/settings", json={"settings": {"camera": CAMERA}})
@@ -1029,4 +1141,99 @@ async def test_restart_survives_a_redis_failure(
     await camera.camera_stream.restart()
 
     assert camera.camera_stream._process is second
+
+
+@pytest.mark.asyncio
+async def test_restart_stops_local_stream_when_another_worker_owns(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first = FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+    token = camera.camera_token(camera.build_stream_url(CAMERA))
+    directory = camera.output_dir(token)
+
+    redis.data[camera.OWNER_KEY] = "other-worker"
+    started: list[bool] = []
+
+    async def unexpected(*args, **kwargs):
+        started.append(True)
+        return FakeProcess()
+
+    monkeypatch.setattr(camera.asyncio, "create_subprocess_exec", unexpected)
+    await camera.camera_stream.restart()
+
+    assert first.terminated is True
+    assert started == []
+    # The real owner still needs the shared playlist and segments.
+    assert directory.is_dir()
+    assert redis.data[camera.OWNER_KEY] == "other-worker"
+    assert camera.camera_stream._health_monitor.running is False
+
+
+@pytest.mark.asyncio
+async def test_restart_claims_an_expired_owner(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first, second = FakeProcess(), FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+
+    redis.data.pop(camera.OWNER_KEY)
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(second)
+    )
+    await camera.camera_stream.restart()
+
+    assert camera.camera_stream._process is second
+    assert redis.data[camera.OWNER_KEY] == camera.WORKER_ID
+
+
+@pytest.mark.asyncio
+async def test_restart_survives_redis_get_failure(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first, second = FakeProcess(), FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+
+    async def fail_get(key):
+        raise RuntimeError("redis down")
+
+    redis.get = fail_get
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(second)
+    )
+    await camera.camera_stream.restart()
+
+    assert camera.camera_stream._process is second
+
+
+@pytest.mark.asyncio
+async def test_restart_failure_releases_ownership(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first = FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+
+    failed = FakeProcess(returncode=1)
+    monkeypatch.setattr(
+        camera.asyncio,
+        "create_subprocess_exec",
+        _fake_process_factory(failed, write_playlist=False),
+    )
+    with pytest.raises(camera.CameraError):
+        await camera.camera_stream.restart()
+
+    assert camera.OWNER_KEY not in redis.data
+    assert camera.camera_stream._health_monitor.running is True
 
