@@ -176,7 +176,11 @@ class ReminderLog(Base):
     )
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
-    event_id = Column(Uuid(as_uuid=False), ForeignKey("events.id"), nullable=False)
+    event_id = Column(
+        Uuid(as_uuid=False),
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     occurrence_at = Column(DateTime(timezone=True), nullable=False)
     channel = Column(String(20), nullable=False)  # hud | push
     status = Column(String(20), nullable=False, default="sent")  # sent | failed | skipped

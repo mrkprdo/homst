@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.events.publisher import publish_event
-from app.models.all import Calendar, Event, Household
+from app.models.all import Calendar, Event, Household, ReminderLog
 from app.schemas.all import (
     CalendarCreate,
     CalendarResponse,
@@ -111,6 +111,15 @@ async def delete_calendar(calendar_id: UUID, db: AsyncSession = Depends(get_db))
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Calendar not found")
+    # Reminder history references events, so it has to go first on databases
+    # whose foreign key predates ON DELETE CASCADE.
+    await db.execute(
+        delete(ReminderLog).where(
+            ReminderLog.event_id.in_(
+                select(Event.id).where(Event.calendar_id == str(calendar_id))
+            )
+        )
+    )
     await db.execute(delete(Event).where(Event.calendar_id == str(calendar_id)))
     await db.execute(delete(Calendar).where(Calendar.id == str(calendar_id)))
     await db.commit()
@@ -276,6 +285,9 @@ async def delete_event(event_id: UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Event not found")
     if ev.source == "external":
         raise HTTPException(status_code=403, detail="External events are read-only")
+    # Delete the reminder ledger first so this works even on an older database
+    # where reminder_log_event_id_fkey has no ON DELETE CASCADE.
+    await db.execute(delete(ReminderLog).where(ReminderLog.event_id == str(event_id)))
     await db.execute(delete(Event).where(Event.id == str(event_id)))
     await db.commit()
     try:

@@ -55,6 +55,34 @@ _SAFE_MIGRATIONS = [
         END IF;
     END $$;
     """,
+    # Reminder history kept events undeletable: the original foreign key had
+    # no ON DELETE CASCADE, so any event that had fired a reminder failed to
+    # delete. Rebuild the constraint (idempotently) to cascade the logs.
+    """
+    DO $$
+    BEGIN
+        -- Every worker runs the startup shims; serialize the swap so two
+        -- workers cannot drop/add the same constraint at the same time.
+        PERFORM pg_advisory_xact_lock(482937461);
+        IF EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'reminder_log_event_id_fkey'
+              AND conrelid = 'reminder_log'::regclass
+              AND confdeltype <> 'c'
+        ) THEN
+            ALTER TABLE reminder_log DROP CONSTRAINT reminder_log_event_id_fkey;
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'reminder_log_event_id_fkey'
+              AND conrelid = 'reminder_log'::regclass
+        ) THEN
+            ALTER TABLE reminder_log
+                ADD CONSTRAINT reminder_log_event_id_fkey
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE;
+        END IF;
+    END $$;
+    """,
 ]
 
 # ── Retry settings for database startup ──

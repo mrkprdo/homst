@@ -1,9 +1,10 @@
+from datetime import datetime, timezone
+
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import String, select, update
 
-from app.models.all import Calendar, Event, Task
-
+from app.models.all import Calendar, Event, ReminderLog, Task
 
 # ── Health ──────────────────────────────────────────────────────────────────
 
@@ -185,6 +186,29 @@ async def test_delete_calendar(client):
 
 
 @pytest.mark.asyncio
+async def test_delete_calendar_with_reminder_history(client, db_session):
+    cal_id = await _make_calendar(client, name="Reminded")
+    r = await client.post("/api/v1/events", json={
+        "calendar_id": cal_id, "title": "Reminded", "start_at": "2026-05-03T10:00:00Z",
+    })
+    ev_id = r.json()["id"]
+    db_session.add(ReminderLog(
+        event_id=ev_id,
+        occurrence_at=datetime(2026, 5, 3, 9, 30, tzinfo=timezone.utc),
+        channel="hud",
+    ))
+    await db_session.commit()
+
+    r = await client.delete(f"/api/v1/calendars/{cal_id}")
+    assert r.status_code == 200
+
+    logs = (await db_session.execute(
+        select(ReminderLog).where(ReminderLog.event_id == ev_id)
+    )).scalars().all()
+    assert logs == []
+
+
+@pytest.mark.asyncio
 async def test_subscribe_calendar(client):
     r = await client.post("/api/v1/calendars/subscribe", json={
         "feed_url": "https://example.com/cal.ics", "name": "Subscribed"
@@ -301,6 +325,29 @@ async def test_delete_event(client):
 
     r = await client.get("/api/v1/events")
     assert len(r.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_event_with_reminder_history(client, db_session):
+    cal_id = await _make_calendar(client)
+    r = await client.post("/api/v1/events", json={
+        "calendar_id": cal_id, "title": "Reminded", "start_at": "2026-05-03T10:00:00Z",
+    })
+    ev_id = r.json()["id"]
+    db_session.add(ReminderLog(
+        event_id=ev_id,
+        occurrence_at=datetime(2026, 5, 3, 9, 30, tzinfo=timezone.utc),
+        channel="hud",
+    ))
+    await db_session.commit()
+
+    r = await client.delete(f"/api/v1/events/{ev_id}")
+    assert r.status_code == 200
+
+    logs = (await db_session.execute(
+        select(ReminderLog).where(ReminderLog.event_id == ev_id)
+    )).scalars().all()
+    assert logs == []
 
 
 # ── Task Lists ───────────────────────────────────────────────────────────────
