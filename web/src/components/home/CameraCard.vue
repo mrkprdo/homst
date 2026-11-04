@@ -172,6 +172,12 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
   pointer-events: none;
 }
 
+/* The live blur is a per-frame canvas copy plus a full-size blur; skip it on
+   Raspberry Pi / reduced-motion clients where it competes with video decode. */
+:global(html.low-power) .camera-backdrop {
+  display: none;
+}
+
 .camera-video {
   position: relative;
   z-index: 1;

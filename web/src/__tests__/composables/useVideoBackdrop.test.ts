@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { defineComponent, h, nextTick, ref, type Ref } from "vue"
 import { mount } from "@vue/test-utils"
 import { useVideoBackdrop, BACKDROP_MAX_DIMENSION } from "@/composables/useVideoBackdrop"
+import { setLowPower } from "@/lib/motion"
 
 const drawImage = vi.fn()
 const context = { drawImage }
@@ -37,6 +38,7 @@ describe("useVideoBackdrop", () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.useRealTimers()
+    setLowPower(false)
   })
 
   it("draws a scaled copy of the playing frame", async () => {
@@ -97,5 +99,16 @@ describe("useVideoBackdrop", () => {
     wrapper.unmount()
     await vi.advanceTimersByTimeAsync(250)
     expect(drawImage).toHaveBeenCalledTimes(2)
+  })
+
+  it("skips the live backdrop on low-power clients", async () => {
+    setLowPower(true)
+    const { wrapper, video, api } = mountBackdrop()
+    video.value = fakeVideo()
+    api.canvas.value = fakeCanvas()
+    await nextTick()
+
+    expect(drawImage).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 })

@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref, watch, type Ref } from "vue"
+import { isLowPower } from "@/lib/motion"
 
 /** Blurred backdrops only need a few frames per second to look smooth. */
 export const BACKDROP_INTERVAL_MS = 250
@@ -8,6 +9,10 @@ export const BACKDROP_MAX_DIMENSION = 320
  * Keep a small canvas in sync with a playing video. CSS stretches it with
  * `object-fit: cover` and blurs it, so it fills the letterbox area without
  * black bars and without decoding the stream a second time.
+ *
+ * Skipped entirely on low-power clients (e.g. Raspberry Pi displays): copying
+ * frames into a canvas and blurring them competes with video decode and shows
+ * up as dropped frames on those devices.
  */
 export function useVideoBackdrop(
   video: Ref<HTMLVideoElement | null>,
@@ -44,7 +49,7 @@ export function useVideoBackdrop(
 
   function start() {
     stop()
-    if (!active.value) return
+    if (!active.value || isLowPower) return
     draw()
     timer = setInterval(draw, intervalMs)
   }
