@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { defineComponent, h, nextTick, ref, type Ref } from "vue"
 import { mount } from "@vue/test-utils"
-import { useVideoBackdrop, BACKDROP_MAX_DIMENSION } from "@/composables/useVideoBackdrop"
+import { useVideoBackdrop, BACKDROP_MAX_DIMENSION, LOW_POWER_BACKDROP_INTERVAL_MS } from "@/composables/useVideoBackdrop"
 import { setLowPower } from "@/lib/motion"
 
 const drawImage = vi.fn()
@@ -101,14 +101,43 @@ describe("useVideoBackdrop", () => {
     expect(drawImage).toHaveBeenCalledTimes(2)
   })
 
-  it("skips the live backdrop on low-power clients", async () => {
+  it("captures one frame then refreshes slowly on low-power clients", async () => {
+    vi.useFakeTimers()
     setLowPower(true)
     const { wrapper, video, api } = mountBackdrop()
     video.value = fakeVideo()
     api.canvas.value = fakeCanvas()
     await nextTick()
 
+    expect(drawImage).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(LOW_POWER_BACKDROP_INTERVAL_MS - 1)
+    expect(drawImage).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(drawImage).toHaveBeenCalledTimes(2)
+
+    wrapper.unmount()
+  })
+
+  it("waits for the first frame before using the slow cadence", async () => {
+    vi.useFakeTimers()
+    setLowPower(true)
+    const { wrapper, video, api } = mountBackdrop()
+    const el = { videoWidth: 0, videoHeight: 0, readyState: 0 }
+    video.value = el as unknown as HTMLVideoElement
+    api.canvas.value = fakeCanvas()
+    await nextTick()
     expect(drawImage).not.toHaveBeenCalled()
+
+    el.videoWidth = 640
+    el.videoHeight = 480
+    el.readyState = 2
+    await vi.advanceTimersByTimeAsync(500)
+    expect(drawImage).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(LOW_POWER_BACKDROP_INTERVAL_MS)
+    expect(drawImage).toHaveBeenCalledTimes(2)
+
     wrapper.unmount()
   })
 })
