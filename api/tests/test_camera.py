@@ -1003,6 +1003,7 @@ HEALTH_TOKEN = "0123456789abcdef"
 class FakeStream:
     def __init__(self) -> None:
         self.restarts = 0
+        self.is_running = True
 
     async def restart(self) -> None:
         self.restarts += 1
@@ -1028,13 +1029,37 @@ def test_health_monitor_treats_missing_segments_as_healthy(camera_root):
     assert monitor._fresh(HEALTH_TOKEN) is True
 
 
+def test_health_monitor_restarts_when_no_segments_and_process_died(camera_root):
+    stream = FakeStream()
+    stream.is_running = False
+    monitor = camera.CameraHealthMonitor(stream)
+    assert monitor._fresh(HEALTH_TOKEN) is False
+
+
+def test_health_monitor_restarts_when_no_segments_after_the_grace_window(camera_root):
+    monitor = camera.CameraHealthMonitor(FakeStream())
+    monitor._started_at = time.monotonic() - camera.HEALTH_STALL_THRESHOLD - 1
+    assert monitor._fresh(HEALTH_TOKEN) is False
+
+
+@pytest.mark.asyncio
+async def test_health_monitor_restarts_a_dead_process_without_segments(camera_root):
+    stream = FakeStream()
+    stream.is_running = False
+    monitor = camera.CameraHealthMonitor(stream)
+
+    assert await monitor.check(HEALTH_TOKEN) is False
+    assert stream.restarts == 1
+
+
 def test_health_monitor_treats_stat_errors_as_healthy(camera_root, monkeypatch):
     class BrokenDir:
         def glob(self, pattern):
             raise OSError("gone")
 
     monkeypatch.setattr(camera, "output_dir", lambda token: BrokenDir())
-    assert camera.CameraHealthMonitor._fresh(HEALTH_TOKEN) is True
+    monitor = camera.CameraHealthMonitor(FakeStream())
+    assert monitor._fresh(HEALTH_TOKEN) is True
 
 
 @pytest.mark.asyncio

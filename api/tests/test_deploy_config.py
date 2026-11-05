@@ -80,6 +80,19 @@ def test_prod_config_limits_api_requests_and_connections(path: Path):
 
 
 @pytest.mark.parametrize("path", PROD_CONFIGS, ids=lambda p: p.name)
+def test_camera_hls_bypasses_the_api_rate_limit(path: Path):
+    config = _read(path)
+    camera_hls = _location_block(config, "/api/v1/camera/hls/")
+
+    # HLS polling and segment downloads must not share the API's per-IP
+    # request/connection limit; a retry burst would otherwise return 429s.
+    assert "limit_req" not in camera_hls
+    assert "limit_conn" not in camera_hls
+    assert "proxy_buffering off;" in camera_hls
+    assert "proxy_read_timeout 86400s;" in camera_hls
+
+
+@pytest.mark.parametrize("path", PROD_CONFIGS, ids=lambda p: p.name)
 def test_uploads_location_is_isolated(path: Path):
     config = _read(path)
     uploads = _location_block(config, "/uploads/")

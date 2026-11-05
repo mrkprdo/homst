@@ -244,6 +244,7 @@ class CameraHealthMonitor:
         self._task: asyncio.Task | None = None
         self._token: str | None = None
         self._attempts = 0
+        self._started_at = time.monotonic()
 
     @property
     def running(self) -> bool:
@@ -253,7 +254,12 @@ class CameraHealthMonitor:
         self.stop()
         self._token = token
         self._attempts = 0
+        self.mark_started()
         self._task = asyncio.create_task(self._run(token))
+
+    def mark_started(self) -> None:
+        """Reset the first-segment grace window after a (re)start."""
+        self._started_at = time.monotonic()
 
     def stop(self) -> None:
         task, self._task = self._task, None
@@ -285,8 +291,7 @@ class CameraHealthMonitor:
         await self._stream.restart()
         return False
 
-    @staticmethod
-    def _fresh(token: str) -> bool:
+    def _fresh(self, token: str) -> bool:
         try:
             newest = max(
                 (p.stat().st_mtime for p in output_dir(token).glob("seg_*.ts")),
@@ -296,8 +301,13 @@ class CameraHealthMonitor:
             # A transient filesystem blip is not a camera failure.
             return True
         if newest == 0.0:
-            # Nothing produced yet; startup owns that timeout.
-            return True
+            # Startup owns the first segment timeout. After that, no segments
+            # at all means ffmpeg died or its output was removed: restart even
+            # though there is no mtime to compare. A dead process is always a
+            # stall, so recovery does not wait for the grace window.
+            if not self._stream.is_running:
+                return False
+            return time.monotonic() - self._started_at <= HEALTH_STALL_THRESHOLD
         return time.time() - newest <= HEALTH_STALL_THRESHOLD
 
 
@@ -313,6 +323,11 @@ class CameraStream:
         self._refresh_task: asyncio.Task | None = None
         self._owner_refreshed_at = 0.0
         self._health_monitor = CameraHealthMonitor(self)
+
+    @property
+    def is_running(self) -> bool:
+        """True while this worker's ffmpeg process is alive."""
+        return self._process is not None and self._process.returncode is None
 
     def _get_lock(self) -> asyncio.Lock:
         """Re-create the lock when tests (or a reload) use a new event loop."""
@@ -568,6 +583,7 @@ class CameraStream:
             except Exception:
                 await self._stop_locked(keep_monitor=True)
                 raise
+            self._health_monitor.mark_started()
             if redis is not None:
                 try:
                     await redis.set(OWNER_KEY, WORKER_ID, ex=LOCK_TTL_SECONDS)
