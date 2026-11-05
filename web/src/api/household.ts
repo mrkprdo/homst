@@ -30,6 +30,7 @@ export interface HouseholdSettings {
   widgetLayout?: WidgetDef[]
   notifications?: NotificationPreferences
   music?: MusicPreferences
+  screens?: ScreenPreferences
   updates?: UpdatePreferences
   camera?: CameraSettings | null
 }
@@ -51,6 +52,14 @@ export interface MusicPreferences {
   background?: boolean
   backgroundSpin?: boolean
   cardSpin?: boolean
+}
+
+/** Kiosk screen behaviour, shared by every display in the household. */
+export interface ScreenPreferences {
+  /** Cycle through Home, Calendar and Tasks while the display is idle. */
+  carousel?: boolean
+  /** Return to Home after 15 minutes without interaction. */
+  returnHome?: boolean
 }
 
 export interface NotificationPreferences {

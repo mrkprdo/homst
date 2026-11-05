@@ -318,6 +318,18 @@ function onMusicToggle(key: keyof typeof musicSetters, value: boolean) {
   }).catch(() => {})
 }
 
+/** Kiosk screen choices are household-wide, like the music options. */
+function onScreenToggle(key: "carousel" | "returnHome", value: boolean) {
+  if (key === "carousel") settings.updateCarouselEnabled(!!value)
+  else settings.updateReturnHomeEnabled(!!value)
+  householdApi.updateSettings({
+    screens: {
+      carousel: settings.carouselEnabled.value,
+      returnHome: settings.returnHomeEnabled.value,
+    },
+  }).catch(() => {})
+}
+
 // ── Camera ──
 const cameraUrl = ref("")
 const cameraUsername = ref("")
@@ -863,7 +875,7 @@ async function sendTest() {
         <header class="card-header">
           <div class="card-heading">
             <h3 class="card-title">Home Screen</h3>
-            <p class="card-desc">Restore the default card arrangement and sizes</p>
+            <p class="card-desc">Screen rotation and the default card arrangement</p>
           </div>
           <UiButton size="sm" variant="ghost" :disabled="resettingLayout" @click="askToResetLayout">
             Reset layout
@@ -871,6 +883,28 @@ async function sendTest() {
         </header>
 
         <div class="card-body">
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Rotate screens</p>
+              <p class="row-desc">Cycle through Home, Calendar and Tasks while the display is idle</p>
+            </div>
+            <UiToggle
+              :model-value="settings.carouselEnabled.value"
+              @update:model-value="(v: boolean) => onScreenToggle('carousel', v)"
+            />
+          </div>
+
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Return to Home</p>
+              <p class="row-desc">After 15 minutes without interaction, show the Home screen</p>
+            </div>
+            <UiToggle
+              :model-value="settings.returnHomeEnabled.value"
+              @update:model-value="(v: boolean) => onScreenToggle('returnHome', v)"
+            />
+          </div>
+
           <div
             class="layout-preview"
             role="img"

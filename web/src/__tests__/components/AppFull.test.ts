@@ -121,6 +121,8 @@ describe("App — bootstrap, idle cycle and cleanup", () => {
 
   it("rotates the active panel once the kiosk goes idle", async () => {
     vi.useFakeTimers()
+    const settings = useSettings()
+    settings.updateCarouselEnabled(true)
     const ui = useUi()
     ui.setPanel("home")
     const wrapper = mountApp()
@@ -136,8 +138,61 @@ describe("App — bootstrap, idle cycle and cleanup", () => {
     wrapper.unmount()
   })
 
+  it("keeps the current panel when screen rotation is disabled", async () => {
+    vi.useFakeTimers()
+    const settings = useSettings()
+    const ui = useUi()
+    expect(settings.carouselEnabled.value).toBe(false)
+    ui.setPanel("home")
+    const wrapper = mountApp()
+    await settle()
+
+    await vi.advanceTimersByTimeAsync(300_000)
+    expect(ui.activePanel.value).toBe("home")
+    wrapper.unmount()
+  })
+
+  it("returns to Home after 15 minutes of inactivity by default", async () => {
+    vi.useFakeTimers()
+    const settings = useSettings()
+    const ui = useUi()
+    expect(settings.returnHomeEnabled.value).toBe(true)
+    ui.setPanel("calendar")
+    const wrapper = mountApp()
+    await settle()
+
+    await vi.advanceTimersByTimeAsync(15 * 60_000 - 1)
+    expect(ui.activePanel.value).toBe("calendar")
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(ui.activePanel.value).toBe("home")
+    wrapper.unmount()
+  })
+
+  it("restarts the return-to-home wait after an interaction", async () => {
+    vi.useFakeTimers()
+    const settings = useSettings()
+    const ui = useUi()
+    settings.updateCarouselEnabled(false)
+    settings.updateReturnHomeEnabled(true)
+    ui.setPanel("calendar")
+    const wrapper = mountApp()
+    await settle()
+
+    await vi.advanceTimersByTimeAsync(14 * 60_000)
+    window.dispatchEvent(new Event("pointerdown"))
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    expect(ui.activePanel.value).toBe("calendar")
+
+    await vi.advanceTimersByTimeAsync(13 * 60_000)
+    expect(ui.activePanel.value).toBe("home")
+    wrapper.unmount()
+  })
+
   it("keeps the current panel while the drawer is open", async () => {
     vi.useFakeTimers()
+    const settings = useSettings()
+    settings.updateCarouselEnabled(true)
     const ui = useUi()
     ui.setPanel("home")
     ui.isDrawerOpen.value = true
@@ -151,6 +206,8 @@ describe("App — bootstrap, idle cycle and cleanup", () => {
 
   it("keeps the current panel after a recent interaction", async () => {
     vi.useFakeTimers()
+    const settings = useSettings()
+    settings.updateCarouselEnabled(true)
     const ui = useUi()
     ui.setPanel("home")
     const wrapper = mountApp()

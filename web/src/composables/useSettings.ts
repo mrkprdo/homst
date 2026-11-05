@@ -80,6 +80,10 @@ const lyricsEnabled = ref(true)
 const musicBackground = ref(true)
 const musicBackgroundSpin = ref(false)
 const musicCardSpin = ref(true)
+/** Auto-cycle the kiosk through Home, Calendar and Tasks while idle. */
+const carouselEnabled = ref(false)
+/** Return to Home after 15 minutes without interaction. */
+const returnHomeEnabled = ref(true)
 const houseName = ref("")
 const photos = ref<PhotoEntry[]>([])
 /** RTSP camera details exposed by the server (never the password itself). */
@@ -204,6 +208,14 @@ function updateMusicCardSpin(on: boolean) {
   musicCardSpin.value = on
 }
 
+function updateCarouselEnabled(on: boolean) {
+  carouselEnabled.value = on
+}
+
+function updateReturnHomeEnabled(on: boolean) {
+  returnHomeEnabled.value = on
+}
+
 function updateHouseName(name: string) {
   houseName.value = name
 }
@@ -259,6 +271,10 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
       if (s.music.backgroundSpin !== undefined) updateMusicBackgroundSpin(s.music.backgroundSpin !== false)
       if (s.music.cardSpin !== undefined) updateMusicCardSpin(s.music.cardSpin !== false)
     }
+    if (s.screens) {
+      if (s.screens.carousel !== undefined) updateCarouselEnabled(s.screens.carousel !== false)
+      if (s.screens.returnHome !== undefined) updateReturnHomeEnabled(s.screens.returnHome === true)
+    }
     // Keep the accent and preset coherent if an older/partial payload is loaded.
     if (!accentSets[themePreset.value].includes(accentColor.value)) {
       accentColor.value = presetDefaultAccent[themePreset.value]
@@ -298,6 +314,7 @@ export function useSettings() {
   return {
     theme, themePreset, accentColor, fontSize, warm, hudEnabled, houseName, photos,
     lyricsEnabled, musicBackground, musicBackgroundSpin, musicCardSpin,
+    carouselEnabled, returnHomeEnabled,
     cameraUrl, cameraUsername, cameraPasswordSet, cameraRotation, cameraStreamPath,
     defaultReminderMinutes,
     autoThemeDark, autoSunrise, autoSunset,
@@ -305,6 +322,7 @@ export function useSettings() {
     applyAccentToDOM, applyFontSizeToDOM,
     updateTheme, updateThemePreset, updateAccentColor, updateFontSize, updateWarm, updateHudEnabled,
     updateLyricsEnabled, updateMusicBackground, updateMusicBackgroundSpin, updateMusicCardSpin,
+    updateCarouselEnabled, updateReturnHomeEnabled,
     updateHouseName, updateDefaultReminderMinutes, applyCameraSettings,
     applyHouseholdSettings, refreshFromServer, refreshPhotos,
   }
@@ -324,6 +342,8 @@ export function _resetSettings() {
   musicBackground.value = true
   musicBackgroundSpin.value = false
   musicCardSpin.value = true
+  carouselEnabled.value = false
+  returnHomeEnabled.value = true
   houseName.value = ""
   photos.value = []
   cameraUrl.value = ""

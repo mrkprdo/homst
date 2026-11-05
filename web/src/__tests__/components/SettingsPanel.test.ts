@@ -134,6 +134,34 @@ describe("SettingsPanel", () => {
     })
   })
 
+  it("toggles screen rotation and return-to-home and saves them together", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    const settings = useSettings()
+
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+
+    const row = (label: string) =>
+      wrapper.findAll(".setting-row").find((r) => r.text().includes(label))!
+
+    expect(settings.carouselEnabled.value).toBe(false)
+    expect(settings.returnHomeEnabled.value).toBe(true)
+
+    await row("Rotate screens").find(".ui-toggle").trigger("click")
+    await flushPromises()
+    expect(settings.carouselEnabled.value).toBe(true)
+
+    await row("Return to Home").find(".ui-toggle").trigger("click")
+    await flushPromises()
+    expect(settings.returnHomeEnabled.value).toBe(false)
+
+    const patch = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH").at(-1)!
+    expect(JSON.parse((patch[1] as RequestInit).body as string).settings.screens).toEqual({
+      carousel: true,
+      returnHome: false,
+    })
+  })
+
   it("renders the theme preset cards with Futur active", () => {
     const wrapper = mount(SettingsPanel)
     const cards = wrapper.findAll(".preset-card")

@@ -69,14 +69,27 @@ function onMobileJoined() {
 }
 
 const PAGE_CYCLE: PanelView[] = ["home", "calendar", "tasks"]
+const PAGE_CYCLE_MS = 120_000
 const IDLE_MS = 30_000
+const RETURN_HOME_MS = 15 * 60_000
 let cycleTimer: ReturnType<typeof setTimeout> | null = null
+let homeTimer: ReturnType<typeof setTimeout> | null = null
 let lastInteraction = Date.now()
 let moveTimer: ReturnType<typeof setTimeout> | null = null
 
+function clearPageCycle() {
+  if (cycleTimer !== null) {
+    clearTimeout(cycleTimer)
+    cycleTimer = null
+  }
+}
+
 function schedulePageCycle() {
-  const delay = 120_000
+  clearPageCycle()
+  if (isMobile.value || !settings.carouselEnabled.value) return
   cycleTimer = setTimeout(() => {
+    cycleTimer = null
+    if (!settings.carouselEnabled.value) return
     if (ui.isDrawerOpen.value || Date.now() - lastInteraction < IDLE_MS) {
       schedulePageCycle()
       return
@@ -85,11 +98,35 @@ function schedulePageCycle() {
     const next = PAGE_CYCLE[(idx + 1) % PAGE_CYCLE.length]
     ui.setPanel(next)
     schedulePageCycle()
-  }, delay)
+  }, PAGE_CYCLE_MS)
+}
+
+function clearReturnHome() {
+  if (homeTimer !== null) {
+    clearTimeout(homeTimer)
+    homeTimer = null
+  }
+}
+
+function scheduleReturnHome() {
+  clearReturnHome()
+  if (isMobile.value || !settings.returnHomeEnabled.value) return
+  homeTimer = setTimeout(() => {
+    homeTimer = null
+    if (!settings.returnHomeEnabled.value) return
+    // Do not yank a panel away while a detail drawer is open.
+    if (ui.isDrawerOpen.value) {
+      scheduleReturnHome()
+      return
+    }
+    if (ui.activePanel.value !== "home") ui.setPanel("home")
+    scheduleReturnHome()
+  }, RETURN_HOME_MS)
 }
 
 function resetIdleTimer() {
   lastInteraction = Date.now()
+  scheduleReturnHome()
 }
 
 function onMouseMove() {
@@ -97,6 +134,7 @@ function onMouseMove() {
   moveTimer = setTimeout(() => {
     moveTimer = null
     lastInteraction = Date.now()
+    scheduleReturnHome()
   }, 300)
 }
 
@@ -127,6 +165,7 @@ async function openOfflineNotification(intent = notificationIntent) {
 onMounted(() => {
   if (!isMobile.value) {
     schedulePageCycle()
+    scheduleReturnHome()
     window.addEventListener("pointerdown", resetIdleTimer)
     window.addEventListener("keydown", resetIdleTimer)
     window.addEventListener("wheel", resetIdleTimer)
@@ -157,7 +196,8 @@ watch(serverReachable, (reachable) => {
 })
 
 onUnmounted(() => {
-  if (cycleTimer !== null) clearTimeout(cycleTimer)
+  clearPageCycle()
+  clearReturnHome()
   if (moveTimer !== null) clearTimeout(moveTimer)
   window.removeEventListener("pointerdown", resetIdleTimer)
   window.removeEventListener("keydown", resetIdleTimer)
@@ -167,6 +207,10 @@ onUnmounted(() => {
   window.removeEventListener("offline", onOffline)
   document.removeEventListener("visibilitychange", onVisibilityChange)
 })
+
+// Kiosk screen behaviour can be changed from Settings on any client.
+watch(() => settings.carouselEnabled.value, schedulePageCycle)
+watch(() => settings.returnHomeEnabled.value, scheduleReturnHome)
 
 // Sync settings to backend when they change
 let syncTimer: ReturnType<typeof setTimeout>
