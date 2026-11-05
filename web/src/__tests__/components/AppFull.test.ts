@@ -169,6 +169,23 @@ describe("App — bootstrap, idle cycle and cleanup", () => {
     wrapper.unmount()
   })
 
+  it("defers return-to-home while a drawer is open", async () => {
+    vi.useFakeTimers()
+    const ui = useUi()
+    ui.setPanel("calendar")
+    ui.isDrawerOpen.value = true
+    const wrapper = mountApp()
+    await settle()
+
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+    expect(ui.activePanel.value).toBe("calendar")
+
+    ui.isDrawerOpen.value = false
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+    expect(ui.activePanel.value).toBe("home")
+    wrapper.unmount()
+  })
+
   it("restarts the return-to-home wait after an interaction", async () => {
     vi.useFakeTimers()
     const settings = useSettings()
