@@ -275,6 +275,18 @@ def test_read_ffmpeg_log_returns_empty_for_blank_output(tmp_path):
 # ── CameraStream ─────────────────────────────────────────────────────────────
 
 
+def test_stream_is_running_tracks_the_ffmpeg_process(camera_root):
+    stream = camera.camera_stream
+    assert stream.is_running is False
+
+    process = FakeProcess()
+    stream._process = process
+    assert stream.is_running is True
+
+    process.returncode = 1
+    assert stream.is_running is False
+
+
 @pytest.mark.asyncio
 async def test_ensure_without_url_raises(camera_root, redis):
     with pytest.raises(camera.CameraError) as exc:
