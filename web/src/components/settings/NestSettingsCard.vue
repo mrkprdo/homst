@@ -94,8 +94,8 @@ async function disconnect() {
   <section class="settings-card settings-card--nest nest-settings">
     <header class="card-header">
       <div class="card-heading">
-        <h3 class="card-title">Home temperature</h3>
-        <p class="card-desc">Show the Nest thermostat and every temperature sensor on the home screen</p>
+        <h3 class="card-title">Indoor temperatures</h3>
+        <p class="card-desc">Show Nest thermostat and sensor readings on the home screen</p>
       </div>
     </header>
 

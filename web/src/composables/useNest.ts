@@ -39,7 +39,7 @@ async function refresh(force = false): Promise<void> {
     try {
       status.value = normalize(await nestApi.getTemperatures(force))
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "Could not load house temperatures."
+      error.value = err instanceof Error ? err.message : "Could not load indoor temperatures."
     } finally {
       loading.value = false
       inFlight = null

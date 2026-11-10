@@ -143,7 +143,7 @@ const PRE_CAMERA_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "spotify",  col: 4, row: 0, w: 1, h: 2 },
 ]
 
-/** The default after the camera card shipped, before house temperatures. */
+/** The default after the camera card shipped, before indoor temperatures. */
 const PRE_TEMPERATURE_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 3, row: 0, w: 1, h: 2 },
   { id: "weather",  col: 2, row: 0, w: 1, h: 2 },
@@ -155,7 +155,7 @@ const PRE_TEMPERATURE_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "camera",   col: 2, row: 4, w: 4, h: 2 },
 ]
 
-/** The default after house temperatures shipped, before the live arrangement. */
+/** The default after indoor temperatures shipped, before the live arrangement. */
 const TEMPERATURE_CARD_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "datetime",     col: 3, row: 0, w: 1, h: 2 },
   { id: "weather",      col: 2, row: 0, w: 1, h: 2 },
@@ -1283,7 +1283,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'spotify')" />
       </div>
 
-      <!-- House temperature (Nest) -->
+      <!-- Indoor temperatures (Nest) -->
       <div v-if="getWidget('temperatures')" :ref="(el) => registerWidgetEl('temperatures', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'temperatures' }"
         :style="{ ...widgetStyle(getWidget('temperatures')!), '--wobble-delay': '460ms' }">

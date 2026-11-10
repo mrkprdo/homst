@@ -11,7 +11,7 @@ HOMST is a self-hosted dashboard for a shared household. It runs on a wall-mount
 - **Shared calendar**: Month, week, and day views. Create events, assign persons, and set recurrence. Includes public holidays.
 - **Task board**: To Do, Doing, and Done columns. Tasks have priorities, due dates, and assignees.
 - **Today**: Daily schedule, current weather, and upcoming tasks.
-- **House temperature**: Nest thermostat and Temperature Sensors in one card, with per-room readings and humidity.
+- **Indoor temperatures**: Nest thermostat and Temperature Sensors in one card, with per-room readings and humidity.
 - **Household members**: Color-coded profiles. All members have the same permissions.
 - **Live updates**: Server-sent events keep every screen in sync.
 - **Announcements**: Send a message from a display or phone. It appears on all screens and can arrive as a Web Push notification. Set an expiry time or keep it until removed.

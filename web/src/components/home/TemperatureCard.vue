@@ -70,7 +70,7 @@ function roomTitle(room: NestRoom) {
   return room.room && room.room !== room.name ? `${room.room} · ${room.name}` : room.name
 }
 
-/** How far this room sits from the house average, for the tile footer. */
+/** How far this room sits from the indoor average, for the tile footer. */
 function averageDelta(room: NestRoom) {
   if (!stats.value) return ""
   const delta = room.temperatureC - stats.value.average
@@ -96,7 +96,7 @@ onUnmounted(() => {
   <UiCard class="home-block temperature-card" :padding="false">
     <div class="block-header">
       <span class="block-title">
-        <PhThermometer :size="18" /><span class="block-title-text">House temperature</span>
+        <PhThermometer :size="18" /><span class="block-title-text">Indoor Temps</span>
       </span>
       <span v-if="stats" class="temperature-average">{{ formatTemp(stats.average) }}°</span>
     </div>
@@ -108,7 +108,7 @@ onUnmounted(() => {
     <div v-else-if="error && !status" class="temperature-body temperature-body--center">
       <div class="temperature-setup">
         <PhWarningCircle :size="30" class="temperature-setup-icon" />
-        <p class="temperature-setup-title">House temperature unavailable</p>
+        <p class="temperature-setup-title">Indoor temperatures unavailable</p>
         <p class="temperature-setup-desc">{{ error }}</p>
       </div>
     </div>
@@ -138,13 +138,13 @@ onUnmounted(() => {
     <div v-else class="temperature-body">
       <p v-if="disconnected" class="temperature-note">{{ status?.error || error }}</p>
 
-      <section v-if="stats" class="temperature-hero" aria-label="House average temperature">
+      <section v-if="stats" class="temperature-hero" aria-label="Indoor average temperature">
         <div class="hero-value">
           <span class="hero-number">{{ formatTemp(stats.average) }}</span>
           <span class="hero-degree">°</span>
         </div>
         <div class="hero-copy">
-          <span class="hero-label">House average</span>
+          <span class="hero-label">Indoor average</span>
           <div class="hero-range" aria-hidden="true">
             <span
               v-for="room in rooms"
@@ -340,7 +340,7 @@ onUnmounted(() => {
   color: var(--color-textSecondary);
 }
 
-/* ── Hero: the house average and the thermal spread ───────────────────────── */
+/* ── Hero: the indoor average and the thermal spread ──────────────────────── */
 .temperature-hero {
   flex: 0 0 auto;
   display: flex;

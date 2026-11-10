@@ -101,7 +101,7 @@ describe("useNest", () => {
 
     vi.spyOn(nestApi, "getTemperatures").mockRejectedValueOnce("offline")
     await api.refresh()
-    expect(api.error.value).toBe("Could not load house temperatures.")
+    expect(api.error.value).toBe("Could not load indoor temperatures.")
     expect(api.loading.value).toBe(false)
   })
 

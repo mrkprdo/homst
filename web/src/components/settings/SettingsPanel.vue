@@ -840,7 +840,7 @@ async function sendTest() {
         </p>
       </section>
 
-      <!-- ── Home temperature (Nest) ── -->
+      <!-- ── Indoor temperatures (Nest) ── -->
       <NestSettingsCard />
 
       <!-- ── Motion ── -->

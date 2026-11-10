@@ -173,7 +173,7 @@ describe("TemperatureCard", () => {
     const wrapper = mount(TemperatureCard)
     await flushPromises()
 
-    expect(wrapper.text()).toContain("House temperature unavailable")
+    expect(wrapper.text()).toContain("Indoor temperatures unavailable")
     expect(wrapper.text()).toContain("Server unreachable")
     wrapper.unmount()
   })

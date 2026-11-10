@@ -61,7 +61,9 @@ ERROR_CACHE_TTL_SECONDS = 20
 SESSION_FALLBACK_SECONDS = 60 * 60
 SENSOR_OFFLINE_AFTER_SECONDS = 4 * 60 * 60
 
-_AUTH_ERROR = "Nest sign-in expired. Open Settings → Home temperature and paste fresh credentials."
+_AUTH_ERROR = (
+    "Nest sign-in expired. Open Settings → Indoor temperatures and paste fresh credentials."
+)
 _SERVICE_ERROR = "Could not reach Nest. It will retry automatically."
 
 
