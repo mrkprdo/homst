@@ -129,8 +129,8 @@ describe("HomeView — layout engine & edit mode", () => {
     await wrapper.find(".lock-toggle").trigger("click")
     const dragHandles = wrapper.findAll(".drag-handle")
     const resizeHandles = wrapper.findAll(".resize-handle")
-    expect(dragHandles.length).toBe(8)
-    expect(resizeHandles.length).toBe(8)
+    expect(dragHandles.length).toBe(9)
+    expect(resizeHandles.length).toBe(9)
 
     // Both handle for every widget
     for (const handle of [...dragHandles, ...resizeHandles]) {
@@ -171,16 +171,16 @@ describe("HomeView — layout engine & edit mode", () => {
     const { wrapper } = await freshMount({ body: { houseName: "Minimums" } })
     await wrapper.find(".lock-toggle").trigger("click")
 
-    // Date & Time ships 1×2; drag both axes in until the card is 1×1.
-    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 4 / span 1")
+    // Date & Time ships 1×2 at column 3; drag both axes in until it is 1×1.
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 3 / span 1")
     const handle = wrapper.findAll(".resize-handle")[0]
     handle.element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: -390, clientY: -210 }))
     window.dispatchEvent(new MouseEvent("pointerup"))
     await nextTick()
 
-    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 4 / span 1")
-    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-row: 1 / span 1")
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 3 / span 1")
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-row: 4 / span 1")
     wrapper.unmount()
   })
 
@@ -194,8 +194,8 @@ describe("HomeView — layout engine & edit mode", () => {
       },
     })
     // Rejected → the default layout survives (Date & Time is one column wide)
-    expect(wrapper.findAll(".widget").length).toBe(8)
-    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 4 / span 1")
+    expect(wrapper.findAll(".widget").length).toBe(9)
+    expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 3 / span 1")
     wrapper.unmount()
   })
 
@@ -211,11 +211,13 @@ describe("HomeView — layout engine & edit mode", () => {
         ],
       },
     })
-    // photos, spotify & camera were appended with their *default* coords (no slot found)
-    expect(wrapper.findAll(".widget").length).toBe(8)
-    expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-column: 3 / span 4")
-    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-column: 5 / span 1")
-    expect(wrapper.findAll(".widget")[7].attributes("style")).toContain("grid-column: 3 / span 4")
+    // temperatures, photos, spotify & camera were appended with their *default*
+    // coords (no slot found)
+    expect(wrapper.findAll(".widget").length).toBe(9)
+    expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-column: 4 / span 3")
+    expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-column: 4 / span 2")
+    expect(wrapper.findAll(".widget")[7].attributes("style")).toContain("grid-column: 3 / span 1")
+    expect(wrapper.findAll(".widget")[8].attributes("style")).toContain("grid-column: 3 / span 1")
     wrapper.unmount()
   })
 
@@ -299,9 +301,9 @@ describe("HomeView — cached layout (import time)", () => {
       const { wrapper } = await freshMount({ body: { houseName: "Cached Home" } })
       // layoutReady starts true → canvas is in the DOM right after mount
       expect(wrapper.find(".widget-canvas").exists()).toBe(true)
-      // The cached layout predates the camera card, so it is merged in
-      // synchronously instead of waiting for the server.
-      expect(wrapper.findAll(".widget").length).toBe(8)
+      // The cached layout predates the camera and temperature cards, so they
+      // are merged in synchronously instead of waiting for the server.
+      expect(wrapper.findAll(".widget").length).toBe(9)
       const canvas = wrapper.find(".widget-canvas").element
       expect(observed).toBe(canvas)
 
@@ -333,7 +335,7 @@ describe("HomeView — cached layout (import time)", () => {
     for (const raw of malformed) {
       localStorage.setItem(LAYOUT_KEY, raw)
       const { wrapper } = await freshMount({ body: {} })
-      expect(wrapper.findAll(".widget").length).toBe(8)
+      expect(wrapper.findAll(".widget").length).toBe(9)
       wrapper.unmount()
     }
   })
@@ -349,7 +351,7 @@ describe("HomeView — cached layout (import time)", () => {
       { id: "photos", col: 0, row: 4, w: 4, h: 1 },
     ]))
     const { wrapper } = await freshMount({ body: {} })
-    expect(wrapper.findAll(".widget")[0]!.attributes("style")).toContain("grid-column: 4 / span 1")
+    expect(wrapper.findAll(".widget")[0]!.attributes("style")).toContain("grid-column: 3 / span 1")
     wrapper.unmount()
   })
 })
@@ -364,11 +366,12 @@ describe("HomeView — widget data edge cases", () => {
     { id: "photos", col: 0, row: 3, w: 2, h: 1 },
     { id: "spotify", col: 0, row: 4, w: 2, h: 1 },
     { id: "camera", col: 2, row: 3, w: 2, h: 1 },
+    { id: "temperatures", col: 4, row: 0, w: 2, h: 2 },
   ]
 
   it("accepts a complete server layout without saving it back", async () => {
     const { wrapper } = await freshMount({ body: { houseName: "Complete", widgetLayout: COMPLETE_LAYOUT } })
-    expect(wrapper.findAll(".widget").length).toBe(8)
+    expect(wrapper.findAll(".widget").length).toBe(9)
     // schedule sits where the server put it → applyLayout kept the response as-is
     expect(wrapper.findAll(".widget")[1].attributes("style")).toContain("grid-column: 1 / span 2")
     expect(wrapper.findAll(".widget")[2].attributes("style")).toContain("grid-column: 3 / span 2")

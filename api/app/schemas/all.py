@@ -51,6 +51,14 @@ class HouseholdSettingsUpdate(BaseModel):
     settings: Optional[dict] = None
 
 
+# ── Nest ──
+class NestCredentials(BaseModel):
+    account_type: Literal["google", "nest"]
+    issue_token: Optional[str] = Field(None, max_length=20000)
+    cookies: Optional[str] = Field(None, max_length=20000)
+    access_token: Optional[str] = Field(None, max_length=5000)
+
+
 # ── Calendar ──
 class CalendarCreate(BaseModel):
     name: str = Field(max_length=NAME_MAX)

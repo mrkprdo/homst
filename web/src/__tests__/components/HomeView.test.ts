@@ -450,8 +450,8 @@ describe("HomeView", () => {
     await flushPromises()
 
     // Spotify no longer covers the full-width calendar below it
-    expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-row: 1 / span 2")
-    expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-column: 5 / span 1")
+    expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-row: 1 / span 1")
+    expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-column: 4 / span 2")
     expect(calendarWidget(wrapper)!.attributes("style")).toContain("grid-column: 1 / span 2")
     expect(calendarWidget(wrapper)!.attributes("style")).toContain("grid-row: 1 / span 3")
 
@@ -460,7 +460,8 @@ describe("HomeView", () => {
     expect(patch).toBeTruthy()
     const body = JSON.parse((patch![1] as RequestInit).body as string)
     const spotify = body.settings.widgetLayout.find((w: any) => w.id === "spotify")
-    expect(spotify.h).toBe(2)
+    expect(spotify.h).toBe(1)
+    expect(spotify.w).toBe(2)
     wrapper.unmount()
   })
 
@@ -483,7 +484,15 @@ describe("HomeView", () => {
     await flushPromises()
 
     expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-row: 2 / span 2")
-    expect(settingsPatch()).toBeFalsy()
+    const patch = settingsPatch()
+    expect(patch).toBeTruthy()
+    const body = JSON.parse((patch![1] as RequestInit).body as string)
+    expect(body.settings.widgetLayout.find((w: any) => w.id === "temperatures")).toMatchObject({
+      col: 4, row: 0, w: 1, h: 1,
+    })
+    expect(body.settings.widgetLayout.find((w: any) => w.id === "spotify")).toMatchObject({
+      col: 0, row: 1, w: 2, h: 2,
+    })
     wrapper.unmount()
   })
 })

@@ -18,6 +18,7 @@ import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
 import CameraCard from "@/components/home/CameraCard.vue"
+import TemperatureCard from "@/components/home/TemperatureCard.vue"
 import { animate, stagger, springs, ease } from "@/lib/motion"
 import { syncVinyl } from "@/lib/vinyl"
 import {
@@ -142,12 +143,39 @@ const PRE_CAMERA_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "spotify",  col: 4, row: 0, w: 1, h: 2 },
 ]
 
+/** The default after the camera card shipped, before house temperatures. */
+const PRE_TEMPERATURE_DEFAULT_LAYOUT: WidgetDef[] = [
+  { id: "datetime", col: 3, row: 0, w: 1, h: 2 },
+  { id: "weather",  col: 2, row: 0, w: 1, h: 2 },
+  { id: "schedule", col: 0, row: 3, w: 2, h: 3 },
+  { id: "todos",    col: 5, row: 0, w: 1, h: 2 },
+  { id: "calendar", col: 0, row: 0, w: 2, h: 3 },
+  { id: "photos",   col: 2, row: 2, w: 4, h: 2 },
+  { id: "spotify",  col: 4, row: 0, w: 1, h: 2 },
+  { id: "camera",   col: 2, row: 4, w: 4, h: 2 },
+]
+
+/** The default after house temperatures shipped, before the live arrangement. */
+const TEMPERATURE_CARD_DEFAULT_LAYOUT: WidgetDef[] = [
+  { id: "datetime",     col: 3, row: 0, w: 1, h: 2 },
+  { id: "weather",      col: 2, row: 0, w: 1, h: 2 },
+  { id: "schedule",     col: 0, row: 3, w: 2, h: 3 },
+  { id: "todos",        col: 5, row: 0, w: 1, h: 2 },
+  { id: "calendar",     col: 0, row: 0, w: 2, h: 3 },
+  { id: "temperatures", col: 2, row: 2, w: 2, h: 2 },
+  { id: "photos",       col: 4, row: 2, w: 2, h: 2 },
+  { id: "spotify",      col: 4, row: 0, w: 1, h: 2 },
+  { id: "camera",       col: 2, row: 4, w: 4, h: 2 },
+]
+
 const OUTDATED_DEFAULT_LAYOUTS = [
   BALANCED_SIX_COLUMN_LAYOUT,
   FOUR_COLUMN_DEFAULT_LAYOUT,
   ORIGINAL_DEFAULT_LAYOUT,
   LEGACY_OVERLAPPING_LAYOUT,
   PRE_CAMERA_DEFAULT_LAYOUT,
+  PRE_TEMPERATURE_DEFAULT_LAYOUT,
+  TEMPERATURE_CARD_DEFAULT_LAYOUT,
 ]
 
 function matchesLayout(layout: WidgetDef[], reference: WidgetDef[]): boolean {
@@ -1253,6 +1281,17 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
           <PhDotsSix :size="14" />
         </div>
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'spotify')" />
+      </div>
+
+      <!-- House temperature (Nest) -->
+      <div v-if="getWidget('temperatures')" :ref="(el) => registerWidgetEl('temperatures', el as HTMLElement | null)" class="widget"
+        :class="{ 'is-dragging': draggingId === 'temperatures' }"
+        :style="{ ...widgetStyle(getWidget('temperatures')!), '--wobble-delay': '460ms' }">
+        <TemperatureCard />
+        <div v-if="unlocked" class="drag-handle" @pointerdown="onDragHandleDown($event, 'temperatures')">
+          <PhDotsSix :size="14" />
+        </div>
+        <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'temperatures')" />
       </div>
 
       <!-- RTSP camera -->

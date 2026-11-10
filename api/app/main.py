@@ -21,6 +21,7 @@ from app.redis_client import close_redis, get_redis
 from app.routers import calendar, holidays, stream, tasks, users
 from app.routers.announcements import router as announcements_router
 from app.routers.camera import router as camera_router
+from app.routers.nest import router as nest_router
 from app.routers.notifications import router as notifications_router
 from app.routers.photos import router as photos_router
 from app.routers.push import router as push_router
@@ -226,6 +227,7 @@ app.include_router(stream.router, prefix="/api", tags=["stream"])
 app.include_router(photos_router, prefix="/api/v1", tags=["photos"])
 app.include_router(announcements_router, prefix="/api/v1", tags=["announcements"])
 app.include_router(notifications_router, prefix="/api/v1", tags=["notifications"])
+app.include_router(nest_router, prefix="/api/v1/nest", tags=["nest"])
 app.include_router(push_router, prefix="/api/v1", tags=["push"])
 app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
 

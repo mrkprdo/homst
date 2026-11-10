@@ -38,6 +38,7 @@ import UiButton from "@/components/ui/UiButton.vue"
 import UiInput from "@/components/ui/UiInput.vue"
 import UiSelect from "@/components/ui/UiSelect.vue"
 import SoftwareUpdateCard from "@/components/settings/SoftwareUpdateCard.vue"
+import NestSettingsCard from "@/components/settings/NestSettingsCard.vue"
 
 const settings = useSettings()
 
@@ -839,6 +840,9 @@ async function sendTest() {
         </p>
       </section>
 
+      <!-- ── Home temperature (Nest) ── -->
+      <NestSettingsCard />
+
       <!-- ── Motion ── -->
       <section class="settings-card settings-card--motion">
         <header class="card-header">
@@ -972,6 +976,7 @@ async function sendTest() {
     "devices"
     "music"
     "camera"
+    "nest"
     "motion"
     "home"
     "software";
@@ -987,6 +992,7 @@ async function sendTest() {
 .settings-card--devices    { grid-area: devices; }
 .settings-card--music      { grid-area: music; }
 .settings-card--camera     { grid-area: camera; }
+.settings-card--nest       { grid-area: nest; }
 .settings-card--motion     { grid-area: motion; }
 .settings-card--home       { grid-area: home; }
 .settings-card--software   { grid-area: software; }
@@ -1001,6 +1007,7 @@ async function sendTest() {
       "reminders devices"
       "music     motion"
       "camera    camera"
+      "nest      nest"
       "home      software";
   }
 }
@@ -1014,6 +1021,7 @@ async function sendTest() {
       "reminders reminders reminders reminders reminders reminders reminders devices devices devices devices devices"
       "music music music music music music music music motion motion motion motion"
       "camera camera camera camera camera camera camera camera camera camera camera camera"
+      "nest nest nest nest nest nest nest nest nest nest nest nest"
       "home home home home software software software software software software software software";
   }
 }

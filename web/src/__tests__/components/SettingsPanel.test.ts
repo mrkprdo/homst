@@ -365,14 +365,15 @@ describe("SettingsPanel", () => {
     await flushPromises()
 
     const stored = JSON.parse(localStorage.getItem("homst-widget-layout")!)
-    expect(stored).toHaveLength(8)
-    expect(stored.find((card: any) => card.id === "photos")).toMatchObject({ col: 2, row: 2, w: 4, h: 2 })
-    expect(stored.find((card: any) => card.id === "camera")).toMatchObject({ col: 2, row: 4, w: 4, h: 2 })
-    expect(stored.find((card: any) => card.id === "datetime")).toMatchObject({ col: 3, row: 0, w: 1, h: 2 })
+    expect(stored).toHaveLength(9)
+    expect(stored.find((card: any) => card.id === "photos")).toMatchObject({ col: 3, row: 1, w: 3, h: 5 })
+    expect(stored.find((card: any) => card.id === "temperatures")).toMatchObject({ col: 2, row: 2, w: 1, h: 1 })
+    expect(stored.find((card: any) => card.id === "camera")).toMatchObject({ col: 2, row: 0, w: 1, h: 2 })
+    expect(stored.find((card: any) => card.id === "datetime")).toMatchObject({ col: 2, row: 3, w: 1, h: 2 })
 
     const patch = fetchMock.mock.calls.find(c => (c[1] as RequestInit)?.method === "PATCH")!
     const body = JSON.parse((patch[1] as RequestInit).body as string)
-    expect(body.settings.widgetLayout).toHaveLength(8)
+    expect(body.settings.widgetLayout).toHaveLength(9)
     expect(wrapper.text()).toContain("Home layout reset to the default.")
   })
 
