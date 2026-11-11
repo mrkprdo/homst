@@ -250,6 +250,52 @@ describe("HomeView — layout engine & edit mode", () => {
     wrapper.unmount()
   })
 
+  it("splits the clock into a hero face and a compact seconds/period stack", async () => {
+    const { wrapper } = await freshMount({ body: { houseName: "Clock Home" } })
+    expect(wrapper.find(".datetime-clock").text()).toMatch(/^\d{2}:\d{2}$/)
+    expect(wrapper.find(".datetime-seconds").text()).toMatch(/^\d{2}$/)
+    expect(wrapper.find(".datetime-period").text()).toMatch(/^(AM|PM)$/)
+    wrapper.unmount()
+  })
+
+  it("shows the weather location chip only when the location is known", async () => {
+    const { wrapper, weather } = await freshMount({ body: { houseName: "Weather Home" } })
+    weather.loading.value = false
+    weather.error.value = null
+    weather.weather.value = {
+      temp: 18, feelsLike: 17, high: 21, low: 12, code: 2,
+      humidity: 58, windSpeed: 12, location: "", lat: 45.5, lon: -122.6,
+    }
+    await nextTick()
+    expect(wrapper.find(".weather-location-header").exists()).toBe(false)
+    expect(wrapper.find(".weather-label").text()).toBe("Partly cloudy")
+
+    weather.weather.value = { ...weather.weather.value!, location: "Portland" }
+    await nextTick()
+    expect(wrapper.find(".weather-location-header").text()).toBe("Portland")
+    wrapper.unmount()
+  })
+
+  it("labels the Spotify play state and falls back to a record placeholder without art", async () => {
+    vi.stubEnv("VITE_SPOTIFY_CLIENT_ID", "configured-client")
+    const { wrapper, spotify } = await freshMount({ body: { houseName: "Music" } })
+    spotify.connected.value = true
+    spotify.currentTrack.value = {
+      id: "tr", name: "Song", artists: "A", albumArt: "", progressMs: 1_000, durationMs: 60_000, isPlaying: true,
+    }
+    await nextTick()
+    expect(wrapper.find(".spotify-status--live").text()).toContain("Playing")
+    expect(wrapper.find(".spotify-label-art").exists()).toBe(false)
+    expect(wrapper.find(".spotify-label-placeholder").exists()).toBe(true)
+
+    spotify.currentTrack.value = { ...spotify.currentTrack.value, isPlaying: false, albumArt: "/art.jpg" }
+    await nextTick()
+    expect(wrapper.find(".spotify-status--live").text()).toContain("Paused")
+    expect(wrapper.find(".spotify-equalizer").exists()).toBe(false)
+    expect(wrapper.find(".spotify-label-art").attributes("src")).toBe("/art.jpg")
+    wrapper.unmount()
+  })
+
   it("rolls the wall clock over and surfaces a weather error", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] })
     const base = Math.floor(Date.now() / 60_000) * 60_000 - 1_000
@@ -498,6 +544,7 @@ describe("HomeView — Spotify widget", () => {
     const { wrapper } = await freshMount({ body: {} })
 
     expect(wrapper.find(".spotify-setup").exists()).toBe(true)
+    expect(wrapper.find(".spotify-status").text()).toBe("Setup")
     // Redirect URI branch: http + no port → pinned :80
     expect(wrapper.find(".spotify-setup-steps").text()).toContain("http://homst:80")
 
@@ -535,10 +582,12 @@ describe("HomeView — Spotify widget", () => {
     spotify.currentTrack.value = null
     await nextTick()
     expect(wrapper.text()).toContain("Nothing playing")
+    expect(wrapper.find(".spotify-status").text()).toBe("Ready")
     await wrapper.find(".spotify-connect-btn--small").trigger("click")
     expect(spotify.connected.value).toBe(false)
 
     await nextTick()
+    expect(wrapper.find(".spotify-status").text()).toBe("Not connected")
     const connectBtn = wrapper.find("button.spotify-connect-btn")
     expect(connectBtn.text()).toBe("Connect Spotify")
     await connectBtn.trigger("click")

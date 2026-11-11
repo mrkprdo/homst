@@ -307,6 +307,17 @@ const _clockInit = new Date()
 const dateStr = ref(_clockInit.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }))
 const timeStr = ref(_clockInit.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))
 
+/**
+ * Split the localised clock into a hero (hours:minutes) and a quiet side stack
+ * (seconds and the day period). The hero then scales with the tile instead of
+ * the whole 13-character string deciding the type size.
+ */
+const clockParts = computed(() => {
+  const [clock = "", period = ""] = timeStr.value.trim().split(/\s+/)
+  const [hours = "", minutes = "", seconds = ""] = clock.split(":")
+  return { hours, minutes, seconds, period }
+})
+
 // ── Schedule date navigation ──────────────────────────────────────────────────
 /** A glance at another day should not stick around forever on a kiosk. */
 const SCHEDULE_RESET_MS = 2 * 60 * 1000
@@ -938,9 +949,17 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
             </span>
           </div>
           <div class="datetime-display" aria-hidden="true">
-            <p class="datetime-house">{{ settings.houseName.value || 'Home' }}</p>
-            <p class="datetime-date">{{ dateStr }}</p>
-            <p class="datetime-time">{{ timeStr }}</p>
+            <p class="datetime-time">
+              <span class="datetime-clock">{{ clockParts.hours }}:{{ clockParts.minutes }}</span>
+              <span class="datetime-clock-side">
+                <span class="datetime-seconds">{{ clockParts.seconds }}</span>
+                <span class="datetime-period">{{ clockParts.period }}</span>
+              </span>
+            </p>
+            <div class="datetime-meta">
+              <p class="datetime-house">{{ settings.houseName.value || 'Home' }}</p>
+              <p class="datetime-date">{{ dateStr }}</p>
+            </div>
           </div>
         </UiCard>
         <div v-if="unlocked" class="drag-handle" @pointerdown="onDragHandleDown($event, 'datetime')">
@@ -1018,7 +1037,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         <UiCard class="home-block weather-card" :padding="false">
           <div class="block-header">
             <span class="block-title"><PhSun :size="18" /><span class="block-title-text">Weather</span></span>
-            <span v-if="weather" class="weather-location-header">{{ weather.location }}</span>
+            <span v-if="weather?.location" class="weather-location-header">{{ weather.location }}</span>
           </div>
           <div v-if="weatherLoading" class="weather-body weather-body--center">
             <span class="weather-loading">Loading…</span>
@@ -1028,7 +1047,9 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
           </div>
           <div v-else-if="weather" class="weather-body">
             <div class="weather-primary">
-              <component :is="weatherIcon(weather.code)" class="weather-icon" :size="52" weight="fill" />
+              <span class="weather-icon-plate" aria-hidden="true">
+                <component :is="weatherIcon(weather.code)" class="weather-icon" :size="52" weight="fill" />
+              </span>
               <div class="weather-temps">
                 <span class="weather-temp">{{ weather.temp }}°</span>
                 <span class="weather-hilo">
@@ -1038,19 +1059,21 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
                 </span>
               </div>
             </div>
-            <div class="weather-secondary">
-              <span class="weather-label">{{ weatherLabel(weather.code) }}</span>
-              <span class="weather-feels">Feels like {{ weather.feelsLike }}°</span>
-            </div>
-            <div class="weather-stats">
-              <span class="weather-stat">
-                <PhDropHalf :size="13" weight="fill" class="weather-stat-icon" />
-                {{ weather.humidity }}%
-              </span>
-              <span class="weather-stat">
-                <PhWind :size="13" class="weather-stat-icon" />
-                {{ weather.windSpeed }} km/h
-              </span>
+            <div class="weather-details">
+              <div class="weather-secondary">
+                <span class="weather-label">{{ weatherLabel(weather.code) }}</span>
+                <span class="weather-feels">Feels like {{ weather.feelsLike }}°</span>
+              </div>
+              <div class="weather-stats">
+                <span class="weather-stat">
+                  <PhDropHalf :size="13" weight="fill" class="weather-stat-icon" />
+                  {{ weather.humidity }}%
+                </span>
+                <span class="weather-stat">
+                  <PhWind :size="13" class="weather-stat-icon" />
+                  {{ weather.windSpeed }} km/h
+                </span>
+              </div>
             </div>
           </div>
           <div v-else class="weather-body weather-body--center">
@@ -1202,15 +1225,23 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
             <span class="block-title">
               <PhMusicNote :size="18" weight="bold" /><span class="block-title-text">Spotify</span>
             </span>
-            <span v-if="spotifyConnected && currentTrack?.isPlaying" class="spotify-equalizer">
-              <span /><span /><span />
+            <span v-if="spotifyNeedsConfig()" class="spotify-status spotify-status--setup">Setup</span>
+            <span v-else-if="!currentTrack && spotifyConnected" class="spotify-status">Ready</span>
+            <span v-else-if="!currentTrack" class="spotify-status spotify-status--muted">Not connected</span>
+            <span v-else class="spotify-status spotify-status--live" :class="{ 'is-paused': !currentTrack.isPlaying }">
+              <span v-if="currentTrack.isPlaying" class="spotify-equalizer" aria-hidden="true">
+                <span /><span /><span />
+              </span>
+              <span>{{ currentTrack.isPlaying ? 'Playing' : 'Paused' }}</span>
             </span>
           </div>
 
           <!-- Not configured — show setup -->
           <div v-if="spotifyNeedsConfig()" class="spotify-body spotify-body--center">
             <div class="spotify-setup">
-              <PhMusicNote :size="40" class="spotify-setup-icon" />
+              <span class="spotify-setup-badge" aria-hidden="true">
+                <PhMusicNote :size="32" class="spotify-setup-icon" />
+              </span>
               <p class="spotify-setup-title">Connect Spotify</p>
               <p class="spotify-setup-desc">
                 Add <code>{{ spotifyRedirectUri }}</code> as a Redirect URI in your
@@ -1257,10 +1288,13 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
           <!-- Now playing -->
           <div v-else class="spotify-body spotify-body--playing">
-            <div class="spotify-vinyl" :class="{ 'spotify-vinyl--paused': !currentTrack.isPlaying, 'spotify-vinyl--still': !settings.musicCardSpin.value }">
-              <div :ref="bindVinylDisc" class="spotify-disc">
-                <div class="spotify-label-wrap">
-                  <img :src="currentTrack.albumArt" class="spotify-label-art" />
+            <div class="spotify-stage" aria-hidden="true">
+              <div class="spotify-vinyl" :class="{ 'spotify-vinyl--paused': !currentTrack.isPlaying, 'spotify-vinyl--still': !settings.musicCardSpin.value }">
+                <div :ref="bindVinylDisc" class="spotify-disc">
+                  <div class="spotify-label-wrap" :class="{ 'spotify-label-wrap--empty': !currentTrack.albumArt }">
+                    <img v-if="currentTrack.albumArt" :src="currentTrack.albumArt" class="spotify-label-art" :alt="`${currentTrack.name} album art`" />
+                    <PhMusicNote v-else :size="28" class="spotify-label-placeholder" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1271,8 +1305,10 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
                 <div class="spotify-bar-track">
                   <div class="spotify-bar-fill" :style="{ transform: `scaleX(${currentTrack.durationMs ? currentTrack.progressMs / currentTrack.durationMs : 0})` }" />
                 </div>
-                <span class="spotify-time">{{ formatTime(currentTrack.progressMs) }}</span>
-                <span class="spotify-time spotify-time--end">{{ formatTime(currentTrack.durationMs) }}</span>
+                <div class="spotify-times">
+                  <span class="spotify-time">{{ formatTime(currentTrack.progressMs) }}</span>
+                  <span class="spotify-time spotify-time--end">{{ formatTime(currentTrack.durationMs) }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1617,9 +1653,13 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-size: var(--text-heading-size);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-display, var(--font-family));
+  font-size: var(--text-label-size);
+  font-weight: 600;
+  letter-spacing: 0.1em;
   line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1627,6 +1667,17 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .block-title svg {
   flex-shrink: 0;
+  color: var(--color-textMuted);
+}
+
+/* The three hero cards carry their domain colour in the header mark. */
+.datetime-card .block-title svg,
+.spotify-card .block-title svg {
+  color: var(--color-primaryDark);
+}
+
+.weather-card .block-title svg {
+  color: var(--color-info);
 }
 
 .block-title-text {
@@ -1655,7 +1706,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
   .block-title {
     gap: var(--space-1);
-    font-size: var(--text-label-size);
+    font-size: var(--text-micro-size);
   }
 
   .block-title svg {
@@ -1700,7 +1751,10 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 /* ── Date & Time ─────────────────────────────────────────────────────────────── */
-/* One type size for the whole tile: emphasis comes from weight and colour. */
+.datetime-card {
+  --hero-tint: var(--color-primary);
+}
+
 .datetime-display {
   flex: 1;
   min-height: 0;
@@ -1709,119 +1763,177 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: clamp(0px, 1.2cqh, var(--space-2));
-  padding: 0 clamp(6px, 2cqw, var(--space-4)) clamp(2px, 1.5cqh, var(--space-3));
+  gap: clamp(4px, 2cqh, var(--space-3));
+  padding: 0 clamp(8px, 2.4cqw, var(--space-6)) clamp(4px, 2cqh, var(--space-4));
   overflow: hidden;
-  font-size: clamp(var(--text-body-size), 11cqh, calc(var(--text-body-size) * 2.4));
+}
+
+.datetime-time {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(3px, 1.2cqw, var(--space-3));
+  max-width: 100%;
+  min-width: 0;
+  font-family: var(--font-display, var(--font-family));
+  color: var(--color-textPrimary);
+  white-space: nowrap;
+}
+
+.datetime-clock {
+  font-size: clamp(30px, min(24cqh, 16cqw), 104px);
+  font-weight: 600;
+  line-height: 0.92;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+.datetime-clock-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding-top: 0.16em;
+  font-size: clamp(11px, 6.4cqh, 24px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: var(--color-textSecondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.datetime-period {
+  text-transform: uppercase;
+  color: var(--color-primaryDark);
+}
+
+.datetime-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(2px, 1cqh, var(--space-1)) clamp(6px, 1.4cqw, var(--space-3));
+  max-width: 100%;
+  min-width: 0;
 }
 
 .datetime-house,
-.datetime-date,
-.datetime-time {
+.datetime-date {
   max-width: 100%;
   min-width: 0;
-  font-size: inherit;
-  line-height: 1.05;
+  margin: 0;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .datetime-house {
-  font-weight: var(--font-weight-large);
-  color: var(--color-primary);
+  font-family: var(--font-display, var(--font-family));
+  font-size: clamp(var(--text-micro-size), 4.2cqh, var(--text-label-size));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-primaryDark);
 }
 
 .datetime-date {
-  font-weight: var(--font-weight-regular);
+  font-size: clamp(var(--text-micro-size), 4.6cqh, var(--text-body-size));
   color: var(--color-textSecondary);
 }
 
-.datetime-time {
-  font-weight: var(--font-weight-large);
-  color: var(--color-textPrimary);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+/* A quiet separator when the house and date share a line. */
+.datetime-date::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: clamp(4px, 1cqw, var(--space-2));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-textMuted) 60%, transparent);
+  vertical-align: middle;
 }
 
-/* Very narrow tiles: cap the shared size by width so the clock never ellipsizes. */
+/* Very narrow tiles: cap the clock by width so it never ellipsizes. */
 @container w (max-width: 12em) {
-  .datetime-display {
-    font-size: min(var(--text-body-size), 11cqw);
+  .datetime-clock {
+    font-size: clamp(20px, 14cqw, 64px);
+  }
+
+  .datetime-clock-side {
+    font-size: clamp(9px, 4cqw, 16px);
+  }
+
+  .datetime-date::before {
+    display: none;
+  }
+
+  .datetime-meta {
+    flex-direction: column;
+    gap: 0;
   }
 }
 
 @container w (max-width: 9em) {
-  .datetime-display {
-    font-size: min(var(--text-body-size), 9.5cqw);
+  .datetime-clock {
+    font-size: clamp(18px, 13cqw, 48px);
   }
 }
 
-/* Wide, short tiles: one line — house · date · time. */
-@container w (min-width: 26em) and (max-height: 9em) {
+/* Roomy tiles: the clock leads on the left, context sits behind a rule. */
+@container w (min-width: 26em) {
   .datetime-display {
     flex-direction: row;
-    align-items: baseline;
-    justify-content: center;
-    gap: clamp(6px, 2cqw, var(--space-6));
-    font-size: clamp(var(--text-body-size), 9cqh, calc(var(--text-body-size) * 1.9));
-  }
-
-  .datetime-house,
-  .datetime-date,
-  .datetime-time {
-    flex: 0 1 auto;
-  }
-
-  .datetime-date::before,
-  .datetime-time::before {
-    content: "·";
-    margin-right: clamp(6px, 2cqw, var(--space-6));
-    color: var(--color-textMuted);
-    font-weight: var(--font-weight-regular);
-  }
-}
-
-/* Roomy tiles: house/date on the left, time as the hero on the right. */
-@container w (min-width: 26em) and (min-height: 9em) {
-  .datetime-display {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "house time"
-      "date time";
     align-items: center;
-    align-content: center;
-    justify-items: start;
+    justify-content: space-between;
+    gap: clamp(12px, 3cqw, var(--space-8));
+    padding-inline: clamp(12px, 3cqw, var(--space-8));
     text-align: left;
-    column-gap: clamp(12px, 3cqw, var(--space-8));
-    row-gap: clamp(2px, 1.5cqh, var(--space-2));
-    font-size: clamp(var(--text-body-size), 9cqh, calc(var(--text-body-size) * 2.6));
-  }
-
-  .datetime-house {
-    grid-area: house;
-  }
-
-  .datetime-date {
-    grid-area: date;
   }
 
   .datetime-time {
-    grid-area: time;
-    justify-self: end;
-    text-align: right;
+    justify-content: flex-start;
+  }
+
+  .datetime-clock {
+    font-size: clamp(32px, min(38cqh, 9.5cqw), 84px);
+  }
+
+  .datetime-clock-side {
+    font-size: clamp(12px, min(8cqh, 2.4cqw), 26px);
+  }
+
+  .datetime-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    padding-left: clamp(12px, 2.4cqw, var(--space-6));
+    border-left: 2px solid color-mix(in srgb, var(--hero-tint) 32%, transparent);
+    text-align: left;
+  }
+
+  .datetime-date::before {
+    display: none;
   }
 }
 
 /* ── Weather ──────────────────────────────────────────────────────────────────── */
+.weather-card {
+  --hero-tint: var(--color-info);
+}
+
 .weather-location-header {
   flex-shrink: 1;
   min-width: 0;
-  max-width: 45%;
+  max-width: 48%;
   margin-left: auto;
-  font-size: var(--text-label-size);
-  color: var(--color-textMuted);
+  padding: 2px clamp(6px, 1.2cqw, var(--space-2));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--hero-tint) 12%, transparent);
+  font-size: var(--text-micro-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textSecondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1834,8 +1946,8 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(2px, 1.4cqh, var(--space-3));
-  padding: 0 clamp(8px, 3cqw, var(--space-6)) clamp(4px, 2cqh, var(--space-3));
+  gap: clamp(4px, 2cqh, var(--space-3));
+  padding: 0 clamp(8px, 3cqw, var(--space-6)) clamp(6px, 2cqh, var(--space-3));
   overflow: hidden;
   text-align: center;
 }
@@ -1848,29 +1960,46 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(4px, 2cqw, var(--space-4));
+  gap: clamp(8px, 2.4cqw, var(--space-4));
   max-width: 100%;
   min-height: 0;
 }
 
-.weather-icon {
-  color: var(--color-accent);
+/* A tinted plate gives the condition icon its own weather field. */
+.weather-icon-plate {
+  display: grid;
+  place-items: center;
   flex-shrink: 0;
-  width: clamp(24px, 30cqh, 76px);
+  width: clamp(40px, 22cqh, 96px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--hero-tint) 24%, transparent), transparent 62%),
+    color-mix(in srgb, var(--hero-tint) 10%, var(--color-bgSurface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hero-tint) 28%, transparent);
+}
+
+.weather-icon {
+  color: var(--color-info);
+  flex-shrink: 0;
+  width: clamp(24px, 14cqh, 56px);
   height: auto;
 }
 
 .weather-temps {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: clamp(2px, 0.8cqh, var(--space-1));
   min-width: 0;
 }
 
 .weather-temp {
-  font-size: clamp(24px, 13cqh, 64px);
-  font-weight: var(--font-weight-thin);
-  line-height: 1;
+  font-family: var(--font-display, var(--font-family));
+  font-size: clamp(30px, 28cqh, 88px);
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.03em;
   color: var(--color-textPrimary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1880,25 +2009,50 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--text-label-size);
+  padding: 1px clamp(6px, 1.2cqw, var(--space-2));
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+  font-size: var(--text-micro-size);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.weather-hi { color: var(--color-textPrimary); }
-.weather-sep { color: var(--color-textMuted); }
-.weather-lo { color: var(--color-textMuted); }
+.weather-hi {
+  color: var(--color-textPrimary);
+  font-weight: var(--font-weight-medium);
+}
+
+.weather-sep {
+  color: var(--color-textMuted);
+}
+
+.weather-lo {
+  color: var(--color-textMuted);
+}
+
+.weather-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(3px, 1.2cqh, var(--space-2));
+  min-width: 0;
+  max-width: 100%;
+}
 
 .weather-secondary {
   display: flex;
   align-items: baseline;
   justify-content: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  flex-wrap: wrap;
   min-width: 0;
 }
 
 .weather-label {
-  font-size: var(--text-body-size);
+  padding: 1px clamp(7px, 1.4cqw, var(--space-2));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--hero-tint) 14%, transparent);
+  font-size: var(--text-label-size);
   font-weight: var(--font-weight-medium);
   color: var(--color-textPrimary);
   white-space: nowrap;
@@ -1907,7 +2061,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 .weather-feels {
-  font-size: var(--text-label-size);
+  font-size: var(--text-micro-size);
   color: var(--color-textMuted);
   white-space: nowrap;
 }
@@ -1915,21 +2069,27 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 .weather-stats {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  justify-content: center;
+  gap: clamp(4px, 1.2cqw, var(--space-2));
+  flex-wrap: wrap;
 }
 
 .weather-stat {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--text-label-size);
-  color: var(--color-textMuted);
+  padding: 2px clamp(6px, 1.2cqw, var(--space-2));
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+  font-size: var(--text-micro-size);
+  color: var(--color-textSecondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .weather-stat-icon {
-  opacity: 0.7;
+  color: var(--color-info);
+  opacity: 0.9;
 }
 
 .weather-loading,
@@ -1945,25 +2105,35 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   color: var(--color-danger);
 }
 
-/* Roomy tile: use the width instead of stacking everything in the middle. */
-@container w (min-width: 28em) and (min-height: 11em) {
+/* Roomy tile: reading on the left, supporting detail behind a rule. */
+@container w (min-width: 24em) and (min-height: 9em) {
   .weather-body {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    grid-template-areas:
-      "primary details"
-      "primary stats";
+    grid-template-areas: "primary details";
     align-content: center;
     align-items: center;
     justify-items: start;
-    column-gap: clamp(12px, 4cqw, var(--space-8));
     text-align: left;
+    column-gap: clamp(12px, 3.4cqw, var(--space-8));
   }
 
-  .weather-primary { grid-area: primary; justify-content: flex-start; }
-  .weather-secondary { grid-area: details; justify-content: flex-start; flex-wrap: wrap; }
-  .weather-stats { grid-area: stats; justify-content: flex-start; }
+  .weather-primary {
+    grid-area: primary;
+    justify-content: flex-start;
+  }
+
+  .weather-details {
+    grid-area: details;
+    align-items: flex-start;
+    padding-left: clamp(12px, 2.8cqw, var(--space-6));
+    border-left: 2px solid color-mix(in srgb, var(--hero-tint) 26%, transparent);
+  }
+
+  .weather-secondary,
+  .weather-stats {
+    justify-content: flex-start;
+  }
 }
 
 /* One-row tile: lay the reading out horizontally and drop extras. */
@@ -1972,7 +2142,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
     flex-direction: row;
     flex-wrap: nowrap;
     justify-content: center;
-    gap: clamp(6px, 2cqw, var(--space-4));
+    gap: clamp(8px, 2cqw, var(--space-4));
     padding-bottom: 4px;
   }
 
@@ -1980,11 +2150,11 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
     flex-shrink: 0;
   }
 
-  .weather-secondary {
+  .weather-details {
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    gap: 0;
+    gap: 2px;
     text-align: left;
     min-width: 0;
   }
@@ -2005,12 +2175,20 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
     display: none;
   }
 
+  .weather-icon-plate {
+    width: clamp(34px, 20cqh, 64px);
+  }
+
   .weather-icon {
-    width: clamp(22px, 26cqh, 44px);
+    width: clamp(20px, 12cqh, 38px);
   }
 
   .weather-temp {
-    font-size: clamp(22px, 12cqh, 34px);
+    font-size: clamp(24px, 24cqh, 52px);
+  }
+
+  .weather-label {
+    font-size: var(--text-micro-size);
   }
 }
 
@@ -2021,8 +2199,13 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
-@container w (max-width: 12em) {
+@container w (max-width: 14em) {
+  .weather-details {
+    align-items: center;
+  }
+
   .weather-secondary {
+    justify-content: center;
     flex-wrap: wrap;
   }
 
@@ -2673,49 +2856,76 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 /* ── Spotify ─────────────────────────────────────────────────── */
+.spotify-card {
+  --hero-tint: var(--color-primary);
+  min-height: 0;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
 @keyframes equalizer {
-  0%, 100% { height: 4px; }
-  50% { height: 14px; }
+  0%, 100% { height: 3px; }
+  50% { height: 11px; }
 }
 
-.spotify-card {
-  min-height: 0;
-}
-
-.spotify-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+/* ── Header status chip ──────────────────────────────────────── */
+.spotify-status {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: clamp(4px, 2cqh, var(--space-3));
-  padding: 0 var(--space-4) clamp(4px, 2cqh, var(--space-3));
-  min-height: 0;
+  gap: 5px;
+  flex-shrink: 0;
+  max-width: 52%;
+  padding: 2px clamp(6px, 1.2cqw, var(--space-2));
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+  color: var(--color-textSecondary);
+  font-family: var(--font-display, var(--font-family));
+  font-size: var(--text-micro-size);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.spotify-body--center {
-  justify-content: center;
+.spotify-status--live {
+  background: var(--color-primary);
+  color: var(--color-on-accent, var(--color-textInverse));
+}
+
+.spotify-status--live.is-paused {
+  background: var(--color-bgSubtle);
+  color: var(--color-textSecondary);
+}
+
+.spotify-status--setup {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-primaryDark);
+}
+
+.spotify-status--muted {
+  color: var(--color-textMuted);
 }
 
 /* ── Equalizer bars ──────────────────────────────────────────── */
 .spotify-equalizer {
   display: flex;
   align-items: flex-end;
-  gap: 3px;
-  height: 16px;
+  gap: 2px;
+  height: 12px;
 }
 
 .spotify-equalizer span {
   display: block;
-  width: 3px;
-  background: var(--color-primary);
+  width: 2px;
+  height: 6px;
   border-radius: 2px;
+  background: currentColor;
   animation: equalizer 0.6s ease-in-out infinite alternate;
 }
 
@@ -2728,86 +2938,107 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   animation-delay: 0.4s;
 }
 
-/* ── Vinyl disc ──────────────────────────────────────────────── */
+/* ── Shared body ──────────────────────────────────────────────── */
+.spotify-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 2cqh, var(--space-3));
+  padding: 0 var(--space-3) clamp(4px, 2cqh, var(--space-3));
+  min-height: 0;
+  overflow: hidden;
+}
+
+.spotify-body--center {
+  justify-content: center;
+}
+
+/* ── Now playing: record stage + solid reading panel ──────────── */
+.spotify-body--playing {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.spotify-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  padding: clamp(8px, 2.4cqh, var(--space-4));
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--hero-tint) 20%, transparent), transparent 68%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--hero-tint) 7%, var(--color-bgSurface)),
+      color-mix(in srgb, var(--hero-tint) 3%, var(--color-bgSurface))
+    );
+}
+
 .spotify-vinyl {
-  width: clamp(40px, 32cqh, 160px);
-  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: min(56cqh, 78cqw, 320px);
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1;
 }
 
 .spotify-vinyl--paused {
-  opacity: 0.8;
+  opacity: 0.82;
 }
 
 .spotify-vinyl--idle {
   opacity: 0.5;
 }
 
-/* Full-card vinyl for "now playing" state */
-.spotify-body--playing {
-  position: relative;
-  padding: var(--space-3);
-  gap: 0;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.spotify-body--playing .spotify-vinyl {
-  width: min(70cqh, 70cqw, 320px);
-  max-width: 100%;
-  max-height: 100%;
-  aspect-ratio: 1;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .spotify-disc {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #3a3a3a, #111 65%, #0a0a0a);
+  background:
+    repeating-radial-gradient(
+      circle at center,
+      transparent 0 1px,
+      rgba(255, 255, 255, 0.035) 1px 2px
+    ),
+    radial-gradient(circle at 32% 26%, #414141, #161616 58%, #070707 100%);
   box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.4),
-    inset 0 2px 6px rgba(255, 255, 255, 0.05),
-    inset 0 -2px 8px rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    0 12px 28px -10px rgba(0, 0, 0, 0.55),
+    inset 0 1px 2px rgba(255, 255, 255, 0.14),
+    inset 0 -12px 24px rgba(0, 0, 0, 0.45);
   animation: spin var(--vinyl-spin-duration, 20s) linear infinite;
   animation-play-state: paused;
-  position: relative;
 }
 
 .spotify-disc::before {
   content: "";
   position: absolute;
-  inset: 12%;
+  inset: 3%;
   border-radius: 50%;
   background: repeating-radial-gradient(
     circle at center,
-    transparent 0px,
-    transparent 1px,
-    rgba(255, 255, 255, 0.02) 1px,
-    rgba(255, 255, 255, 0.02) 2px
+    transparent 0 2px,
+    rgba(255, 255, 255, 0.018) 2px 3px
   );
   pointer-events: none;
-}
-
-.spotify-body--playing .spotify-disc {
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #3a3a3a, #111 65%, #0a0a0a);
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.5),
-    inset 0 2px 6px rgba(255, 255, 255, 0.05);
-}
-
-.spotify-body--playing .spotify-disc::before {
-  display: block;
-  inset: 3%;
 }
 
 .spotify-vinyl:not(.spotify-vinyl--paused):not(.spotify-vinyl--idle):not(.spotify-vinyl--still) .spotify-disc {
@@ -2815,23 +3046,16 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 .spotify-label-wrap {
-  width: 42%;
+  position: relative;
+  z-index: 1;
+  width: 52%;
   aspect-ratio: 1;
   border-radius: 50%;
   overflow: hidden;
+  background: #1c1c1c;
   box-shadow:
-    inset 0 0 8px rgba(0, 0, 0, 0.6),
-    0 0 0 2px rgba(255, 255, 255, 0.08);
-  position: relative;
-  z-index: 1;
-  background: #222;
-}
-
-.spotify-body--playing .spotify-label-wrap {
-  width: 94%;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.12);
-  z-index: 1;
+    inset 0 0 10px rgba(0, 0, 0, 0.55),
+    0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 .spotify-label-wrap--empty {
@@ -2841,91 +3065,95 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 .spotify-label-art {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
 }
 
 .spotify-label-placeholder {
   color: var(--color-textMuted);
-  opacity: 0.5;
+  opacity: 0.7;
 }
 
 /* ── Track info ──────────────────────────────────────────────── */
 .spotify-info {
-  width: 100%;
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 2px;
-  text-align: center;
-}
-
-.spotify-body--playing .spotify-info {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: var(--space-6) var(--space-4) var(--space-3);
-  background: linear-gradient(
-    transparent,
-    color-mix(in srgb, var(--color-bgSurface) 70%, transparent) 35%,
-    var(--color-bgSurface)
-  );
-  pointer-events: none;
+  width: 100%;
+  min-width: 0;
+  padding: clamp(6px, 1.4cqh, var(--space-2)) var(--space-3) clamp(6px, 1.6cqh, var(--space-3));
+  text-align: left;
+  background: var(--color-bgSurface);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
 }
 
 .spotify-song {
-  font-size: var(--text-body-size);
-  font-weight: var(--font-weight-medium);
+  display: -webkit-box;
+  font-family: var(--font-display, var(--font-family));
+  font-size: clamp(var(--text-body-size), 4.2cqh, var(--text-title-size));
+  font-weight: 600;
+  line-height: 1.25;
   color: var(--color-textPrimary);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.3;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .spotify-artist {
   font-size: var(--text-label-size);
-  color: var(--color-textMuted);
+  line-height: 1.3;
+  color: var(--color-textSecondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.3;
 }
 
 /* ── Progress bar ────────────────────────────────────────────── */
 .spotify-progress {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
   margin-top: var(--space-1);
 }
 
 .spotify-bar-track {
-  flex: 1;
-  height: 4px;
+  width: 100%;
+  height: 5px;
   background: var(--color-bgSubtle);
-  border-radius: 4px;
+  border-radius: var(--radius-full);
   overflow: hidden;
 }
 
 .spotify-bar-fill {
-  height: 100%;
   width: 100%;
-  background: var(--color-primary);
-  border-radius: 4px;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-primary) 70%, transparent),
+    var(--color-primary)
+  );
   transform-origin: left center;
   transition: transform 0.3s linear;
 }
 
+.spotify-times {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .spotify-time {
+  flex-shrink: 0;
   font-size: var(--text-micro-size);
   font-variant-numeric: tabular-nums;
   color: var(--color-textMuted);
-  flex-shrink: 0;
-  min-width: 32px;
 }
 
 .spotify-time--end {
@@ -2944,14 +3172,25 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   min-width: 0;
 }
 
+.spotify-setup-badge {
+  display: grid;
+  place-items: center;
+  width: clamp(44px, 20cqh, 64px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--hero-tint) 12%, var(--color-bgSurface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hero-tint) 28%, transparent);
+}
+
 .spotify-setup-icon {
-  color: var(--color-textMuted);
-  opacity: 0.4;
+  color: var(--color-primaryDark);
+  opacity: 0.9;
 }
 
 .spotify-setup-title {
+  font-family: var(--font-display, var(--font-family));
   font-size: var(--text-body-size);
-  font-weight: var(--font-weight-medium);
+  font-weight: 600;
   color: var(--color-textPrimary);
 }
 
@@ -3010,34 +3249,52 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   flex: 1;
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-ink, var(--color-borderStrong));
   border-radius: var(--radius-sm);
-  background: var(--color-bgBase);
+  background: var(--color-bgElevated);
   color: var(--color-textPrimary);
+  font-family: var(--font-family);
   font-size: var(--text-label-size);
   outline: none;
-  transition: border-color var(--duration-fast);
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
 .spotify-setup-input:focus {
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 24%, transparent);
 }
 
 .spotify-connect-btn {
   padding: var(--space-2) var(--space-4);
-  border: none;
+  border: 2px solid var(--color-ink, var(--color-primaryDark));
   border-radius: var(--radius-sm);
-  background: var(--color-primary);
-  color: var(--color-textInverse);
+  background: var(--color-action, var(--color-primary));
+  color: var(--color-on-accent, var(--color-textInverse));
+  font-family: var(--font-display, var(--font-family));
   font-size: var(--text-label-size);
-  font-weight: var(--font-weight-medium);
+  font-weight: 600;
+  letter-spacing: 0.04em;
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--duration-fast);
+  box-shadow: 0 3px 0 0 var(--color-ink, color-mix(in srgb, var(--color-primaryDark) 60%, transparent));
+  transition:
+    background var(--duration-fast),
+    box-shadow var(--duration-fast),
+    transform var(--duration-fast);
 }
 
 .spotify-connect-btn:hover {
-  background: var(--color-primaryDark);
+  background: var(--color-actionHover, var(--color-primaryDark));
+}
+
+.spotify-connect-btn:active {
+  box-shadow: none;
+  transform: translateY(2px);
+}
+
+.spotify-connect-btn:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .spotify-connect-btn--small {
@@ -3054,11 +3311,11 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .spotify-idle-text {
   font-size: var(--text-label-size);
-  color: var(--color-textMuted);
+  color: var(--color-textSecondary);
 }
 
 .spotify-redir-hint {
-  font-size: 10px;
+  font-size: var(--text-micro-size);
   color: var(--color-textMuted);
   text-align: center;
   max-width: 100%;
@@ -3080,7 +3337,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 .spotify-error {
-  font-size: 10px;
+  font-size: var(--text-micro-size);
   line-height: 1.4;
   color: var(--color-danger, #c0392b);
   text-align: center;
@@ -3098,8 +3355,14 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
-/* One-row tiles: vinyl + copy side by side, controls stay reachable. */
-@container w (max-height: 16em) {
+@container w (max-width: 10em) {
+  .spotify-status {
+    display: none;
+  }
+}
+
+/* Wide / short tiles: record + copy side by side, controls stay reachable. */
+@container w (max-height: 18em) {
   .spotify-body {
     flex-direction: row;
     gap: var(--space-3);
@@ -3107,21 +3370,29 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 
   .spotify-body--playing {
+    align-items: stretch;
     justify-content: flex-start;
+    padding: var(--space-3);
+  }
+
+  .spotify-body--playing .spotify-stage {
+    flex: 0 0 auto;
+    width: clamp(48px, 48cqh, 110px);
+    padding: 0;
+    background: none;
   }
 
   .spotify-body--playing .spotify-vinyl {
-    width: clamp(44px, 62cqh, 96px);
+    width: 100%;
   }
 
   .spotify-body--playing .spotify-info {
-    position: static;
     flex: 1;
     min-width: 0;
     padding: 0;
     background: none;
-    text-align: left;
-    pointer-events: auto;
+    border-top: none;
+    justify-content: center;
   }
 
   .spotify-body--playing .spotify-progress {
@@ -3173,7 +3444,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 /* Setup needs the most room: progressively trim prose, keep the form. */
 @container w (max-height: 20em) {
-  .spotify-setup-icon {
+  .spotify-setup-badge {
     display: none;
   }
 
@@ -3238,4 +3509,5 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
     display: none;
   }
 }
+
 </style>

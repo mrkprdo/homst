@@ -54,6 +54,9 @@ test("a notification tap is readable while the server is unreachable", async ({ 
   await page.locator(".offline-push__done").click()
   const banner = page.locator(".server-offline")
   await expect(banner).toContainText("HOMST local server is out of reach")
+  // The notice is collapsed behind the top-right dot until hovered, focused, or pinned.
+  await banner.locator(".server-offline__trigger").click()
+  await expect(banner).toHaveClass(/server-offline--pinned/)
   await banner.getByRole("button", { name: "Read notifications" }).click()
   await expect(sheet).toBeVisible()
 })

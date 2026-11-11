@@ -260,6 +260,8 @@ describe("MobileQuickAdd", () => {
 
       // Fill event title, apply duration chip, set recurrence + count, submit
       await w.find('input[placeholder="Event title"]').setValue("Party")
+      // Pin the start time so the quick-duration test is deterministic near midnight.
+      await w.find('input[type="time"]').setValue("10:00")
       const durChips = w.findAll(".mqa-duration-chip")
       await durChips[1]!.trigger("click") // 30m
 

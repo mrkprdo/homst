@@ -73,6 +73,11 @@ html.low-power .vinyl-disc {
   animation-duration: var(--vinyl-spin-duration, 20s) !important;
 }
 
+/* Keep the now-playing equalizer readable instead of a 0.01ms flicker. */
+html.low-power .spotify-equalizer span {
+  animation-duration: 0.6s !important;
+}
+
 /* ── Now-playing vinyl backdrop ──
    SpotifyBackdrop adds this class to <html> while a record spins, so every
    shell can drop its opaque paint and let the cover show through. */

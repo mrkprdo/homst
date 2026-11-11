@@ -171,7 +171,10 @@ describe("HomeView", () => {
 
   it("navigates schedule days and returns to today after two minutes or a screen change", async () => {
     vi.useFakeTimers()
-    const base = Math.floor(Date.now() / 60_000) * 60_000
+    // Pin to midday so the two-minute fallback never crosses local midnight.
+    const baseDate = new Date()
+    baseDate.setHours(12, 0, 0, 0)
+    const base = baseDate.getTime()
     vi.setSystemTime(base)
     try {
       vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))

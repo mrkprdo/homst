@@ -131,12 +131,12 @@ test.describe("Settings", () => {
   test("settings sections exist", async ({ page }) => {
     await openSettings(page)
     const sections = page.locator(".settings-card")
-    await expect(sections).toHaveCount(10)
+    await expect(sections).toHaveCount(12)
   })
 
   test("resetting the home layout asks for confirmation and saves the default", async ({ page }) => {
     await openSettings(page)
-    const card = page.locator(".settings-card").filter({ hasText: "Home Screen" })
+    const card = page.locator(".settings-card.settings-card--home")
     await card.getByRole("button", { name: "Reset layout" }).click()
     await expect(card).toContainText("Reset the home screen layout?")
 
@@ -146,8 +146,8 @@ test.describe("Settings", () => {
     await card.getByRole("button", { name: "Reset", exact: true }).click()
     const payload = JSON.parse((await requestPromise).postData() || "{}")
     const layout = payload.settings.widgetLayout
-    expect(layout).toHaveLength(7)
-    expect(layout.find((w: any) => w.id === "photos")).toMatchObject({ col: 2, row: 2, w: 4, h: 4 })
+    expect(layout).toHaveLength(9)
+    expect(layout.find((w: any) => w.id === "photos")).toMatchObject({ col: 3, row: 1, w: 3, h: 5 })
     await expect(card).toContainText("Home layout reset to the default.")
   })
 })

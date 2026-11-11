@@ -149,8 +149,8 @@ test("full user journey: onboarding → events → views → edit", async ({ pag
   await page.waitForTimeout(300)
   await expect(page.locator(".settings-panel")).toBeVisible()
   // Theme, Accent Color, Appearance, Text Size, Reminders, Devices, Music,
-  // Motion, Home Screen, Software update
-  await expect(page.locator(".card-title")).toHaveCount(10)
+  // Camera, Motion, Home Screen, Software update, Nest
+  await expect(page.locator(".card-title")).toHaveCount(12)
 
   // Change accent color
   await page.locator(".color-swatch").nth(2).click()
