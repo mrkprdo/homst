@@ -96,7 +96,7 @@ describe("CameraCard", () => {
     wrapper.unmount()
   })
 
-  it("blurs the last frame while retrieving a stalled stream", async () => {
+  it("keeps the frame sharp while a slow stream re-buffers", async () => {
     vi.useFakeTimers()
     configureCamera()
 
@@ -111,7 +111,9 @@ describe("CameraCard", () => {
     await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS)
     await nextTick()
     expect(wrapper.text()).toContain("retrieving stream...")
-    expect(wrapper.find(".camera-video").classes()).toContain("camera-video--stalled")
+    // The per-frame blur is expensive enough to deepen the stall on a weak
+    // client, so re-buffering only shows the overlay.
+    expect(wrapper.find(".camera-video").classes()).not.toContain("camera-video--stalled")
 
     wrapper.unmount()
   })

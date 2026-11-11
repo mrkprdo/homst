@@ -135,6 +135,15 @@ describe("lib/motion — low-power detection at import time", () => {
     expect(desktop.isLowPower).toBe(false)
   })
 
+  it("keeps the heavy-effect budget when a weak device opts into animations", async () => {
+    setNavigator("Mozilla/5.0 (X11; Linux aarch64)", 4)
+    localStorage.setItem(ANIMATIONS_ENABLED_KEY, "true")
+    const motion = await freshMotion()
+    // Motion is a taste setting; frame-copy effects are a hardware budget.
+    expect(motion.isLowPower).toBe(false)
+    expect(motion.isPerformanceMode()).toBe(true)
+  })
+
   it("exposes the animation preference toggle", async () => {
     const motion = await freshMotion()
     motion.setAnimationEnabled(false)

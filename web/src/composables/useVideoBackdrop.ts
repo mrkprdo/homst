@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref, watch, type Ref } from "vue"
-import { isLowPower } from "@/lib/motion"
+import { isPerformanceMode } from "@/lib/motion"
 
 /** Blurred backdrops only need a few frames per second to look smooth. */
 export const BACKDROP_INTERVAL_MS = 250
@@ -15,12 +15,15 @@ const LOW_POWER_WARMUP_MS = 500
  *
  * Low-power clients (e.g. Raspberry Pi displays) copy a frame immediately and
  * then refresh it only every 15 minutes. Continuous canvas copies compete with
- * video decode there and show up as dropped frames.
+ * video decode there and show up as dropped frames. This is keyed off the
+ * device, not the animation preference: a Pi that asked for full motion still
+ * cannot afford a 4 fps GPU→canvas readback next to the stream it is decoding.
  */
 export function useVideoBackdrop(
   video: Ref<HTMLVideoElement | null>,
   active: Ref<boolean>,
   intervalMs = BACKDROP_INTERVAL_MS,
+  rotation: Ref<number> = ref(0),
 ) {
   const canvas = ref<HTMLCanvasElement | null>(null)
   let timer: ReturnType<typeof setInterval> | null = null
@@ -40,14 +43,28 @@ export function useVideoBackdrop(
     }
 
     const scale = Math.min(1, BACKDROP_MAX_DIMENSION / Math.max(el.videoWidth, el.videoHeight))
-    const width = Math.max(1, Math.round(el.videoWidth * scale))
-    const height = Math.max(1, Math.round(el.videoHeight * scale))
+    const frameWidth = Math.max(1, Math.round(el.videoWidth * scale))
+    const frameHeight = Math.max(1, Math.round(el.videoHeight * scale))
+    // The video element is rotated in CSS, so the snapshot has to be rotated
+    // too or the backdrop is a quarter turn out of sync with the live frame.
+    const angle = ((Math.round(rotation.value / 90) * 90) % 360 + 360) % 360
+    const quarterTurn = angle === 90 || angle === 270
+    const width = quarterTurn ? frameHeight : frameWidth
+    const height = quarterTurn ? frameWidth : frameHeight
     if (target.width !== width) target.width = width
     if (target.height !== height) target.height = height
 
     const context = target.getContext("2d")
     if (!context) return false
-    context.drawImage(el, 0, 0, width, height)
+    if (angle === 0) {
+      context.drawImage(el, 0, 0, frameWidth, frameHeight)
+    } else {
+      context.save()
+      context.translate(width / 2, height / 2)
+      context.rotate((angle * Math.PI) / 180)
+      context.drawImage(el, -frameWidth / 2, -frameHeight / 2, frameWidth, frameHeight)
+      context.restore()
+    }
     return true
   }
 
@@ -55,7 +72,7 @@ export function useVideoBackdrop(
     stop()
     if (!active.value) return
 
-    if (!isLowPower) {
+    if (!isPerformanceMode()) {
       draw()
       timer = setInterval(draw, intervalMs)
       return
@@ -79,7 +96,7 @@ export function useVideoBackdrop(
     }, LOW_POWER_WARMUP_MS)
   }
 
-  watch([video, canvas, active], start, { immediate: true })
+  watch([video, canvas, active, rotation], start, { immediate: true })
   onBeforeUnmount(stop)
 
   return { canvas, draw, start, stop }

@@ -21,12 +21,23 @@ const FAILED_RETRIEVING_MESSAGE = "failed retrieving stream"
 
 /** How often the watchdog checks whether a new frame arrived. */
 export const HEALTH_CHECK_INTERVAL_MS = 1_000
-/** How long frames may be missing before the stream counts as stalled. */
-export const STALL_TIMEOUT_MS = 8_000
+/**
+ * How long frames may be missing before the stream counts as stalled.
+ *
+ * This is deliberately not a "segment should have arrived by now" timer. A
+ * weakly connected client can spend 10–20s downloading one 2s segment, and
+ * `timeupdate` is silent for that whole window. Tripping at 8s turned normal
+ * re-buffering on a Pi into an error card.
+ */
+export const STALL_TIMEOUT_MS = 20_000
 /** Reconnect cadence after every immediate recovery attempt has failed. */
 export const RETRY_INTERVAL_MS = 60_000
 /** Immediate recovery attempts before falling back to the slow cadence. */
 export const MAX_RETRIES = 3
+/** hls.js network recoveries that are safe to retry before giving up. */
+const MAX_NETWORK_RETRIES = 2
+/** Media recoveries (buffer re-append) before the pipeline is declared dead. */
+const MAX_MEDIA_RETRIES = 2
 
 /**
  * Attach an HLS stream to a <video> element and watchdog it. Native HLS is
@@ -214,15 +225,20 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     }
 
     const instance = new Hls({
-      // The server produces ordinary 2s HLS segments, not LL-HLS parts. Keep
-      // more buffer and start further from the live edge so a slower client
-      // (or a congested Wi-Fi link) rides out slow segment downloads instead
-      // of stalling and reconnecting.
+      // The server produces ordinary 2s HLS segments, not LL-HLS parts.
       lowLatencyMode: false,
       liveSyncDurationCount: 3,
-      liveMaxLatencyDurationCount: 10,
-      maxBufferLength: 20,
-      maxMaxBufferLength: 40,
+      // A weak client will drift behind live now and then. Let it ride that out
+      // and keep playing the older segments instead of snapping to the live
+      // edge, which is the visible "frame skip". The server keeps a long enough
+      // window (see HLS_LIST_SIZE) that this can never run past the segments
+      // that still exist.
+      liveMaxLatencyDurationCount: 30,
+      // Modest buffers: a client whose link is slower than realtime cannot fill
+      // a large buffer anyway, and asking for 20s at once starves the segment
+      // that is about to be played.
+      maxBufferLength: 12,
+      maxMaxBufferLength: 24,
       backBufferLength: 10,
     })
     hls = instance
@@ -232,6 +248,10 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     el.addEventListener("timeupdate", onTimeUpdate)
     instance.on(Hls.Events.ERROR, (_event, data) => {
       if (!data.fatal) return
+      // A segment pruned from the live window (or a segment that vanished while
+      // the client was far behind) is not a stream failure: hls.js skips past it
+      // and keeps playing. Only a missing playlist means the stream is gone.
+      if (data.response?.code === 404 && data.frag) return
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
         // An HTTP status means the API answered with a real problem (missing
         // stream, ffmpeg unavailable, bad URL). Retry only true network blips.
@@ -239,7 +259,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
           fail(networkMessage(data))
           return
         }
-        if (networkRetries++ < 1) {
+        if (networkRetries++ < MAX_NETWORK_RETRIES) {
           instance.startLoad()
           return
         }
@@ -247,7 +267,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
         return
       }
       if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-        if (mediaRetries++ < 1) {
+        if (mediaRetries++ < MAX_MEDIA_RETRIES) {
           instance.recoverMediaError()
           return
         }

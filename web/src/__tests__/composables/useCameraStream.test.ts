@@ -119,7 +119,7 @@ describe("useCameraStream", () => {
     wrapper.unmount()
   })
 
-  it("uses hls.js and retries a transient network error once", async () => {
+  it("uses hls.js and retries a transient network error", async () => {
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
     await nextTick()
@@ -128,7 +128,9 @@ describe("useCameraStream", () => {
     const instance = hls.instances[0]
     expect(instance.config.lowLatencyMode).toBe(false)
     expect(instance.config.liveSyncDurationCount).toBe(3)
-    expect(instance.config.maxBufferLength).toBe(20)
+    // Drift is tolerated instead of forcing a seek to the live edge.
+    expect(instance.config.liveMaxLatencyDurationCount).toBe(30)
+    expect(instance.config.maxBufferLength).toBe(12)
     expect(instance.loaded).toBe("/live.m3u8")
     expect(instance.attached).toBe(true)
 
@@ -143,9 +145,33 @@ describe("useCameraStream", () => {
     expect(instance.startLoads).toBe(1)
 
     instance.handlers["error"]!("error", { fatal: true, type: "network" })
+    expect(instance.startLoads).toBe(2)
+
+    instance.handlers["error"]!("error", { fatal: true, type: "network" })
     expect(api.status.value).toBe("error")
     expect(api.error.value).toBe("Could not reach the camera stream. Check the URL and credentials in Settings.")
     expect(instance.destroyed).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it("ignores a segment that was pruned from the live window", async () => {
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+
+    const instance = playingInstance(api)
+    // A lagging client can ask for a segment the server already deleted. That is
+    // not a dead stream: hls.js skips it and keeps playing.
+    instance.handlers["error"]!("error", {
+      fatal: true,
+      type: "network",
+      frag: { url: "/api/v1/camera/hls/token/seg_000001.ts" },
+      response: { code: 404, text: "Camera segment not found." },
+    })
+    expect(api.status.value).toBe("playing")
+    expect(instance.startLoads).toBe(0)
+    expect(instance.destroyed).toBe(false)
 
     wrapper.unmount()
   })
@@ -183,7 +209,7 @@ describe("useCameraStream", () => {
     }
   })
 
-  it("recovers a media error once, then reports it", async () => {
+  it("recovers a media error, then reports it", async () => {
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
     await nextTick()
@@ -191,6 +217,10 @@ describe("useCameraStream", () => {
     const instance = hls.instances[0]
     instance.handlers["error"]!("error", { fatal: true, type: "media" })
     expect(instance.recoveries).toBe(1)
+    expect(api.status.value).toBe("loading")
+
+    instance.handlers["error"]!("error", { fatal: true, type: "media" })
+    expect(instance.recoveries).toBe(2)
     expect(api.status.value).toBe("loading")
 
     instance.handlers["error"]!("error", { fatal: true, type: "media" })

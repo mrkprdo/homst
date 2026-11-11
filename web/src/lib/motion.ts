@@ -17,25 +17,15 @@ function getUserAnimationOverride(): boolean | null {
   return null
 }
 
-function detectLowPower(): boolean {
-  if (typeof window === 'undefined') return false
-
-  // An explicit choice in the settings panel beats the system preference.
-  const userOverride = getUserAnimationOverride()
-  if (userOverride === true) return false
-  if (userOverride === false) return true
-
-  // Respect the system reduced-motion preference when the user hasn't chosen.
-  if (typeof window.matchMedia === 'function') {
-    try {
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true
-    } catch {}
-  }
-
-  // Manual override for debugging or kiosk configuration
-  try {
-    if (new URLSearchParams(window.location.search).has('low-power')) return true
-  } catch {}
+/**
+ * Whether the device itself is weak (Pi / low-end ARM display board).
+ *
+ * This is deliberately hardware-only: it must not be confused with the user's
+ * animation preference. "Motion off" is a taste setting; "this SoC cannot copy
+ * decoded video frames into a canvas" is a capability fact.
+ */
+function detectWeakDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
 
   // Avoid flagging Vitest test runners
   const isVitest = typeof import.meta !== 'undefined' && (import.meta as any).env?.VITEST === true
@@ -50,8 +40,55 @@ function detectLowPower(): boolean {
   return isArmLinux && (lowCores || lowMemory)
 }
 
+/**
+ * The budget for expensive continuous effects (video frame snapshots, blurs,
+ * backdrop filters). Reduced motion or a weak device both qualify, but the
+ * animation toggle does not: enabling animations on a Pi must not put the
+ * 4 fps video→canvas copy back on the same SoC that is decoding the stream.
+ */
+function detectPerformanceMode(): boolean {
+  if (typeof window === 'undefined') return false
+
+  // Respect the system reduced-motion preference.
+  if (typeof window.matchMedia === 'function') {
+    try {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true
+    } catch {}
+  }
+
+  // Manual override for debugging or kiosk configuration
+  try {
+    if (new URLSearchParams(window.location.search).has('low-power')) return true
+  } catch {}
+
+  return detectWeakDevice()
+}
+
+function detectLowPower(): boolean {
+  if (typeof window === 'undefined') return false
+
+  // An explicit choice in the settings panel beats the system preference.
+  const userOverride = getUserAnimationOverride()
+  if (userOverride === true) return false
+  if (userOverride === false) return true
+
+  return detectPerformanceMode()
+}
+
 let lowPower = detectLowPower()
 export let isLowPower = lowPower
+
+let performanceMode = detectPerformanceMode()
+
+/** Whether continuous heavy effects should be throttled on this device. */
+export function isPerformanceMode(): boolean {
+  return performanceMode
+}
+
+/** Force the heavy-effect budget (tests / kiosk configuration). */
+export function setPerformanceMode(enabled: boolean): void {
+  performanceMode = enabled
+}
 
 function syncMotionClasses(): void {
   if (typeof document === 'undefined') return

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { defineComponent, h, nextTick, ref, type Ref } from "vue"
 import { mount } from "@vue/test-utils"
 import { useVideoBackdrop, BACKDROP_MAX_DIMENSION, LOW_POWER_BACKDROP_INTERVAL_MS } from "@/composables/useVideoBackdrop"
-import { setLowPower } from "@/lib/motion"
+import { setLowPower, setPerformanceMode } from "@/lib/motion"
 
 const drawImage = vi.fn()
 const context = { drawImage }
@@ -15,19 +15,20 @@ function fakeCanvas(getContext: () => unknown = () => context) {
   return { width: 0, height: 0, getContext } as unknown as HTMLCanvasElement
 }
 
-function mountBackdrop(activeValue = true) {
+function mountBackdrop(activeValue = true, rotationValue = 0) {
   const active = ref(activeValue)
+  const rotation = ref(rotationValue)
   let video!: Ref<HTMLVideoElement | null>
   let api!: ReturnType<typeof useVideoBackdrop>
   const Comp = defineComponent({
     setup() {
       video = ref<HTMLVideoElement | null>(null)
-      api = useVideoBackdrop(video, active, 250)
+      api = useVideoBackdrop(video, active, 250, rotation)
       return () => h("div")
     },
   })
   const wrapper = mount(Comp)
-  return { wrapper, active, video, api }
+  return { wrapper, active, rotation, video, api }
 }
 
 describe("useVideoBackdrop", () => {
@@ -39,6 +40,7 @@ describe("useVideoBackdrop", () => {
     vi.restoreAllMocks()
     vi.useRealTimers()
     setLowPower(false)
+    setPerformanceMode(false)
   })
 
   it("draws a scaled copy of the playing frame", async () => {
@@ -50,6 +52,27 @@ describe("useVideoBackdrop", () => {
     expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, BACKDROP_MAX_DIMENSION, 180)
     expect(api.canvas.value!.width).toBe(BACKDROP_MAX_DIMENSION)
     expect(api.canvas.value!.height).toBe(180)
+    wrapper.unmount()
+  })
+
+  it("rotates the snapshot with the camera so the backdrop matches the frame", async () => {
+    const rotatedContext = {
+      drawImage,
+      save: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      restore: vi.fn(),
+    }
+    const { wrapper, video, api } = mountBackdrop(true, 90)
+    video.value = fakeVideo(1920, 1080)
+    api.canvas.value = fakeCanvas(() => rotatedContext)
+    await nextTick()
+
+    // A quarter turn swaps the backing canvas axes.
+    expect(api.canvas.value!.width).toBe(180)
+    expect(api.canvas.value!.height).toBe(BACKDROP_MAX_DIMENSION)
+    expect(rotatedContext.rotate).toHaveBeenCalledWith(Math.PI / 2)
+    expect(drawImage).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
@@ -101,9 +124,9 @@ describe("useVideoBackdrop", () => {
     expect(drawImage).toHaveBeenCalledTimes(2)
   })
 
-  it("captures one frame then refreshes slowly on low-power clients", async () => {
+  it("captures one frame then refreshes slowly on constrained devices", async () => {
     vi.useFakeTimers()
-    setLowPower(true)
+    setPerformanceMode(true)
     const { wrapper, video, api } = mountBackdrop()
     video.value = fakeVideo()
     api.canvas.value = fakeCanvas()
@@ -119,9 +142,27 @@ describe("useVideoBackdrop", () => {
     wrapper.unmount()
   })
 
+  it("keeps the slow cadence when the user re-enables animations", async () => {
+    vi.useFakeTimers()
+    setPerformanceMode(true)
+    // The animation toggle is a taste setting; a Pi that opts into motion must
+    // still not copy video frames into the canvas every 250ms while decoding.
+    setLowPower(false)
+    const { wrapper, video, api } = mountBackdrop()
+    video.value = fakeVideo()
+    api.canvas.value = fakeCanvas()
+    await nextTick()
+
+    expect(drawImage).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(drawImage).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+  })
+
   it("waits for the first frame before using the slow cadence", async () => {
     vi.useFakeTimers()
-    setLowPower(true)
+    setPerformanceMode(true)
     const { wrapper, video, api } = mountBackdrop()
     const el = { videoWidth: 0, videoHeight: 0, readyState: 0 }
     video.value = el as unknown as HTMLVideoElement

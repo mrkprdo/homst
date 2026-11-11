@@ -389,6 +389,9 @@ async def test_lifespan_without_mdns(monkeypatch):
     async def fake_close():
         calls["close"] += 1
 
+    async def fake_camera():
+        pass
+
     class _Engine:
         async def dispose(self):
             calls["dispose"] += 1
@@ -396,6 +399,7 @@ async def test_lifespan_without_mdns(monkeypatch):
     monkeypatch.setattr(main, "_wait_for_database", fake_wait)
     monkeypatch.setattr(main, "get_redis", fake_redis)
     monkeypatch.setattr(main, "close_redis", fake_close)
+    monkeypatch.setattr(main, "shutdown_camera_stream", fake_camera)
     monkeypatch.setattr(main, "engine", _Engine())
     monkeypatch.setattr(main.settings, "mdns_enabled", False)
 
@@ -427,6 +431,7 @@ async def test_lifespan_with_mdns(monkeypatch):
     monkeypatch.setattr(main, "_wait_for_database", noop)
     monkeypatch.setattr(main, "get_redis", noop)
     monkeypatch.setattr(main, "close_redis", noop)
+    monkeypatch.setattr(main, "shutdown_camera_stream", noop)
     monkeypatch.setattr(main, "engine", _Engine())
     monkeypatch.setattr(main.settings, "mdns_enabled", True)
     monkeypatch.setattr(main.settings, "mdns_instance_name", "HOMST-Test")

@@ -5,16 +5,21 @@ import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { useSettings } from "@/composables/useSettings"
 import { useCameraStream } from "@/composables/useCameraStream"
-import { useVideoBackdrop } from "@/composables/useVideoBackdrop"
+import { BACKDROP_INTERVAL_MS, useVideoBackdrop } from "@/composables/useVideoBackdrop"
 
 const settings = useSettings()
 const streamPath = computed(() => settings.cameraStreamPath.value)
 const { video, status, error, retry } = useCameraStream(streamPath)
 const configured = computed(() => !!settings.cameraUrl.value)
 const rotation = computed(() => settings.cameraRotation.value)
-const stalled = computed(() => status.value === "retrieving" || status.value === "failed")
-const backdropActive = computed(() => configured.value && (status.value === "playing" || stalled.value))
-const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
+// A slow client re-buffers for a few seconds at a time; that is not a stale
+// frame and must not trigger the expensive per-frame blur (it competes with
+// the decode that is already behind). Only a hard failure freezes the frame.
+const stalled = computed(() => status.value === "failed")
+const backdropActive = computed(
+  () => configured.value && (status.value === "playing" || status.value === "retrieving" || stalled.value),
+)
+const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_INTERVAL_MS, rotation)
 </script>
 
 <template>
@@ -148,7 +153,9 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
   position: relative;
   flex: 1;
   min-height: 0;
-  background: #000;
+  /* Only a live frame should look like a video surface. Empty/loading states
+     keep the card background instead of a black rectangle. */
+  background: var(--color-bgSubtle);
   overflow: hidden;
   /* Lets the rotated video use the body's own width/height as cq units. */
   container-type: size;
@@ -188,7 +195,9 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
   transform: rotate(180deg);
 }
 
-/* Keep the last frame visible but clearly signal it is stale. */
+/* Only a hard failure freezes the frame. Re-buffering (an 8–20s segment
+   download on a weak link) keeps the picture sharp: a per-frame blur here
+   competes with the decode that is already behind. */
 .camera-video--stalled {
   filter: blur(10px) brightness(0.65);
 }
@@ -224,12 +233,12 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive)
   gap: var(--space-2);
   padding: var(--space-4);
   text-align: center;
-  background: color-mix(in srgb, #000 62%, transparent);
-  color: #fff;
+  background: color-mix(in srgb, var(--color-bgSubtle) 88%, transparent);
+  color: var(--color-textPrimary);
 }
 
 .camera-overlay--error {
-  background: color-mix(in srgb, #000 78%, transparent);
+  background: color-mix(in srgb, var(--color-bgSubtle) 94%, transparent);
 }
 
 .camera-loading {

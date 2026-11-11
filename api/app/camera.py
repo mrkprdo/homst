@@ -73,9 +73,13 @@ VIDEO_BUFSIZE = "2400k"
 # Keep a long enough live window that a client on a slow link can fall behind
 # without the segment it needs being deleted. The extra delete threshold keeps
 # a few more segments on disk after they leave the playlist.
+#
+# 60 × 2s = a two-minute window. Clients are allowed to drift up to 60s behind
+# live (liveMaxLatencyDurationCount in useCameraStream.ts), so the playlist has
+# to stay comfortably ahead of the slowest viewer that is still keeping up.
 HLS_SEGMENT_SECONDS = 2
-HLS_LIST_SIZE = 20
-HLS_DELETE_THRESHOLD = 4
+HLS_LIST_SIZE = 60
+HLS_DELETE_THRESHOLD = 8
 
 
 class CameraError(RuntimeError):
