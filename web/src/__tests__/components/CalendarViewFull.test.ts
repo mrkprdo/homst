@@ -193,6 +193,22 @@ describe("CalendarView (event interaction)", () => {
     const wrapper = mount(CalendarView)
     expect(wrapper.find(".more-events").text()).toContain("+2 more")
   })
+
+  it("indexes an overnight event on both days it covers", () => {
+    seedCalendar()
+    const now = new Date()
+    // Mid-month so both cells are real month cells, not adjacent placeholders.
+    const start = new Date(now.getFullYear(), now.getMonth(), 10, 22, 0)
+    const end = new Date(now.getFullYear(), now.getMonth(), 11, 2, 0)
+    seedEvent({
+      id: "evt-overnight", title: "Overnight",
+      startAt: start.toISOString(), endAt: end.toISOString(),
+    })
+
+    const wrapper = mount(CalendarView)
+    const chips = wrapper.findAll(".event-chip").filter(chip => chip.text().includes("Overnight"))
+    expect(chips).toHaveLength(2)
+  })
 })
 
 describe("CalendarView (recurrence expansion)", () => {
@@ -416,12 +432,17 @@ describe("CalendarView (lifecycle)", () => {
     }
   })
 
-  it("shows the loading skeleton while events load", async () => {
+  it("shows the loading skeleton until the visible month is loaded", async () => {
+    const { calendarApi } = await import("@/api/calendar")
+    const pending = new Promise<never>(() => {})
+    const spy = vi.spyOn(calendarApi, "getEvents").mockReturnValue(pending as never)
     const { loading } = useEvents()
-    const wrapper = mount(CalendarView)
     loading.value = true
+    const wrapper = mount(CalendarView)
     await nextTick()
     expect(wrapper.find(".skeleton-grid").exists()).toBe(true)
+    spy.mockRestore()
+    wrapper.unmount()
   })
 
   it("opens event details from week and day event blocks", async () => {

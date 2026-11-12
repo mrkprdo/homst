@@ -39,6 +39,9 @@ const loading   = ref(false)
 const initialized = ref(false)
 
 const fetchedMonths    = new Set<string>()
+// Months whose fetch has completed (vs merely been requested). Lets views keep
+// their existing content instead of flashing a skeleton for cached months.
+const loadedMonths     = new Set<string>()
 const holidaysFetched  = ref(false)
 const calendarsFetched = ref(false)
 
@@ -115,6 +118,12 @@ async function ensureMonth(year: number, month: number) {
   const to   = new Date(year, month + 1, 0, 23, 59, 59).toISOString()
   const evs = await calendarApi.getEvents({ from, to }).catch(() => [])
   for (const ev of evs) upsertEvent(ev)
+  loadedMonths.add(key)
+}
+
+/** Whether a month's events have finished loading at least once. */
+function isMonthLoaded(year: number, month: number): boolean {
+  return loadedMonths.has(monthKey(year, month))
 }
 
 function adjMonth(year: number, month: number, delta: -1 | 1) {
@@ -139,6 +148,7 @@ async function prefetchAround(year: number, month: number) {
 
 async function refresh() {
   fetchedMonths.clear()
+  loadedMonths.clear()
   holidaysFetched.value  = false
   calendarsFetched.value = false
   const n = new Date()
@@ -151,7 +161,7 @@ export function useEvents() {
     upsertEvent, removeEvent,
     upsertCalendar, removeCalendar,
     ensureCalendars, ensureHolidays,
-    ensureMonth, ensureDefaultCalendar,
+    ensureMonth, ensureDefaultCalendar, isMonthLoaded,
     prefetchAround, refresh,
   }
 }
@@ -162,6 +172,7 @@ export function _resetEvents() {
   loading.value = false
   initialized.value = false
   fetchedMonths.clear()
+  loadedMonths.clear()
   holidaysFetched.value = false
   calendarsFetched.value = false
 }

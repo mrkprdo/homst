@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { mount, flushPromises } from "@vue/test-utils"
 import { nextTick } from "vue"
 import CalendarView from "@/components/calendar/CalendarView.vue"
@@ -28,6 +28,44 @@ describe("CalendarView", () => {
     const wrapper = mount(CalendarView)
     const headers = wrapper.findAll(".day-header")
     expect(headers).toHaveLength(7)
+  })
+
+  it("lenses the month grid around the focus day", () => {
+    const wrapper = mount(CalendarView)
+    const grid = wrapper.find(".month-grid").element as HTMLElement
+    const cols = grid.style.gridTemplateColumns.split(" ")
+    const rows = grid.style.gridTemplateRows
+
+    expect(cols).toHaveLength(7)
+    expect(cols).toContain("1.1000fr")
+    // The focus row is a fixed square track derived from the view width; the
+    // remaining rows keep fractional weights.
+    expect(rows).toContain("100cqw")
+    expect(rows).toContain("fr")
+  })
+
+  it("keeps day headers aligned with the weighted date columns", () => {
+    const wrapper = mount(CalendarView)
+    const grid = wrapper.find(".month-grid").element as HTMLElement
+    const headers = wrapper.find(".day-headers").element as HTMLElement
+
+    expect(headers.style.gridTemplateColumns).toBe(grid.style.gridTemplateColumns)
+    expect(wrapper.findAll(".day-header")).toHaveLength(7)
+  })
+
+  it("moves the focus lens when another day is selected", async () => {
+    const wrapper = mount(CalendarView)
+    const grid = wrapper.find(".month-grid").element as HTMLElement
+    const before = grid.style.gridTemplateColumns
+
+    const days = wrapper.findAll(".day-cell:not(.adjacent)")
+    const todayDate = new Date().getDate()
+    const target = days.find((_, index) => index + 1 !== todayDate)!
+    await target.trigger("click")
+    await nextTick()
+
+    expect(grid.style.gridTemplateColumns).not.toBe(before)
+    expect(target.classes()).toContain("focus-anchor")
   })
 
   it("switches to week view when clicking Week button", async () => {
@@ -259,12 +297,31 @@ describe("CalendarView", () => {
     expect(wrapper.find(".day-grid").exists()).toBe(true)
   })
 
-  it("skeleton shows when loading", async () => {
+  it("skeleton shows while the visible month has no data yet", async () => {
+    const { calendarApi } = await import("@/api/calendar")
+    const pending = new Promise<never>(() => {})
+    const spy = vi.spyOn(calendarApi, "getEvents").mockReturnValue(pending as never)
     const { loading } = useEvents()
     loading.value = true
     const wrapper = mount(CalendarView)
     await nextTick()
     expect(wrapper.find(".skeleton-grid").exists()).toBe(true)
+    spy.mockRestore()
+    wrapper.unmount()
+  })
+
+  it("keeps the grid instead of flashing the skeleton for a cached month", async () => {
+    const wrapper = mount(CalendarView)
+    await flushPromises()
+    const { loading, isMonthLoaded } = useEvents()
+    const now = new Date()
+    expect(isMonthLoaded(now.getFullYear(), now.getMonth())).toBe(true)
+
+    loading.value = true
+    await nextTick()
+    // `showSkeleton` is already false; the node only lingers for its fade-out.
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(wrapper.find(".skeleton-grid").exists()).toBe(false)
   })
 
   it("nav arrows navigate days in day view", async () => {

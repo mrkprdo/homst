@@ -30,12 +30,21 @@ const chipStyle = computed(() => ({
 
 function onPointerDown() {
   if (!chipEl.value) return
+  // Promote only while a press animation is actually running. Leaving
+  // will-change on every chip promoted ~90 layers in the month grid, and each
+  // one had to be re-rastered when the lens resized the cells.
+  chipEl.value.style.willChange = "transform"
   animate(chipEl.value, { scale: 0.93, duration: 60, ease: "outQuart" })
 }
 
 function onPointerUp() {
-  if (!chipEl.value) return
-  animate(chipEl.value, { scale: [0.93, 1.06, 1], ease: springs.pop })
+  const el = chipEl.value
+  if (!el) return
+  animate(el, {
+    scale: [0.93, 1.06, 1],
+    ease: springs.pop,
+    onComplete: () => { el.style.willChange = "" },
+  })
 }
 </script>
 
@@ -75,7 +84,6 @@ function onPointerUp() {
   cursor: pointer;
   user-select: none;
   touch-action: manipulation;
-  will-change: transform;
   position: relative;
   z-index: 0;
   transition: box-shadow var(--duration-fast), z-index 0s;

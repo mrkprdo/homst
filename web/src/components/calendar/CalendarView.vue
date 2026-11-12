@@ -14,7 +14,7 @@ import { expandEvents } from "@/utils/recurrence"
 
 type ViewMode = "month" | "week" | "day"
 
-const { events, loading, prefetchAround } = useEvents()
+const { events, loading, prefetchAround, isMonthLoaded } = useEvents()
 const { members, ensureLoaded: loadMembers } = useMembers()
 const ui = useUi()
 const { accentColor, accentPalette } = useSettings()
@@ -114,17 +114,7 @@ function onMonthDayDblClick(day: number) {
 function isToday(day:number):boolean { return today.value.getDate()===day && today.value.getMonth()===currentMonth.value && today.value.getFullYear()===currentYear.value }
 function isSelected(day:number):boolean { return selectedDate.value.getDate()===day && selectedDate.value.getMonth()===currentMonth.value && selectedDate.value.getFullYear()===currentYear.value }
 function eventsForDay(day:number) { return eventsForDate(new Date(currentYear.value, currentMonth.value, day)) }
-function coversDate(ev: Event, date: Date): boolean {
-  const start = new Date(ev.startAt)
-  const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
-  if (start >= dayEnd) return false
-  let end = ev.endAt ? new Date(ev.endAt) : start
-  // Legacy all-day events store end_at === start_at; treat them as covering exactly their start day
-  if (ev.allDay && end.getTime() <= start.getTime()) end = new Date(start.getTime() + 1)
-  return end >= dayStart
-}
-function eventsForDate(date: Date) { return expandedEvents.value.filter(e => coversDate(e, date)) }
+function eventsForDate(date: Date): Event[] { return eventsByDay.value.get(dayKey(date)) ?? [] }
 
 // Previous month trailing days to fill first row
 const prevMonthDays = computed(() => {
@@ -150,6 +140,74 @@ const nextMonthDays = computed(() => {
   }
   return days
 })
+
+// ── Focus lens ────────────────────────────────────────────────────
+// The month grid gently "looks at" one day: the anchor track grows 10%, the
+// adjacent track is 10% smaller than the anchor, and each step further out
+// keeps receding. Both axes share the falloff so the month reads as a soft
+// magnifier around the selected day. `fr` tracks let the browser normalise
+// the weights, keeping the whole grid inside the available space.
+const FOCUS_GROWTH = 0.1
+const TRACK_FALLOFF = 0.11 // 1.10 × (1 − 0.10) = 0.99 → neighbour is 10% smaller
+const TRACK_FLOOR = 0.5
+
+function trackWeight(distance: number): number {
+  return Math.max(TRACK_FLOOR, 1 + FOCUS_GROWTH - TRACK_FALLOFF * distance)
+}
+
+const monthRowCount = computed(() =>
+  Math.ceil((prevMonthDays.value.length + daysInMonth.value) / 7)
+)
+
+// Anchor: selected day when it belongs to this month, otherwise today when it
+// is visible, otherwise the 1st. Keeps the lens meaningful while navigating.
+const monthAnchorDay = computed(() => {
+  const sel = selectedDate.value
+  if (sel.getFullYear() === currentYear.value && sel.getMonth() === currentMonth.value) return sel.getDate()
+  if (today.value.getFullYear() === currentYear.value && today.value.getMonth() === currentMonth.value) return today.value.getDate()
+  return 1
+})
+
+const monthAnchorIndex = computed(() => prevMonthDays.value.length + monthAnchorDay.value - 1)
+const monthAnchorCol = computed(() => monthAnchorIndex.value % 7)
+const monthAnchorRow = computed(() => Math.floor(monthAnchorIndex.value / 7))
+
+const monthColWeights = computed(() =>
+  Array.from({ length: 7 }, (_, col) => trackWeight(Math.abs(col - monthAnchorCol.value)))
+)
+const monthRowWeights = computed(() =>
+  Array.from({ length: monthRowCount.value }, (_, row) => trackWeight(Math.abs(row - monthAnchorRow.value)))
+)
+const monthColMaxWeight = computed(() => Math.max(...monthColWeights.value))
+
+function toTrackList(weights: number[]): string {
+  return weights.map((w) => `${w.toFixed(4)}fr`).join(" ")
+}
+
+const monthColTracks = computed(() => toTrackList(monthColWeights.value))
+
+// The selected day must be a square, not just "10% wider and 10% taller".
+// Its width is decided by the column weights, so we reuse that exact width as
+// a fixed row height: the anchor row becomes a length track while the other
+// rows stay fractional and share whatever height is left. `cqw` is the width
+// of this view, so the square stays exact at every window size.
+const monthFocusSide = computed(() => {
+  const totalWeight = monthColWeights.value.reduce((sum, w) => sum + w, 0)
+  const anchorFraction = monthColWeights.value[monthAnchorCol.value]! / totalWeight
+  return `calc((100cqw - var(--space-1) * 6) * ${anchorFraction.toFixed(6)})`
+})
+
+const monthRowTracks = computed(() =>
+  monthRowWeights.value
+    .map((w, row) => (row === monthAnchorRow.value ? monthFocusSide.value : `${w.toFixed(4)}fr`))
+    .join(" ")
+)
+
+// Day names follow the same column widths and breathe with them, never with
+// the row heights (the header strip stays a single compact line).
+function headerTrackScale(col: number): string {
+  return (monthColWeights.value[col]! / monthColMaxWeight.value).toFixed(3)
+}
 
 function navigateToMonth(month: number, year: number, day?: number) {
   if (year > currentYear.value || (year === currentYear.value && month > currentMonth.value)) {
@@ -211,14 +269,90 @@ function nextWeek() {
   handleNavChange(d.getFullYear(), d.getMonth())
 }
 
-// ── Recurrence expansion ──
-// Events store only the base instance. Expand into individual occurrences
-// for the display window so all filter functions see real dates.
-const RECUR_FROM = new Date(new Date().getFullYear() - 1, 0, 1)
-const RECUR_TO   = new Date(new Date().getFullYear() + 2, 11, 31)
+// ── Recurrence expansion + day index ──
+// Expand only the window this view can show, then bucket occurrences by
+// calendar day. The month grid asks for a day's events three times per cell
+// per render; scanning the full expansion each time made one click cost
+// ~140ms with a handful of recurring events. One indexed pass keeps every
+// lookup O(1) so the lens can start on the next frame.
+const EXPAND_LEAD_DAYS = 31 // catches long occurrences that began earlier
+const VISIBLE_PAD_DAYS = 7
 
-const expandedEvents = computed<Event[]>(() =>
-  expandEvents(events.value, RECUR_FROM, RECUR_TO)
+const visibleRange = computed(() => {
+  if (viewMode.value === "month") {
+    return {
+      from: new Date(currentYear.value, currentMonth.value, 1 - VISIBLE_PAD_DAYS),
+      to: new Date(currentYear.value, currentMonth.value + 1, VISIBLE_PAD_DAYS),
+    }
+  }
+  const anchor = viewMode.value === "week" ? weekStart.value : selectedDate.value
+  const from = new Date(anchor)
+  from.setDate(from.getDate() - 2)
+  const to = new Date(anchor)
+  to.setDate(to.getDate() + (viewMode.value === "week" ? 9 : 2))
+  return { from, to }
+})
+
+const expandedEvents = computed<Event[]>(() => {
+  const { from, to } = visibleRange.value
+  const expandFrom = new Date(from)
+  expandFrom.setDate(expandFrom.getDate() - EXPAND_LEAD_DAYS)
+  return expandEvents(events.value, expandFrom, to)
+})
+
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+/** Safety valve for a corrupt end date that would otherwise walk years of days. */
+const MAX_EVENT_DAYS = 366
+
+const eventsByDay = computed(() => {
+  const index = new Map<string, Event[]>()
+  const { from, to } = visibleRange.value
+  const min = from.getTime()
+  const max = to.getTime()
+
+  for (const ev of expandedEvents.value) {
+    const start = new Date(ev.startAt)
+    if (Number.isNaN(start.getTime())) continue
+    let end = ev.endAt ? new Date(ev.endAt) : new Date(start)
+    if (Number.isNaN(end.getTime()) || end.getTime() < start.getTime()) end = new Date(start)
+    // Legacy all-day events store end_at === start_at; treat them as covering
+    // exactly their start day.
+    if (ev.allDay && end.getTime() <= start.getTime()) end = new Date(start.getTime() + 1)
+
+    const cursor = new Date(start)
+    cursor.setHours(0, 0, 0, 0)
+    const lastDay = new Date(end)
+    lastDay.setHours(0, 0, 0, 0)
+    // Start at the window edge when the event began before it.
+    if (cursor.getTime() < min) cursor.setTime(min)
+
+    for (let i = 0; cursor.getTime() <= lastDay.getTime() && i < MAX_EVENT_DAYS; i++) {
+      const t = cursor.getTime()
+      if (t >= min && t <= max) {
+        const key = dayKey(cursor)
+        const list = index.get(key)
+        if (list) list.push(ev)
+        else index.set(key, [ev])
+      }
+      cursor.setDate(cursor.getDate() + 1)
+    }
+  }
+  return index
+})
+
+// Only shimmer when the visible month genuinely has no data yet. Cached months
+// resolve in a microtask, so gating on `loading` alone used to flash the
+// skeleton over the grid on every navigation.
+const skeletonDate = computed(() => {
+  if (viewMode.value === "week") return weekStart.value
+  if (viewMode.value === "day") return selectedDate.value
+  return new Date(currentYear.value, currentMonth.value, 1)
+})
+const showSkeleton = computed(() =>
+  loading.value && !isMonthLoaded(skeletonDate.value.getFullYear(), skeletonDate.value.getMonth())
 )
 
 // Auto-scroll to the useful part of the day when switching views: current
@@ -247,11 +381,11 @@ function isSameDate(a: Date, b: Date) {
 }
 
 function allDayEventsForDate(date: Date) {
-  return expandedEvents.value.filter(e => e.allDay && coversDate(e, date))
+  return eventsForDate(date).filter(e => e.allDay)
 }
 
 function timedEventsForDate(date: Date) {
-  return expandedEvents.value.filter(e => !e.allDay && coversDate(e, date))
+  return eventsForDate(date).filter(e => !e.allDay)
 }
 
 const hasAllDayEvents = computed(() =>
@@ -371,7 +505,7 @@ function eventBlockTooltip(event: Event, timeLabel: string): string {
 }
 
 const selectedDayEventLabel = computed(() => {
-  const count = expandedEvents.value.filter(event => coversDate(event, selectedDate.value)).length
+  const count = eventsForDate(selectedDate.value).length
   return count === 0 ? "No events" : `${count} ${count === 1 ? "event" : "events"}`
 })
 
@@ -450,10 +584,15 @@ function onEventClick(eventId: string) {
 
     <!-- Month Grid -->
     <div v-if="viewMode==='month'" class="month-view">
-      <div class="day-headers">
-        <div v-for="d in dayNames" :key="d" class="day-header">{{ d }}</div>
+      <div class="day-headers" :style="{ gridTemplateColumns: monthColTracks }">
+        <div
+          v-for="(d, i) in dayNames"
+          :key="d"
+          class="day-header"
+          :style="{ '--track-scale': headerTrackScale(i) }"
+        >{{ d }}</div>
       </div>
-      <div class="month-grid">
+      <div class="month-grid" :style="{ gridTemplateColumns: monthColTracks, gridTemplateRows: monthRowTracks }">
         <!-- Previous month days -->
         <div
           v-for="d in prevMonthDays"
@@ -468,7 +607,7 @@ function onEventClick(eventId: string) {
           v-for="day in daysInMonth"
           :key="day"
           class="day-cell"
-          :class="{today:isToday(day),selected:isSelected(day)}"
+          :class="{today:isToday(day),selected:isSelected(day),'focus-anchor':day===monthAnchorDay}"
           @click="selectDay(day)"
           @dblclick="onMonthDayDblClick(day)"
         >
@@ -628,7 +767,7 @@ function onEventClick(eventId: string) {
 
     <!-- Skeleton -->
     <Transition name="skeleton-fade">
-      <div v-if="loading" class="skeleton-grid" :class="`skeleton-grid--${viewMode}`">
+      <div v-if="showSkeleton" class="skeleton-grid" :class="`skeleton-grid--${viewMode}`">
         <template v-if="viewMode === 'month'">
           <div v-for="i in 7" :key="'sh-'+i" class="skeleton-header" />
           <div v-for="i in 35" :key="'sc-'+i" class="skeleton-cell" />
@@ -648,7 +787,7 @@ function onEventClick(eventId: string) {
 .calendar-now-playing{justify-self:center;min-width:0}
 .calendar-actions{justify-self:end}
 .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:var(--text-title-size);font-weight:var(--font-weight-regular);white-space:nowrap}
-.nav-arrow{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:none;border-radius:var(--radius-full);background:var(--color-bgSubtle);color:var(--color-textSecondary);cursor:pointer;transition:all var(--duration-fast) cubic-bezier(0.25,0.46,0.45,0.94)}
+.nav-arrow{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:none;border-radius:var(--radius-full);background:var(--color-bgSubtle);color:var(--color-textSecondary);cursor:pointer;transition:background var(--duration-fast) cubic-bezier(0.25,0.46,0.45,0.94),color var(--duration-fast) cubic-bezier(0.25,0.46,0.45,0.94),transform var(--duration-fast) cubic-bezier(0.25,0.46,0.45,0.94)}
 .nav-arrow:hover{background:var(--color-bgElevated);transform:scale(1.08)}
 .nav-arrow:active{transform:scale(0.92);transition-duration:60ms}
 .nav-arrow:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
@@ -658,15 +797,21 @@ function onEventClick(eventId: string) {
 .text-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 
 /* Month View */
-.month-view{display:flex;flex-direction:column;flex:1;min-height:0}
+.month-view{display:flex;flex-direction:column;flex:1;min-height:0;container-type:inline-size}
 
-.day-headers{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--space-1);flex-shrink:0;margin-bottom:var(--space-1)}
+.day-headers{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--space-1);flex-shrink:0;margin-bottom:var(--space-1)}
 
-/* Day headers — compact, vertically centered */
-.day-header{display:flex;align-items:center;justify-content:center;padding:var(--space-1) var(--space-1);border-radius:var(--radius-sm);font-size:var(--text-micro-size);font-weight:var(--font-weight-medium);color:var(--color-textPrimary);text-transform:uppercase;letter-spacing:0.04em;background:var(--color-accent-lighter)}
+/* Day headers — compact, vertically centered. Width follows the same tracks
+   as the dates below; type scales with the track, but only on a pose change.
+   Track sizes and font-size are layout, so they must not be tweened: every
+   in-between frame would re-lay out the whole grid. The lens snaps instead. */
+.day-header{display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden;padding:var(--space-1) var(--space-1);border-radius:var(--radius-sm);font-size:calc(var(--text-micro-size) * (0.78 + 0.22 * var(--track-scale, 1)));font-weight:var(--font-weight-medium);color:var(--color-textPrimary);text-transform:uppercase;letter-spacing:0.04em;line-height:1.2;white-space:nowrap;background:var(--color-accent-lighter);transition:background var(--duration-fast)}
 
-/* Month Grid — data rows fill available height */
-.month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);flex:1;gap:var(--space-1);min-height:0}
+/* Month Grid — rows and columns are weighted around the focus day. Explicit
+   fr tracks (bound inline) keep every card filling the available space. The
+   weights change in one pose; only the anchored card gets a short, composited
+   settle below, so the click never waits on a layout tween. */
+.month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:repeat(6,minmax(0,1fr));flex:1;gap:var(--space-1);min-height:0}
 
 /* Day cell — card treatment */
 .day-cell{padding:5px 6px;background:var(--color-bgElevated);border-radius:var(--radius-sm);box-shadow:0 1px 0 0 var(--shadow-lip),0 2px 6px -2px var(--shadow-drop);cursor:pointer;transition:background var(--duration-fast),transform var(--duration-fast),box-shadow var(--duration-fast);min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column}
@@ -681,6 +826,12 @@ function onEventClick(eventId: string) {
 .day-cell.selected{background:color-mix(in srgb,var(--color-accent-base) 26%,var(--color-bgElevated));box-shadow:inset 0 0 0 2px var(--color-accent-dark),0 2px 8px -2px var(--shadow-accent-drop)}
 .day-cell.selected:hover{background:color-mix(in srgb,var(--color-accent-base) 32%,var(--color-bgElevated))}
 .day-cell.selected.today{background:color-mix(in srgb,var(--color-accent-base) 36%,var(--color-bgElevated));box-shadow:inset 0 0 0 3px var(--color-accent-dark),0 3px 10px -2px var(--shadow-accent-drop)}
+
+/* The focus anchor lands with one short, transform-only settle. The grid
+   weights themselves change instantly; this is the only motion, so it stays
+   off the layout path and reads as a pose change rather than a glide. */
+.day-cell.focus-anchor{position:relative;z-index:1;transform-origin:center;animation:focus-settle 240ms cubic-bezier(0.22,1,0.36,1)}
+@keyframes focus-settle{0%{transform:scale(0.965)}55%{transform:scale(1.012)}100%{transform:scale(1)}}
 @keyframes today-pulse{0%,70%,100%{opacity:0;transform:scale(0.85)}35%{opacity:0.40;transform:scale(1.15)}}
 
 /* Day number as a distinct pill badge */
