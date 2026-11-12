@@ -402,7 +402,7 @@ async function sendTest() {
   <div class="settings-panel">
     <PageHeader title="Settings" />
 
-    <div class="settings-bento">
+    <div class="settings-masonry">
       <!-- ── Theme ── -->
       <section class="settings-card settings-card--preset">
         <header class="card-header">
@@ -960,69 +960,41 @@ async function sendTest() {
   flex-direction: column;
 }
 
-/* ── Bento layout ─────────────────────────────────────────────────────────────
-   Paired by purpose: identity, display, alerts, ambience, system. Cards fill
-   their cell, so shorter tiles spread or centre their content instead of
-   leaving a hole at the bottom. */
-.settings-bento {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "preset"
-    "accent"
-    "appearance"
-    "textsize"
-    "reminders"
-    "devices"
-    "music"
-    "camera"
-    "nest"
-    "motion"
-    "home"
-    "software";
-  align-items: stretch;
-  gap: var(--space-4);
+/* ── Masonry layout ───────────────────────────────────────────────────────────
+   Settings cards have genuinely different heights. A balanced column flow
+   keeps their natural rhythm instead of stretching short cards into tall grid
+   rows, while DOM order stays the reading order: identity, display, systems.
+   Cards never split across columns. */
+.settings-masonry {
+  column-count: 1;
+  column-gap: var(--space-4);
+  column-fill: balance;
 }
 
-.settings-card--preset     { grid-area: preset; }
-.settings-card--accent     { grid-area: accent; }
-.settings-card--appearance { grid-area: appearance; }
-.settings-card--textsize   { grid-area: textsize; }
-.settings-card--reminders  { grid-area: reminders; }
-.settings-card--devices    { grid-area: devices; }
-.settings-card--music      { grid-area: music; }
-.settings-card--camera     { grid-area: camera; }
-.settings-card--nest       { grid-area: nest; }
-.settings-card--motion     { grid-area: motion; }
-.settings-card--home       { grid-area: home; }
-.settings-card--software   { grid-area: software; }
+.settings-masonry > .settings-card {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  margin: 0 0 var(--space-4);
+}
 
 @media (min-width: 860px) {
-  .settings-bento {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas:
-      "preset    preset"
-      "accent    textsize"
-      "appearance appearance"
-      "reminders devices"
-      "music     motion"
-      "camera    camera"
-      "nest      nest"
-      "home      software";
+  .settings-masonry {
+    column-count: 2;
   }
 }
 
-@media (min-width: 1180px) {
-  .settings-bento {
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    grid-template-areas:
-      "preset preset preset preset preset preset preset accent accent accent accent accent"
-      "appearance appearance appearance appearance appearance appearance appearance textsize textsize textsize textsize textsize"
-      "reminders reminders reminders reminders reminders reminders reminders devices devices devices devices devices"
-      "music music music music music music music music motion motion motion motion"
-      "camera camera camera camera camera camera camera camera camera camera camera camera"
-      "nest nest nest nest nest nest nest nest nest nest nest nest"
-      "home home home home software software software software software software software software";
+@media (min-width: 1400px) {
+  .settings-masonry {
+    column-count: 3;
+  }
+
+  /* Keep the three columns balanced at wall-display widths: identity and
+     display settings lead, systems follow. Without these boundaries the
+     column balancer can push the whole system group into the last column. */
+  .settings-card--reminders,
+  .settings-card--camera {
+    break-after: column;
   }
 }
 
