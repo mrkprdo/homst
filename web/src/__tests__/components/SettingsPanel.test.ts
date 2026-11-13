@@ -153,19 +153,24 @@ describe("SettingsPanel", () => {
     expect(settings.lyricsOffsetMs.value).toBe(50)
     expect(row.text()).toContain("+0.05 s")
 
+    await later.trigger("click")
+    expect(settings.lyricsOffsetMs.value).toBe(100)
+    expect(row.text()).toContain("+0.10 s")
+
+    // Reset while the debounce is still pending flushes it immediately.
+    await row.find(".lyric-offset__reset").trigger("click")
+    expect(settings.lyricsOffsetMs.value).toBe(0)
+    expect(row.text()).toContain("0.00 s")
+
     await earlier.trigger("click")
     await earlier.trigger("click")
-    expect(settings.lyricsOffsetMs.value).toBe(-50)
-    expect(row.text()).toContain("−0.05 s")
+    expect(settings.lyricsOffsetMs.value).toBe(-100)
+    expect(row.text()).toContain("−0.10 s")
 
     // The save is debounced while the arrows are tapped.
     await new Promise((resolve) => setTimeout(resolve, 400))
     const patch = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH").at(-1)!
-    expect(JSON.parse((patch[1] as RequestInit).body as string).settings.music.lyricsOffsetMs).toBe(-50)
-
-    await row.find(".lyric-offset__reset").trigger("click")
-    expect(settings.lyricsOffsetMs.value).toBe(0)
-    expect(row.text()).toContain("0.00 s")
+    expect(JSON.parse((patch[1] as RequestInit).body as string).settings.music.lyricsOffsetMs).toBe(-100)
 
     // The household setting is clamped to the ±2s range.
     settings.updateLyricsOffset(9_999)
