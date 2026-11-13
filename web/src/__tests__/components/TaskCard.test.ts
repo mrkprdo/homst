@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { mount } from "@vue/test-utils"
 import TaskCard from "@/components/ui/TaskCard.vue"
 import { COLORS, PRIORITIES } from "@/__tests__/constants"
@@ -80,5 +80,18 @@ describe("TaskCard", () => {
       props: { title: "Test" },
     })
     expect(wrapper.emitted()).toEqual({})
+  })
+
+  it("activates on Enter and Space from the keyboard", async () => {
+    const wrapper = mount(TaskCard, {
+      props: { title: "Test" },
+    })
+    const click = vi.spyOn(wrapper.element as HTMLElement, "click")
+
+    await wrapper.trigger("keydown", { key: "Enter" })
+    await wrapper.trigger("keydown", { key: " " })
+    await wrapper.trigger("keydown", { key: "a" })
+
+    expect(click).toHaveBeenCalledTimes(2)
   })
 })

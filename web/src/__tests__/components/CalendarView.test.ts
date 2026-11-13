@@ -68,6 +68,49 @@ describe("CalendarView", () => {
     expect(target.classes()).toContain("focus-anchor")
   })
 
+  it("moves the month selection with the keyboard", async () => {
+    const wrapper = mount(CalendarView)
+    const findAnchor = () => wrapper.find('.month-grid .day-cell[tabindex="0"]')
+    expect(findAnchor().exists()).toBe(true)
+
+    const start = findAnchor().attributes("data-date")
+    await findAnchor().trigger("keydown", { key: "ArrowRight" })
+    await nextTick()
+    expect(findAnchor().attributes("data-date")).not.toBe(start)
+
+    for (const key of ["ArrowLeft", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]) {
+      await findAnchor().trigger("keydown", { key })
+      await nextTick()
+    }
+
+    await findAnchor().trigger("keydown", { key: "Enter" })
+    await nextTick()
+    await findAnchor().trigger("keydown", { key: " " })
+    await nextTick()
+    await findAnchor().trigger("keydown", { key: "Tab" })
+
+    expect(wrapper.find(".month-grid").exists()).toBe(true)
+  })
+
+  it("supports keyboard navigation from adjacent month cells", async () => {
+    const ui = useUi()
+    ui.openCalendar(new Date(2030, 0, 15))
+
+    const wrapper = mount(CalendarView)
+    await flushPromises()
+    await nextTick()
+
+    const prev = wrapper.findAll(".day-cell.adjacent")[0]!
+    await prev.trigger("keydown", { key: "ArrowRight" })
+    await nextTick()
+
+    const next = wrapper.findAll(".day-cell.adjacent").at(-1)!
+    await next.trigger("keydown", { key: "ArrowLeft" })
+    await nextTick()
+
+    expect(wrapper.find(".month-grid").exists()).toBe(true)
+  })
+
   it("switches to week view when clicking Week button", async () => {
     const wrapper = mount(CalendarView)
     const seg = wrapper.findComponent({ name: "UiSegmentedControl" })

@@ -35,8 +35,7 @@ const FOCUSABLE = [
 ].join(",")
 
 function focusableItems(): HTMLElement[] {
-  if (!drawerEl.value) return []
-  return Array.from(drawerEl.value.querySelectorAll<HTMLElement>(FOCUSABLE))
+  return Array.from(drawerEl.value?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
     .filter((el) => el.getClientRects().length > 0)
 }
 

@@ -40,6 +40,27 @@ describe("UiButton pointer feedback", () => {
     expect(wrapper.attributes("disabled")).toBeDefined()
   })
 
+  it("gives keyboard activation the same press feedback", async () => {
+    setLowPower(true)
+    const wrapper = mount(UiButton, { slots: { default: "Go" } })
+    const el = wrapper.element as HTMLElement
+
+    await wrapper.trigger("keydown", { key: " " })
+    expect(el.style.transform).toContain("scaleX(1.06)")
+
+    await wrapper.trigger("keyup", { key: " " })
+    expect(el.style.transform).toContain("translateY(0px)")
+
+    await wrapper.trigger("keydown", { key: "Enter" })
+    expect(el.style.transform).toContain("scaleX(1.06)")
+    await wrapper.trigger("keyup", { key: "Enter" })
+
+    // Repeated keys and unrelated keys must not re-trigger the press.
+    await wrapper.trigger("keydown", { key: " ", repeat: true })
+    await wrapper.trigger("keydown", { key: "a" })
+    await wrapper.trigger("keyup", { key: "a" })
+  })
+
   it("honours variant, size and type props", () => {
     const wrapper = mount(UiButton, { props: { variant: "ghost", size: "sm", type: "submit" } })
     expect(wrapper.classes()).toContain("ui-btn--ghost")
@@ -70,6 +91,9 @@ describe("EventChip pointer feedback", () => {
 
     el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
     expect(wrapper.emitted("click")).toHaveLength(2)
+
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }))
+    expect(wrapper.emitted("click")).toHaveLength(3)
   })
 
   it("renders the time only for timed events", () => {
