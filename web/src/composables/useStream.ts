@@ -9,6 +9,7 @@ import { HOME_LAYOUT_EVENT } from "@/lib/homeLayout"
 import {
   offerUpdatePrompt,
   refreshUpdatePrompt,
+  setUpdateAutoInstall,
   updatePromptDismissed,
   updatePromptStarting,
 } from "@/composables/useUpdatePrompt"
@@ -137,7 +138,11 @@ function connect() {
         window.dispatchEvent(new CustomEvent(HOME_LAYOUT_EVENT, { detail: settings.widgetLayout }))
       }
       // Update-check preferences changed on another screen; refresh the card.
-      if (settings.updates) notifyUpdateChanged()
+      if (settings.updates) {
+        notifyUpdateChanged()
+        const autoInstall = settings.updates.autoInstall
+        if (typeof autoInstall === "boolean") setUpdateAutoInstall(autoInstall)
+      }
     } catch {}
   })
   source.addEventListener("announcement.created", (e) => {

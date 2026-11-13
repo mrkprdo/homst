@@ -1,10 +1,20 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue"
+import { computed, onMounted, onUnmounted } from "vue"
 import { PhDownloadSimple, PhWarningCircle } from "@phosphor-icons/vue"
 import UiButton from "@/components/ui/UiButton.vue"
-import { stopUpdatePromptPolling, useUpdatePrompt } from "@/composables/useUpdatePrompt"
+import { AUTO_INSTALL_SECONDS, stopUpdatePromptCountdown, stopUpdatePromptPolling, useUpdatePrompt } from "@/composables/useUpdatePrompt"
 
-const { prompt, busy, installing, error, accept, decline, refresh } = useUpdatePrompt()
+const { prompt, busy, installing, error, countdown, accept, decline, refresh } = useUpdatePrompt()
+
+const countdownLabel = computed(() => {
+  const seconds = Math.max(0, countdown.value ?? 0)
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+})
+
+const countdownPercent = computed(() => {
+  const seconds = Math.max(0, countdown.value ?? 0)
+  return Math.min(100, Math.round(((AUTO_INSTALL_SECONDS - seconds) / AUTO_INSTALL_SECONDS) * 100))
+})
 
 onMounted(() => {
   void refresh()
@@ -12,6 +22,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopUpdatePromptPolling()
+  stopUpdatePromptCountdown()
 })
 </script>
 
@@ -39,14 +50,31 @@ onUnmounted(() => {
               {{
                 installing
                   ? "HOMST is downloading the update and will restart in a moment. This screen will reconnect automatically."
-                  : `HOMST ${prompt.version} is ready to install. Do you want to install it now?`
+                  : countdown !== null
+                    ? `HOMST ${prompt.version} is ready. No action is needed — it installs automatically.`
+                    : `HOMST ${prompt.version} is ready to install. Do you want to install it now?`
               }}
             </p>
+            <div
+              v-if="!installing && countdown !== null"
+              class="update-prompt__countdown"
+              aria-live="polite"
+            >
+              <div class="update-prompt__countdown-track">
+                <div class="update-prompt__countdown-fill" :style="{ width: `${countdownPercent}%` }" />
+              </div>
+              <p class="update-prompt__countdown-copy">
+                Installing automatically in <strong>{{ countdownLabel }}</strong>
+              </p>
+            </div>
             <p v-if="!installing && prompt.major" class="update-prompt__major">
               <PhWarningCircle :size="17" />
               This is a major update. Review the release notes and back up first.
             </p>
-            <p v-if="!installing" class="update-prompt__hint">
+            <p v-if="!installing && countdown !== null" class="update-prompt__hint">
+              HOMST installs this update without further input. Choose No to skip this release.
+            </p>
+            <p v-else-if="!installing" class="update-prompt__hint">
               Choosing No hides this reminder. You can still install it later from Settings → Software update.
             </p>
             <p v-if="error" class="update-prompt__error" role="alert">{{ error }}</p>
@@ -133,6 +161,36 @@ onUnmounted(() => {
   font-size: var(--text-body-size);
   color: var(--color-textSecondary);
   line-height: 1.45;
+}
+
+.update-prompt__countdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.update-prompt__countdown-track {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+  overflow: hidden;
+}
+
+.update-prompt__countdown-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  transition: width 1s linear;
+}
+
+.update-prompt__countdown-copy {
+  font-size: var(--text-label-size);
+  color: var(--color-textSecondary);
+}
+
+.update-prompt__countdown-copy strong {
+  color: var(--color-textPrimary);
+  font-variant-numeric: tabular-nums;
 }
 
 .update-prompt__major {

@@ -5,6 +5,7 @@ import {
   _resetUpdatePrompt,
   offerUpdatePrompt,
   refreshUpdatePrompt,
+  setUpdateAutoInstall,
   updatePromptStarting,
   useUpdatePrompt,
 } from "@/composables/useUpdatePrompt"
@@ -15,6 +16,7 @@ function status(overrides: Record<string, unknown> = {}): SystemStatus {
     latest: { major: false, html_url: null },
     update_prompt: { version: "0.3.0", dismissed: false },
     job: null,
+    auto: { enabled: true, checkIntervalMinutes: 5, autoInstall: false },
     ...overrides,
   } as unknown as SystemStatus
 }
@@ -82,6 +84,63 @@ describe("useUpdatePrompt residual", () => {
 
     _resetUpdatePrompt()
     expect(useUpdatePrompt().prompt.value).toBeNull()
+  })
+
+  it("installs automatically after the one-minute countdown", async () => {
+    statusMock.mockResolvedValueOnce(
+      status({ auto: { enabled: true, checkIntervalMinutes: 5, autoInstall: true } }),
+    )
+    await refreshUpdatePrompt()
+
+    const { prompt, countdown } = useUpdatePrompt()
+    expect(prompt.value?.version).toBe("0.3.0")
+    expect(countdown.value).toBe(60)
+
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(installMock).not.toHaveBeenCalled()
+    expect(countdown.value).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(installMock).toHaveBeenCalledWith("0.3.0")
+    expect(countdown.value).toBeNull()
+    expect(useUpdatePrompt().installing.value).toBe(true)
+  })
+
+  it("cancels the countdown when the user declines or the preference is off", async () => {
+    statusMock.mockResolvedValueOnce(
+      status({ auto: { enabled: true, checkIntervalMinutes: 5, autoInstall: true } }),
+    )
+    await refreshUpdatePrompt()
+    expect(useUpdatePrompt().countdown.value).toBe(60)
+
+    setUpdateAutoInstall(false)
+    expect(useUpdatePrompt().countdown.value).toBeNull()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(installMock).not.toHaveBeenCalled()
+
+    setUpdateAutoInstall(true)
+    expect(useUpdatePrompt().countdown.value).toBe(60)
+    dismissMock.mockResolvedValueOnce({ dismissed: "0.3.0" })
+    await useUpdatePrompt().decline()
+    expect(useUpdatePrompt().prompt.value).toBeNull()
+    expect(useUpdatePrompt().countdown.value).toBeNull()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(installMock).not.toHaveBeenCalled()
+  })
+
+  it("starts the countdown from the stream payload", () => {
+    offerUpdatePrompt({ version: "0.3.0", auto_install: true })
+    expect(useUpdatePrompt().prompt.value?.version).toBe("0.3.0")
+    expect(useUpdatePrompt().countdown.value).toBe(60)
+  })
+
+  it("follows an update another display already started", async () => {
+    offerUpdatePrompt({ version: "0.3.0" })
+    installMock.mockRejectedValueOnce(new Error("An update is already in progress."))
+    await useUpdatePrompt().accept()
+    expect(useUpdatePrompt().installing.value).toBe(true)
+    expect(useUpdatePrompt().error.value).toBe("")
   })
 
   it("shows a failed install after a refresh and keeps an active one visible", async () => {

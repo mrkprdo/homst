@@ -30,6 +30,7 @@ const starting = ref(false)
 const auto = ref<UpdatePreferences>({
   enabled: true,
   checkIntervalMinutes: 5,
+  autoInstall: true,
 })
 const restarting = ref(false)
 const historyOpen = ref(false)
@@ -195,6 +196,13 @@ async function poll() {
       startPolling()
       return
     }
+    if (data.job && (data.job.state === "success" || data.job.state === "up_to_date")) {
+      // The update is live. Refresh automatically so this page loads the
+      // matching frontend instead of staying on the previous release's UI.
+      rememberDismissedJob()
+      window.location.reload()
+      return
+    }
     await load()
   } catch {
     // The app is restarting; keep the last known phase visible and retry.
@@ -230,6 +238,11 @@ function reloadPage() {
 
 function onAutoToggle(enabled: boolean) {
   auto.value = { ...auto.value, enabled: !!enabled }
+  saveAuto()
+}
+
+function onAutoInstallToggle(enabled: boolean) {
+  auto.value = { ...auto.value, autoInstall: !!enabled }
   saveAuto()
 }
 
@@ -437,7 +450,7 @@ onUnmounted(() => {
             <div class="auto-row">
               <div>
                 <p class="row-title">Automatic checks</p>
-                <p class="card-desc">Look for new stable releases and ask on connected displays.</p>
+                <p class="card-desc">Look for new stable releases on connected displays.</p>
               </div>
               <UiToggle
                 :model-value="auto.enabled"
@@ -456,9 +469,27 @@ onUnmounted(() => {
                 </select>
               </label>
             </div>
+            <div class="auto-row">
+              <div>
+                <p class="row-title">Install updates automatically</p>
+                <p class="card-desc">After a 1-minute countdown, install new releases without asking.</p>
+              </div>
+              <UiToggle
+                :model-value="auto.autoInstall"
+                :disabled="savingAuto"
+                aria-label="Install updates automatically"
+                @update:model-value="onAutoInstallToggle"
+              />
+            </div>
             <p class="card-desc">
-              Displays show a Yes/No reminder when a new version is available. Choosing No hides
-              that reminder; the release stays available here.
+              <template v-if="auto.enabled && auto.autoInstall">
+                Displays show the new version and install it after a 1-minute countdown. Choosing
+                No during the countdown skips that release.
+              </template>
+              <template v-else>
+                Displays show a Yes/No reminder when a new version is available. Choosing No hides
+                that reminder; the release stays available here.
+              </template>
             </p>
             <p v-if="autoMessage" class="card-desc auto-message">{{ autoMessage }}</p>
           </div>

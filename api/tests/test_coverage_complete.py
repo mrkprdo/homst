@@ -51,10 +51,12 @@ def test_merge_update_prefs_ignores_bad_values():
     assert merge_update_prefs(None) == {
         "enabled": True,
         "checkIntervalMinutes": 5,
+        "autoInstall": True,
     }
     assert merge_update_prefs({"enabled": 0, "checkIntervalMinutes": "nope"}) == {
         "enabled": False,
         "checkIntervalMinutes": 5,
+        "autoInstall": True,
     }
     assert merge_update_prefs({"checkIntervalMinutes": 0})["checkIntervalMinutes"] == 5
     assert merge_update_prefs({"checkIntervalMinutes": 60})["checkIntervalMinutes"] == 60

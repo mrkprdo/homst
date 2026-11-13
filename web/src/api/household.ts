@@ -71,6 +71,8 @@ export interface NotificationPreferences {
 export interface UpdatePreferences {
   enabled: boolean
   checkIntervalMinutes: number
+  /** Install new stable releases after a short countdown, without asking. */
+  autoInstall: boolean
 }
 
 export interface HouseholdMember {

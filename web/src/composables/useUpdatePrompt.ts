@@ -12,6 +12,7 @@ interface UpdateAvailablePayload {
   version?: unknown
   major?: unknown
   html_url?: unknown
+  auto_install?: unknown
 }
 
 const ACTIVE_STATES = new Set(["queued", "pulling", "restarting", "verifying", "rolling_back"])
@@ -20,6 +21,13 @@ const prompt = ref<UpdatePromptInfo | null>(null)
 const busy = ref(false)
 const installing = ref(false)
 const error = ref("")
+const autoInstall = ref(false)
+const countdown = ref<number | null>(null)
+
+/** Seconds between showing the update notice and installing it hands-off. */
+export const AUTO_INSTALL_SECONDS = 60
+
+let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 /** Set after the user declines; also suppresses a late event from the server. */
 let localDismissed: string | null = null
@@ -73,6 +81,48 @@ function reloadAfterTimeout(version: string): boolean {
   return true
 }
 
+function stopCountdown() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+  countdown.value = null
+}
+
+/**
+ * Start the hands-off install timer for the visible notice. Idempotent so a
+ * re-delivered event or a reconnect does not restart the minute.
+ */
+function startCountdown() {
+  if (countdownTimer !== null || countdown.value !== null) return
+  if (!autoInstall.value || !prompt.value || installing.value || busy.value) return
+
+  countdown.value = AUTO_INSTALL_SECONDS
+  countdownTimer = setInterval(() => {
+    if (!autoInstall.value || !prompt.value || installing.value) {
+      stopCountdown()
+      return
+    }
+    const next = (countdown.value ?? 0) - 1
+    if (next <= 0) {
+      stopCountdown()
+      void accept()
+      return
+    }
+    countdown.value = next
+  }, 1000)
+}
+
+/** Follow a preference change made on any screen without waiting for a poll. */
+export function setUpdateAutoInstall(enabled: boolean) {
+  autoInstall.value = !!enabled
+  if (!autoInstall.value) {
+    stopCountdown()
+    return
+  }
+  startCountdown()
+}
+
 function stopPolling() {
   if (jobTimer) {
     clearTimeout(jobTimer)
@@ -88,6 +138,7 @@ function startPolling() {
 
 /** An install started on any display is shown on every display. */
 function showInstalling(version: string) {
+  stopCountdown()
   if (prompt.value?.version !== version) {
     prompt.value = { version, major: false, htmlUrl: null }
   }
@@ -98,6 +149,7 @@ function showInstalling(version: string) {
 
 function clear() {
   stopPolling()
+  stopCountdown()
   prompt.value = null
   error.value = ""
   installing.value = false
@@ -106,6 +158,11 @@ function clear() {
 function offer(payload: UpdateAvailablePayload) {
   const version = typeof payload.version === "string" ? payload.version : ""
   if (!version || localDismissed === version) return
+
+  if (typeof payload.auto_install === "boolean") {
+    autoInstall.value = payload.auto_install
+  }
+  if (!autoInstall.value) stopCountdown()
 
   const next: UpdatePromptInfo = {
     version,
@@ -116,12 +173,16 @@ function offer(payload: UpdateAvailablePayload) {
   // Re-delivery of the same release should not reset an install in progress.
   if (prompt.value?.version === version) {
     prompt.value = { ...prompt.value, ...next }
+    startCountdown()
     return
   }
 
   prompt.value = next
   installing.value = false
   error.value = ""
+  // A different release gets its own full notice period.
+  stopCountdown()
+  startCountdown()
 }
 
 /** Read the current release state; used on mount and after a reconnect. */
@@ -130,6 +191,11 @@ async function refresh(): Promise<boolean> {
   try {
     const status = await systemApi.getStatus()
     if (!status || !status.current) return false
+
+    const prefs = status.auto
+    if (prefs && typeof prefs.autoInstall === "boolean") {
+      setUpdateAutoInstall(prefs.autoInstall)
+    }
 
     const job = status.job
     const activeJob = !!job && ACTIVE_STATES.has(job.state)
@@ -236,6 +302,7 @@ async function accept() {
   const current = prompt.value
   if (!current || busy.value || installing.value) return
 
+  stopCountdown()
   busy.value = true
   installing.value = true
   error.value = ""
@@ -243,8 +310,17 @@ async function accept() {
     await systemApi.install(current.version)
     startPolling()
   } catch (exc) {
+    const message = exc instanceof Error ? exc.message : "Could not start the update."
+    // Another display may have accepted the same release a moment earlier.
+    // Follow its job instead of flashing a false failure on every screen.
+    if (/already in progress/i.test(message)) {
+      installing.value = true
+      error.value = ""
+      startPolling()
+      return
+    }
     installing.value = false
-    error.value = exc instanceof Error ? exc.message : "Could not start the update."
+    error.value = message
   } finally {
     busy.value = false
   }
@@ -255,6 +331,7 @@ async function decline() {
   const current = prompt.value
   if (!current || busy.value || installing.value) return
 
+  stopCountdown()
   busy.value = true
   error.value = ""
   try {
@@ -283,7 +360,7 @@ function handleStarting(version: unknown) {
 }
 
 export function useUpdatePrompt() {
-  return { prompt, busy, installing, error, offer, refresh, accept, decline }
+  return { prompt, busy, installing, error, autoInstall, countdown, offer, refresh, accept, decline }
 }
 
 export function offerUpdatePrompt(payload: UpdateAvailablePayload) {
@@ -306,12 +383,19 @@ export function stopUpdatePromptPolling() {
   stopPolling()
 }
 
+/** The notice is being removed from the screen; do not install behind it. */
+export function stopUpdatePromptCountdown() {
+  stopCountdown()
+}
+
 export function _resetUpdatePrompt() {
   stopPolling()
+  stopCountdown()
   prompt.value = null
   busy.value = false
   installing.value = false
   error.value = ""
+  autoInstall.value = false
   localDismissed = null
   pageIdentity = null
 }

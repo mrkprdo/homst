@@ -72,7 +72,7 @@ function status(overrides: Record<string, unknown> = {}): SystemStatus {
     previous: { version: null, image: null },
     held: { version: null, reason: null },
     job: null,
-    auto: { enabled: true, checkIntervalMinutes: 5 },
+    auto: { enabled: true, checkIntervalMinutes: 5, autoInstall: true },
     update_prompt: { version: "0.3.0", dismissed: false },
     self_update: { available: true, managed: true, reason: null, mode: "managed" },
     manual: { current: "docker compose pull", stable: "docker compose pull" },
@@ -271,7 +271,7 @@ describe("SoftwareUpdateCard residual", () => {
     toggle.vm.$emit("update:modelValue", false)
     await flushPromises()
     expect(updateSettings).toHaveBeenCalledWith({
-      updates: { enabled: false, checkIntervalMinutes: 5 },
+      updates: { enabled: false, checkIntervalMinutes: 5, autoInstall: true },
     })
 
     updateSettings.mockRejectedValueOnce(new Error("nope"))
@@ -282,6 +282,49 @@ describe("SoftwareUpdateCard residual", () => {
     await select.setValue("15")
     await flushPromises()
     expect(wrapper.text()).toContain("Could not save update-check settings.")
+  })
+
+  it("saves the automatic install preference", async () => {
+    const wrapper = await mountCard()
+    const toggles = wrapper.findAllComponents({ name: "UiToggle" })
+    expect(toggles).toHaveLength(2)
+
+    toggles[1]!.vm.$emit("update:modelValue", false)
+    await flushPromises()
+    expect(updateSettings).toHaveBeenCalledWith({
+      updates: { enabled: true, checkIntervalMinutes: 5, autoInstall: false },
+    })
+  })
+
+  it("reloads automatically when an install finishes", async () => {
+    const reload = vi.fn()
+    const realLocation = window.location
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { reload },
+    })
+
+    try {
+      const wrapper = await mountCard()
+      await wrapper.findAll("button").find(b => b.text() === "Update")!.trigger("click")
+      await wrapper.findAll("button").find(b => b.text() === "Install")!.trigger("click")
+      await flushPromises()
+
+      getJob.mockResolvedValueOnce({
+        job: job({ state: "success", finished_at: new Date().toISOString() }),
+      })
+      await (wrapper.vm as unknown as { poll: () => Promise<void> }).poll()
+
+      expect(reload).toHaveBeenCalledTimes(1)
+      wrapper.unmount()
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: realLocation,
+      })
+    }
   })
 
   it("copies the manual command and explains a clipboard failure", async () => {

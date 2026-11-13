@@ -110,6 +110,22 @@ async def test_update_check_prompts_displays_without_installing(monkeypatch):
     assert event_type == "system.update.available"
     assert payload["version"] == "0.3.0"
     assert payload["major"] is False
+    # New installs default to hands-off updates.
+    assert payload["auto_install"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_check_forwards_auto_install_preference(monkeypatch):
+    _patch_common(
+        monkeypatch,
+        {"updates": {"enabled": True, "autoInstall": False}},
+    )
+    events = _capture_events(monkeypatch)
+
+    await worker.check_auto_update(None)
+
+    assert len(events) == 1
+    assert events[0][2]["auto_install"] is False
 
 
 @pytest.mark.asyncio

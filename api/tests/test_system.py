@@ -68,7 +68,7 @@ async def test_system_status_managed_update_available(client, monkeypatch):
     assert data["update_available"] is True
     assert data["self_update"]["managed"] is True
     assert data["releases"][0]["newer"] is True
-    assert data["auto"] == {"enabled": True, "checkIntervalMinutes": 5}
+    assert data["auto"] == {"enabled": True, "checkIntervalMinutes": 5, "autoInstall": True}
     assert data["update_prompt"] == {"version": "0.3.0", "dismissed": False}
 
 

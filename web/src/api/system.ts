@@ -58,6 +58,7 @@ export interface SystemStatus {
   auto: {
     enabled: boolean
     checkIntervalMinutes: number
+    autoInstall: boolean
   }
   update_prompt: {
     version: string | null

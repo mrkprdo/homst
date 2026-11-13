@@ -107,6 +107,7 @@ def default_update_prefs() -> dict[str, Any]:
     return {
         "enabled": True,
         "checkIntervalMinutes": DEFAULT_CHECK_INTERVAL_MINUTES,
+        "autoInstall": True,
     }
 
 
@@ -117,6 +118,8 @@ def merge_update_prefs(raw: Any) -> dict[str, Any]:
 
     if "enabled" in raw:
         prefs["enabled"] = bool(raw.get("enabled"))
+    if "autoInstall" in raw:
+        prefs["autoInstall"] = bool(raw.get("autoInstall"))
 
     try:
         minutes = int(raw.get("checkIntervalMinutes"))

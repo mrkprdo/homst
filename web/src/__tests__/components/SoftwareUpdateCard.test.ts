@@ -66,7 +66,7 @@ function status(overrides: Record<string, unknown> = {}) {
     previous: { version: null, image: null },
     held: { version: null, reason: null },
     job: null,
-    auto: { enabled: true, checkIntervalMinutes: 5 },
+    auto: { enabled: true, checkIntervalMinutes: 5, autoInstall: true },
     update_prompt: { version: "0.3.0", dismissed: false },
     self_update: { available: true, managed: true, reason: null, mode: "managed" },
     manual: {
@@ -150,7 +150,7 @@ describe("SoftwareUpdateCard", () => {
     const patch = fetchMock.mock.calls.find((item) => (item[1] as RequestInit)?.method === "PATCH")
     expect(patch).toBeTruthy()
     expect(JSON.parse((patch![1] as RequestInit).body as string)).toEqual({
-      settings: { updates: { enabled: true, checkIntervalMinutes: 15 } },
+      settings: { updates: { enabled: true, checkIntervalMinutes: 15, autoInstall: true } },
     })
     wrapper.unmount()
   })

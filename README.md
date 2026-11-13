@@ -176,7 +176,7 @@ The updater is the only container with Docker socket access and exposes no LAN p
 To keep the profile enabled, remove the `#` from `COMPOSE_PROFILES=updates` in `.env`.
 
 - Stable releases only. Dev, nightly, and pinned images need manual updates.
-- Checks run every 5 minutes. Stable releases are offered one day after publication. Displays prompt before installing.
+- Checks run every 5 minutes. Stable releases are offered one day after publication. Displays show the new version and, by default, install it after a 1-minute countdown. Turn off **Install updates automatically** under **Settings > Software update** to require a Yes/No confirmation instead. Choosing No during the countdown skips that release.
 - Failed updates roll back and are not offered again.
 - The previous image is kept. Run `docker image prune` when you no longer need rollback.
 

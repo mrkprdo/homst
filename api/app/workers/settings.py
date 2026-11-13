@@ -53,11 +53,13 @@ def _check_due(interval_minutes: int, now: float | None = None) -> bool:
 
 
 async def check_auto_update(ctx):
-    """Check the stable channel and ask displays to install a new release.
+    """Check the stable channel and tell displays about a new release.
 
-    Nothing is installed silently: connected display clients receive a prompt
-    with Yes/No over the SSE stream. A dismissed version is remembered so the
-    same release is not offered again until a newer one is published.
+    Connected display clients receive the release over the SSE stream. When
+    "Install updates automatically" is enabled they show a one-minute
+    countdown and then install it hands-off; otherwise they ask with Yes/No.
+    A dismissed version is remembered so the same release is not offered again
+    until a newer one is published.
     """
 
     if not updater_client.enabled():
@@ -111,14 +113,20 @@ async def check_auto_update(ctx):
                 "current": VERSION,
                 "major": is_major_update(VERSION, latest["version"]),
                 "html_url": latest.get("html_url"),
+                "auto_install": prefs["autoInstall"],
             },
         )
     except Exception:
         pass
 
+    install_hint = (
+        "displays install automatically"
+        if prefs["autoInstall"]
+        else "waiting for display confirmation"
+    )
     print(
         f"[worker] update available: {latest['version']} "
-        f"(current {VERSION}); waiting for display confirmation"
+        f"(current {VERSION}); {install_hint}"
     )
 
 

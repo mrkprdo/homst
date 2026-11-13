@@ -56,12 +56,18 @@ def test_update_prefs_validation():
     assert merge_update_prefs({}) == {
         "enabled": True,
         "checkIntervalMinutes": 5,
+        "autoInstall": True,
     }
     prefs = merge_update_prefs({"enabled": False, "checkIntervalMinutes": 15})
     assert prefs == {
         "enabled": False,
         "checkIntervalMinutes": 15,
+        "autoInstall": True,
     }
+
+    # Auto-install is enabled by default and can be turned off explicitly.
+    assert merge_update_prefs({"autoInstall": False})["autoInstall"] is False
+    assert merge_update_prefs({"autoInstall": "yes"})["autoInstall"] is True
 
     # Invalid intervals fall back to the 5-minute default.
     assert merge_update_prefs({"checkIntervalMinutes": 0})["checkIntervalMinutes"] == 5
@@ -71,4 +77,4 @@ def test_update_prefs_validation():
     # Old maintenance-window keys are ignored.
     assert merge_update_prefs(
         {"windowStart": "23:30", "windowEnd": "05:00", "allowMajor": True}
-    ) == {"enabled": True, "checkIntervalMinutes": 5}
+    ) == {"enabled": True, "checkIntervalMinutes": 5, "autoInstall": True}

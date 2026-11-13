@@ -31,7 +31,7 @@ function status(overrides: Record<string, unknown> = {}) {
     previous: { version: null, image: null },
     held: { version: null, reason: null },
     job: null,
-    auto: { enabled: true, checkIntervalMinutes: 5 },
+    auto: { enabled: true, checkIntervalMinutes: 5, autoInstall: false },
     update_prompt: { version: "0.3.0", dismissed: false },
     self_update: { available: true, managed: true, reason: null, mode: "managed" },
     manual: { current: "", stable: "" },
@@ -256,6 +256,44 @@ describe("UpdatePrompt", () => {
         writable: true,
         value: realLocation,
       })
+      vi.useRealTimers()
+    }
+  })
+
+  it("counts down and installs without another click", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] })
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValueOnce(json(status({
+      auto: { enabled: true, checkIntervalMinutes: 5, autoInstall: true },
+    })))
+    fetchMock.mockResolvedValueOnce(json({
+      id: "job-1",
+      state: "queued",
+      version: "0.3.0",
+      latest: true,
+      message: "Queued",
+      progress: { percent: 0, bytes: 0, total: 0 },
+      error: null,
+      from_version: "0.2.0",
+      to_version: "0.3.0",
+      started_at: "2026-10-19T12:00:00Z",
+      finished_at: null,
+    }))
+
+    try {
+      const wrapper = mount(UpdatePrompt, { global })
+      await flushPromises()
+      expect(wrapper.text()).toContain("Installing automatically in")
+      expect(wrapper.text()).toContain("1:00")
+
+      await vi.advanceTimersByTimeAsync(60_000)
+      await flushPromises()
+
+      const call = fetchMock.mock.calls.find((item) => String(item[0]).includes("/system/install"))
+      expect(call).toBeTruthy()
+      expect(wrapper.text()).toContain("Installing HOMST 0.3.0")
+      wrapper.unmount()
+    } finally {
       vi.useRealTimers()
     }
   })
