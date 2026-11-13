@@ -16,6 +16,8 @@ export interface WeatherData {
   location: string
   lat: number
   lon: number
+  /** Open-Meteo's day/night flag; absent on older cached payloads. */
+  isDay?: boolean
 }
 
 const weather = ref<WeatherData | null>(null)
@@ -84,7 +86,7 @@ async function fetchWeather(lat: number, lon: number, location: string, retried 
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lon.toFixed(4),
-    current: "temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m",
+    current: "temperature_2m,apparent_temperature,weather_code,is_day,relative_humidity_2m,wind_speed_10m",
     daily: "temperature_2m_max,temperature_2m_min,weather_code",
     wind_speed_unit: "kmh",
     timezone: "auto",
@@ -107,6 +109,7 @@ async function fetchWeather(lat: number, lon: number, location: string, retried 
     high: Math.round(data.daily.temperature_2m_max[0]),
     low: Math.round(data.daily.temperature_2m_min[0]),
     code: data.current.weather_code,
+    isDay: data.current.is_day !== 0,
     humidity: Math.round(data.current.relative_humidity_2m),
     windSpeed: Math.round(data.current.wind_speed_10m),
     location,
@@ -201,7 +204,7 @@ const WMO_DESCRIPTION: Record<number, string> = {
   77: "Snow grains",
   80: "Rain showers", 81: "Rain showers", 82: "Heavy rain showers",
   85: "Snow showers", 86: "Heavy snow showers",
-  95: "Thunderstorm", 96: "Thunderstorm", 99: "Thunderstorm",
+  95: "Thunderstorm", 96: "Thunderstorm with hail", 99: "Thunderstorm with hail",
 }
 
 function weatherLabel(code: number): string {

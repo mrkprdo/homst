@@ -13,12 +13,13 @@ import type { Event as CalendarEvent } from "@/composables/useEvents"
 import type { Task } from "@/composables/useTasks"
 import { memberColorHex, type MemberColor } from "@/types/household"
 import { householdApi } from "@/api/household"
-import { PhArrowRight, PhCircle, PhCheckCircle, PhClock, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhCloud, PhCloudRain, PhCloudSnow, PhCloudFog, PhLightning, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
+import { PhArrowRight, PhCircle, PhCheckCircle, PhClock, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
 import CameraCard from "@/components/home/CameraCard.vue"
 import TemperatureCard from "@/components/home/TemperatureCard.vue"
+import WeatherScene from "@/components/home/WeatherScene.vue"
 import { animate, stagger, springs, ease } from "@/lib/motion"
 import { syncVinyl } from "@/lib/vinyl"
 import {
@@ -556,20 +557,6 @@ function dayEventTooltip(day: MiniCalendarDay): string | undefined {
   return `${base}\n${lines.join("\n")}`
 }
 
-const ICON_MAP: Record<string, any> = {
-  PhSun, PhCloud, PhCloudRain, PhCloudSnow, PhCloudFog, PhLightning,
-}
-
-function weatherIcon(code: number): any {
-  if (code === 0) return PhSun
-  if (code <= 2) return PhCloud
-  if (code <= 48) return PhCloudFog
-  if (code <= 67) return PhCloudRain
-  if (code <= 77) return PhCloudSnow
-  if (code <= 86) return PhCloudRain
-  return PhLightning
-}
-
 // ── Todos ─────────────────────────────────────────────────────────────────────
 const homeTodos = computed(() => todos.value.slice(0, 8))
 const homeDoing = computed(() => doing.value.slice(0, 3))
@@ -673,18 +660,51 @@ const currentPhotoIndex = computed(() => {
   const n = activePhotos.value.length
   return n > 0 ? Math.floor(slideshowNow.value / PHOTO_INTERVAL_MS) % n : 0
 })
-let photoTimer: ReturnType<typeof setInterval>
+const currentPhoto = computed(() => activePhotos.value[currentPhotoIndex.value] ?? null)
 
-// Keep Image objects alive so browser cache stays warm across transitions
-const _preloadedImages: HTMLImageElement[] = []
-watch(activePhotos, (photos) => {
-  _preloadedImages.length = 0
-  for (const p of photos) {
+interface PhotoSlide {
+  key: number
+  url: string
+  /** Animate in over the frame below; the first frame appears immediately. */
+  dissolving: boolean
+}
+
+let photoSlideSeq = 0
+const photoSlides = ref<PhotoSlide[]>([])
+
+// Keep the outgoing frame on screen while the incoming one dissolves in on top
+// of it. Fading both elements at once would dip through the card background
+// halfway through and make the photo visibly flash instead of cross-dissolve.
+watch(() => currentPhoto.value?.url ?? null, (url) => {
+  if (!url) {
+    photoSlides.value = []
+    return
+  }
+  photoSlides.value = [
+    ...photoSlides.value.slice(-1),
+    { key: ++photoSlideSeq, url, dissolving: photoSlides.value.length > 0 },
+  ]
+}, { immediate: true })
+
+// Warm the next couple of frames so a dissolve starts on a decoded image rather
+// than waiting on the network. The service worker keeps photos on disk across
+// reloads (see vite.config.ts), so a warm kiosk downloads nothing here.
+const PHOTO_PRELOAD_AHEAD = 2
+let preloadedPhotos: HTMLImageElement[] = []
+watch([currentPhotoIndex, activePhotos], () => {
+  preloadedPhotos = []
+  const photos = activePhotos.value
+  if (!photos.length) return
+  for (let step = 1; step <= PHOTO_PRELOAD_AHEAD; step++) {
+    const url = photos[(currentPhotoIndex.value + step) % photos.length]?.url
+    if (!url) continue
     const img = new Image()
-    img.src = p.url
-    _preloadedImages.push(img)
+    img.src = url
+    preloadedPhotos.push(img)
   }
 }, { immediate: true })
+
+let photoTimer: ReturnType<typeof setInterval>
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Drag / Resize — window-level listeners, no pointer capture needed
@@ -1035,6 +1055,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         :class="{ 'is-dragging': draggingId === 'weather' }"
         :style="{ ...widgetStyle(getWidget('weather')!), '--wobble-delay': '120ms' }">
         <UiCard class="home-block weather-card" :padding="false">
+          <WeatherScene v-if="weather" :code="weather.code" :is-day="weather.isDay" />
           <div class="block-header">
             <span class="block-title"><PhSun :size="18" /><span class="block-title-text">Weather</span></span>
             <span v-if="weather?.location" class="weather-location-header">{{ weather.location }}</span>
@@ -1047,9 +1068,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
           </div>
           <div v-else-if="weather" class="weather-body">
             <div class="weather-primary">
-              <span class="weather-icon-plate" aria-hidden="true">
-                <component :is="weatherIcon(weather.code)" class="weather-icon" :size="52" weight="fill" />
-              </span>
               <div class="weather-temps">
                 <span class="weather-temp">{{ weather.temp }}°</span>
                 <span class="weather-hilo">
@@ -1202,9 +1220,13 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
             <span class="block-title"><PhImage :size="18" /><span class="block-title-text">Photos</span></span>
           </div>
           <div v-if="activePhotos.length" class="photos-body">
-            <Transition name="photo-fade">
-              <img :key="currentPhotoIndex" :src="activePhotos[currentPhotoIndex]?.url" class="photos-img" />
-            </Transition>
+            <img
+              v-for="slide in photoSlides"
+              :key="slide.key"
+              :src="slide.url"
+              class="photos-img"
+              :class="{ 'photos-img--dissolve': slide.dissolving }"
+            />
           </div>
           <UiEmptyState v-else class="widget-empty" message="No photos selected">
             <template #icon><PhImage :size="28" /></template>
@@ -1661,13 +1683,16 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   inset: 0;
 }
 
-.photo-fade-enter-active,
-.photo-fade-leave-active {
-  transition: opacity 0.8s ease;
+/* Incoming frames dissolve over the previous one, which stays fully opaque
+   underneath. Deliberately slow (2s on a 5s rotation) so the slideshow reads as
+   calm rather than a hard cut. The global low-power rules shorten this. */
+.photos-img--dissolve {
+  animation: photo-dissolve 2s ease-in-out both;
 }
-.photo-fade-enter-from,
-.photo-fade-leave-to {
-  opacity: 0;
+
+@keyframes photo-dissolve {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ── Shared widget chrome + size tiers ──────────────────────────────────────── */
@@ -1958,6 +1983,14 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 /* ── Weather ──────────────────────────────────────────────────────────────────── */
 .weather-card {
   --hero-tint: var(--color-info);
+  position: relative;
+}
+
+/* The animated scene is the card surface; the readout stays above it. */
+.weather-card > .block-header,
+.weather-card > .weather-body {
+  position: relative;
+  z-index: 1;
 }
 
 .weather-location-header {
@@ -2000,27 +2033,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   gap: clamp(8px, 2.4cqw, var(--space-4));
   max-width: 100%;
   min-height: 0;
-}
-
-/* A tinted plate gives the condition icon its own weather field. */
-.weather-icon-plate {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: clamp(40px, 22cqh, 96px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--hero-tint) 24%, transparent), transparent 62%),
-    color-mix(in srgb, var(--hero-tint) 10%, var(--color-bgSurface));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hero-tint) 28%, transparent);
-}
-
-.weather-icon {
-  color: var(--color-info);
-  flex-shrink: 0;
-  width: clamp(24px, 14cqh, 56px);
-  height: auto;
 }
 
 .weather-temps {
@@ -2210,14 +2222,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 @container w (max-height: 7.5em) {
   .weather-feels {
     display: none;
-  }
-
-  .weather-icon-plate {
-    width: clamp(34px, 20cqh, 64px);
-  }
-
-  .weather-icon {
-    width: clamp(20px, 12cqh, 38px);
   }
 
   .weather-temp {

@@ -110,17 +110,46 @@ describe("HomeView", () => {
       // Advance 5000ms → photoTimer (500ms interval) updates slideshowNow → floor((baseMs+5000)/5000)%3 === 1 → /p2.jpg
       await vi.advanceTimersByTimeAsync(5000)
       await nextTick()
-      expect(wrapper.findAll(".photos-img").at(-1)?.attributes("src")).toBe("/p2.jpg")
+      const slides = wrapper.findAll(".photos-img")
+      expect(slides.at(-1)?.attributes("src")).toBe("/p2.jpg")
+      // The outgoing photo stays underneath so the new one dissolves over it
+      // instead of both fading against the card background.
+      expect(slides.length).toBe(2)
+      expect(slides[0]!.attributes("src")).toBe("/p1.jpg")
+      expect(slides[0]!.classes()).not.toContain("photos-img--dissolve")
+      expect(slides[1]!.classes()).toContain("photos-img--dissolve")
 
-      // Weather codes coverage (0, 2, 45, 61, 71, 80, 95)
-      for (const code of [0, 2, 45, 61, 71, 80, 95]) {
+      // Every WMO branch gets its own scene treatment, including the splits
+      // that the old single-glyph map collapsed (freezing, showers, hail,
+      // overcast, and the calm fallback for unknown codes).
+      const weatherCases: [number, boolean, ...string[]][] = [
+        [0, true, "is-clear"],
+        [1, true, "is-partly"],
+        [3, true, "is-cloudy"],
+        [45, true, "is-fog"],
+        [53, true, "is-drizzle"],
+        [61, true, "is-rain"],
+        [66, true, "is-rain", "is-freezing"],
+        [71, true, "is-snow"],
+        [77, true, "is-snow"],
+        [80, true, "is-rain", "is-showers"],
+        [85, true, "is-snow", "is-showers"],
+        [95, true, "is-storm"],
+        [96, true, "is-storm", "is-hail"],
+        [9999, true, "is-cloudy"],
+        [0, false, "is-clear", "is-night"],
+      ]
+      for (const [code, isDay, ...classes] of weatherCases) {
         w.weather.value = {
-          temp: 20, feelsLike: 19, high: 24, low: 12, code,
+          temp: 20, feelsLike: 19, high: 24, low: 12, code, isDay,
           humidity: 50, windSpeed: 10, location: "City", lat: 43.65, lon: -79.38,
         }
         w.loading.value = false
         w.error.value = null
         await nextTick()
+        const scene = wrapper.find(".weather-scene")
+        expect(scene.exists()).toBe(true)
+        expect(scene.classes()).toEqual(expect.arrayContaining(classes))
       }
       expect(wrapper.text()).toContain("City")
 
