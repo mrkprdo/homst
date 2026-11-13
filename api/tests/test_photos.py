@@ -114,6 +114,25 @@ async def test_upload_rejects_gif(client):
 
 
 @pytest.mark.asyncio
+async def test_uploaded_photo_is_served_with_a_long_browser_cache(client):
+    resp = await client.post(
+        "/api/v1/photos", files={"file": ("cached.jpg", _make_image((20, 20)), "image/jpeg")}
+    )
+    assert resp.status_code == 201
+    photo = resp.json()
+    path = _stored_path(photo["url"])
+    try:
+        served = await client.get(photo["url"])
+        assert served.status_code == 200
+        # Filenames are UUIDs, so the bytes never change: the client may reuse
+        # its copy for a week without revalidating.
+        assert served.headers["cache-control"] == "public, max-age=604800"
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+
+@pytest.mark.asyncio
 async def test_upload_derives_extension_from_content_not_filename(client):
     resp = await client.post(
         "/api/v1/photos",

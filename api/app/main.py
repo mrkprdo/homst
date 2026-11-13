@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import Response
 
 from app.camera import shutdown_camera_stream
 from app.config import settings
@@ -232,8 +233,26 @@ app.include_router(push_router, prefix="/api/v1", tags=["push"])
 app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
 
 # ── Static files (photo uploads) ──
+class _PhotoStaticFiles(StaticFiles):
+    """Serve uploads with a long-lived browser cache.
+
+    Filenames are UUIDs generated on upload, so the bytes behind a URL never
+    change; a cached copy is always correct. The 7-day TTL mirrors the
+    service-worker cache (web/vite.config.ts) and only bounds how long
+    deleted photos may linger in browser caches.
+    """
+
+    CACHE_CONTROL = "public, max-age=604800"
+
+    async def get_response(self, path: str, scope) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            response.headers["Cache-Control"] = self.CACHE_CONTROL
+        return response
+
+
 os.makedirs("uploads/photos", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/uploads", _PhotoStaticFiles(directory="uploads"), name="uploads")
 
 
 @app.get("/api/health")
