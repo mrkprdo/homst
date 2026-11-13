@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { mount, flushPromises } from "@vue/test-utils"
 import { nextTick } from "vue"
 import LyricsOverlay from "@/components/shared/LyricsOverlay.vue"
@@ -42,8 +42,24 @@ async function mountWithLyrics(syncedLyrics: string | null = SYNCED) {
   return wrapper
 }
 
+function currentLine(wrapper: Awaited<ReturnType<typeof mountWithLyrics>>): string {
+  return wrapper.findAll(".lyric").at(-1)?.text() ?? ""
+}
+
+function nextCue(wrapper: Awaited<ReturnType<typeof mountWithLyrics>>): string {
+  return wrapper.findAll(".lyrics-next__line").at(-1)?.text() ?? ""
+}
+
 beforeEach(() => {
   currentTrack.value = null
+})
+
+// Shared module state: leave no track or pending effect behind for the next
+// test, or a late watcher tick can steal that test's mocked fetch response.
+afterEach(async () => {
+  currentTrack.value = null
+  await nextTick()
+  await flushPromises()
 })
 
 describe("LyricsOverlay", () => {
@@ -54,43 +70,42 @@ describe("LyricsOverlay", () => {
     wrapper.unmount()
   })
 
-  it("shows the current line and the next one, then scrolls on", async () => {
+  it("anchors the sung line and shows only the next one as a cue", async () => {
     const wrapper = await mountWithLyrics()
-    const trackEl = wrapper.find(".lyrics-track").element
 
-    // The sheet holds every line; the window reveals two at a time.
-    expect(wrapper.findAll(".lyric-text").map(n => n.text())).toEqual([
-      "Listen to the wind",
-      "Watch the sun rise",
-      "Run in the shadows",
-    ])
+    expect(wrapper.findAll(".lyric")).toHaveLength(1)
+    expect(currentLine(wrapper)).toBe("Listen to the wind")
+    expect(nextCue(wrapper)).toBe("Watch the sun rise")
 
-    // Intro: the opening lines are a dim preview, nothing is highlighted.
-    expect(wrapper.find(".lyric--now").exists()).toBe(false)
-    expect(wrapper.find(".lyrics-track").attributes("style")).toContain("var(--lyric-row) * 0")
+    // Intro: the opening line waits dimmed instead of claiming to be sung.
+    expect(wrapper.find(".lyric--waiting").exists()).toBe(true)
 
     currentTrack.value = track({ progressMs: 1_500 })
     await settle()
-    expect(wrapper.find(".lyric--now").text()).toBe("Listen to the wind")
-    expect(wrapper.find(".lyrics-track").attributes("style")).toContain("var(--lyric-row) * 0")
+    expect(currentLine(wrapper)).toBe("Listen to the wind")
+    expect(wrapper.find(".lyric--waiting").exists()).toBe(false)
+    expect(nextCue(wrapper)).toBe("Watch the sun rise")
 
     currentTrack.value = track({ progressMs: 6_000 })
     await settle()
-    expect(wrapper.find(".lyric--now").text()).toBe("Watch the sun rise")
-    expect(wrapper.find(".lyrics-track").attributes("style")).toContain("var(--lyric-row) * -1")
-    // The sheet must survive a poll, otherwise the slide restarts as a blink.
-    expect(wrapper.find(".lyrics-track").element).toBe(trackEl)
+    expect(currentLine(wrapper)).toBe("Watch the sun rise")
+    expect(nextCue(wrapper)).toBe("Run in the shadows")
+
+    // The reading position never turns into a scrolled sheet.
+    expect(wrapper.find(".lyrics-track").exists()).toBe(false)
+    expect(wrapper.find("[style*='translate3d(0, calc']").exists()).toBe(false)
 
     wrapper.unmount()
   })
 
-  it("scrolls all the way to the last line", async () => {
+  it("keeps following to the last line and then drops the cue", async () => {
     const wrapper = await mountWithLyrics()
 
     currentTrack.value = track({ progressMs: 20_000 })
     await settle()
-    expect(wrapper.find(".lyric--now").text()).toBe("Run in the shadows")
-    expect(wrapper.find(".lyrics-track").attributes("style")).toContain("var(--lyric-row) * -2")
+    expect(currentLine(wrapper)).toBe("Run in the shadows")
+    expect(currentLine(wrapper)).toBe("Run in the shadows")
+    expect(wrapper.find(".lyrics-next__line").exists()).toBe(false)
 
     wrapper.unmount()
   })
@@ -112,7 +127,7 @@ describe("LyricsOverlay", () => {
 
     currentTrack.value = track({ progressMs: 5_500, isPlaying: true })
     await settle()
-    expect(wrapper.find(".lyric--now").text()).toBe("Watch the sun rise")
+    expect(currentLine(wrapper)).toBe("Watch the sun rise")
 
     wrapper.unmount()
   })

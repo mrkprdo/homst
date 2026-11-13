@@ -77,6 +77,8 @@ const autoSunset = ref<string | null>(null)
 const hudEnabled = ref(true)
 /** Now-playing extras: the lyrics overlay, the full-screen cover, its spin, and the card's spin. */
 const lyricsEnabled = ref(true)
+/** Lyric delay in milliseconds: negative starts lines earlier, positive later. */
+const lyricsOffsetMs = ref(0)
 const musicBackground = ref(true)
 const musicBackgroundSpin = ref(false)
 const musicCardSpin = ref(true)
@@ -196,6 +198,12 @@ function updateLyricsEnabled(on: boolean) {
   lyricsEnabled.value = on
 }
 
+/** Clamp to the ±2s range the settings stepper exposes, in 50 ms steps. */
+function updateLyricsOffset(ms: number) {
+  const value = Number.isFinite(ms) ? ms : 0
+  lyricsOffsetMs.value = Math.round(Math.max(-2000, Math.min(2000, value)) / 50) * 50
+}
+
 function updateMusicBackground(on: boolean) {
   musicBackground.value = on
 }
@@ -267,6 +275,7 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
     }
     if (s.music) {
       if (s.music.lyrics !== undefined) updateLyricsEnabled(s.music.lyrics !== false)
+      if (s.music.lyricsOffsetMs !== undefined) updateLyricsOffset(Number(s.music.lyricsOffsetMs))
       if (s.music.background !== undefined) updateMusicBackground(s.music.background !== false)
       if (s.music.backgroundSpin !== undefined) updateMusicBackgroundSpin(s.music.backgroundSpin !== false)
       if (s.music.cardSpin !== undefined) updateMusicCardSpin(s.music.cardSpin !== false)
@@ -313,7 +322,7 @@ export async function refreshFromServer() {
 export function useSettings() {
   return {
     theme, themePreset, accentColor, fontSize, warm, hudEnabled, houseName, photos,
-    lyricsEnabled, musicBackground, musicBackgroundSpin, musicCardSpin,
+    lyricsEnabled, lyricsOffsetMs, musicBackground, musicBackgroundSpin, musicCardSpin,
     carouselEnabled, returnHomeEnabled,
     cameraUrl, cameraUsername, cameraPasswordSet, cameraRotation, cameraStreamPath,
     defaultReminderMinutes,
@@ -321,7 +330,7 @@ export function useSettings() {
     accentPalette, accentSets, fontSizeScale,
     applyAccentToDOM, applyFontSizeToDOM,
     updateTheme, updateThemePreset, updateAccentColor, updateFontSize, updateWarm, updateHudEnabled,
-    updateLyricsEnabled, updateMusicBackground, updateMusicBackgroundSpin, updateMusicCardSpin,
+    updateLyricsEnabled, updateLyricsOffset, updateMusicBackground, updateMusicBackgroundSpin, updateMusicCardSpin,
     updateCarouselEnabled, updateReturnHomeEnabled,
     updateHouseName, updateDefaultReminderMinutes, applyCameraSettings,
     applyHouseholdSettings, refreshFromServer, refreshPhotos,
@@ -339,6 +348,7 @@ export function _resetSettings() {
   autoSunset.value = null
   hudEnabled.value = true
   lyricsEnabled.value = true
+  lyricsOffsetMs.value = 0
   musicBackground.value = true
   musicBackgroundSpin.value = false
   musicCardSpin.value = true

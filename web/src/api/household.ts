@@ -49,6 +49,8 @@ export interface CameraSettings {
 /** Now-playing display choices, shared by every screen in the household. */
 export interface MusicPreferences {
   lyrics?: boolean
+  /** Lyric delay in milliseconds: negative starts lines earlier, positive later. */
+  lyricsOffsetMs?: number
   background?: boolean
   backgroundSpin?: boolean
   cardSpin?: boolean

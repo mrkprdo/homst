@@ -85,13 +85,48 @@ async function load(track: SpotifyTrack | null | undefined): Promise<void> {
 }
 
 /**
+ * The Spotify poll refreshes `progressMs` roughly once a second, so reading
+ * the raw value switches each line up to a second late. Anchor the last known
+ * position to a wall clock and interpolate while playing; the overlay then
+ * changes lines on the timestamp rather than on the next poll.
+ */
+const clock = ref(Date.now())
+const anchorProgressMs = ref(0)
+const anchorAt = ref(Date.now())
+let clockTimer: ReturnType<typeof setInterval> | null = null
+
+/** Spotify's reported position trails real playback slightly; a small lead
+ * puts the line change on the beat instead of just after it. */
+const LINE_LEAD_MS = 120
+
+function startClock(): void {
+  if (clockTimer !== null) return
+  clock.value = Date.now()
+  clockTimer = setInterval(() => { clock.value = Date.now() }, 100)
+}
+
+function stopClock(): void {
+  if (clockTimer === null) return
+  clearInterval(clockTimer)
+  clockTimer = null
+}
+
+/** Record a known playback position at the moment it was observed. */
+function anchor(track: SpotifyTrack | null | undefined): void {
+  if (!track) return
+  anchorProgressMs.value = track.progressMs
+  anchorAt.value = Date.now()
+  clock.value = anchorAt.value
+}
+
+/**
  * Follow the currently playing track and expose its timed lines. Called from
- * the overlay's setup, so the watcher stops with that component.
+ * the overlay's setup, so the watchers stop with that component.
  */
 function startLyrics(): void {
   const { currentTrack } = useSpotify()
   const { lyricsEnabled } = useSettings()
-  const stop = watch(
+  const stopLoad = watch(
     // Separate sources, not one getter returning an array: the array would be
     // a fresh reference on every check, so Vue would treat every Spotify poll
     // as a track change and blank the overlay (visible as flicker).
@@ -99,14 +134,52 @@ function startLyrics(): void {
     ([, enabled]) => { void load(enabled ? currentTrack.value : null) },
     { immediate: true },
   )
-  onScopeDispose(stop)
+  // Play, pause and track changes re-anchor the interpolated position. While
+  // paused the elapsed time would include the pause, and after a seek it would
+  // count from the old spot, so neither can be carried across.
+  const stopPlayback = watch(
+    () => [currentTrack.value?.id, currentTrack.value?.isPlaying] as const,
+    ([, playing]) => {
+      if (!playing) {
+        stopClock()
+        return
+      }
+      anchor(currentTrack.value)
+      startClock()
+    },
+    { immediate: true, flush: "sync" },
+  )
+  const stopProgress = watch(
+    () => currentTrack.value?.progressMs,
+    () => anchor(currentTrack.value),
+    { flush: "sync" },
+  )
+  onScopeDispose(() => {
+    stopLoad()
+    stopPlayback()
+    stopProgress()
+    stopClock()
+  })
 }
 
 /** Index of the line playing right now, or -1 during intros and breaks. */
 const activeIndex = computed(() => {
   const track = useSpotify().currentTrack.value
   if (!track || !lines.value.length) return -1
-  return activeLineIndex(lines.value, track.progressMs)
+
+  // Reading `clock` makes this recompute between Spotify samples.
+  const elapsed = track.isPlaying ? Math.max(0, clock.value - anchorAt.value) : 0
+  // The household offset is a delay: positive holds the line back, negative
+  // starts it earlier.
+  const offsetMs = useSettings().lyricsOffsetMs.value
+  const positionMs = Math.max(
+    0,
+    Math.min(
+      anchorProgressMs.value + elapsed + LINE_LEAD_MS - offsetMs,
+      track.durationMs,
+    ),
+  )
+  return activeLineIndex(lines.value, positionMs)
 })
 
 export function useLyrics() {
@@ -117,4 +190,8 @@ export function _resetLyrics() {
   cache.clear()
   lines.value = []
   sequence++
+  stopClock()
+  anchorProgressMs.value = 0
+  anchorAt.value = Date.now()
+  clock.value = anchorAt.value
 }

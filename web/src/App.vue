@@ -442,7 +442,7 @@ function panelLeave(el: Element, done: () => void) {
       <!-- Reminder heads-up display (kiosk) -->
       <HudAlert :display="true" />
 
-      <!-- Two lines of synced lyrics while Spotify plays -->
+      <!-- The sung lyric line with a quiet look-ahead to the next one -->
       <LyricsOverlay />
 
       <!-- New-version prompt (display clients only) -->

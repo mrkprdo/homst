@@ -128,10 +128,50 @@ describe("SettingsPanel", () => {
     const patch = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH").at(-1)!
     expect(JSON.parse((patch[1] as RequestInit).body as string).settings.music).toEqual({
       lyrics: false,
+      lyricsOffsetMs: 0,
       background: false,
       backgroundSpin: false,
       cardSpin: false,
     })
+  })
+
+  it("adjusts and resets the lyrics delay in 50 ms steps", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    const settings = useSettings()
+
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+
+    const row = wrapper.findAll(".setting-row").find((r) => r.text().includes("Lyrics delay"))!
+    const earlier = row.findAll(".lyric-offset__step")[0]!
+    const later = row.findAll(".lyric-offset__step")[1]!
+
+    expect(settings.lyricsOffsetMs.value).toBe(0)
+    expect(row.text()).toContain("0.00 s")
+
+    await later.trigger("click")
+    expect(settings.lyricsOffsetMs.value).toBe(50)
+    expect(row.text()).toContain("+0.05 s")
+
+    await earlier.trigger("click")
+    await earlier.trigger("click")
+    expect(settings.lyricsOffsetMs.value).toBe(-50)
+    expect(row.text()).toContain("−0.05 s")
+
+    // The save is debounced while the arrows are tapped.
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    const patch = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH").at(-1)!
+    expect(JSON.parse((patch[1] as RequestInit).body as string).settings.music.lyricsOffsetMs).toBe(-50)
+
+    await row.find(".lyric-offset__reset").trigger("click")
+    expect(settings.lyricsOffsetMs.value).toBe(0)
+    expect(row.text()).toContain("0.00 s")
+
+    // The household setting is clamped to the ±2s range.
+    settings.updateLyricsOffset(9_999)
+    expect(settings.lyricsOffsetMs.value).toBe(2000)
+    settings.updateLyricsOffset(-9_999)
+    expect(settings.lyricsOffsetMs.value).toBe(-2000)
   })
 
   it("toggles screen rotation and return-to-home and saves them together", async () => {

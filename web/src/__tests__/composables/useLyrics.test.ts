@@ -77,6 +77,45 @@ describe("useLyrics", () => {
     expect(activeIndex.value).toBe(2)
   })
 
+  it("switches on the timestamp between the once-a-second Spotify samples", async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(fetch).mockResolvedValueOnce(json([record()]))
+      currentTrack.value = track({ progressMs: 2_800 })
+      await nextTick()
+      for (let i = 0; i < 12; i++) await Promise.resolve()
+
+      expect(lines.value).toHaveLength(3)
+      expect(activeIndex.value).toBe(0)
+
+      // The next sample is a second away; the local clock should cross the
+      // 3s line before Spotify reports again.
+      vi.advanceTimersByTime(250)
+      await nextTick()
+      expect(activeIndex.value).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("applies the household delay: negative starts early, positive runs late", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(json([record()]))
+    await play(track({ progressMs: 2_900 }))
+
+    // 2.9s plus the built-in 120ms lead is already past the 3s line.
+    expect(activeIndex.value).toBe(1)
+
+    const { updateLyricsOffset } = useSettings()
+    updateLyricsOffset(200)
+    expect(activeIndex.value).toBe(0)
+
+    updateLyricsOffset(-200)
+    expect(activeIndex.value).toBe(1)
+
+    updateLyricsOffset(0)
+    expect(activeIndex.value).toBe(1)
+  })
+
   it("prefers the record closest in length to the Spotify track", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json([
       record({ duration: 288, syncedLyrics: "[00:01.00]radio edit" }),

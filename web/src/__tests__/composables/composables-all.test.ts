@@ -229,7 +229,7 @@ describe("useSettings", () => {
       autoSunset: "2026-10-21T22:26:00+00:00",
       houseName: "Cedar",
       notifications: { hud: false, defaultReminderMinutes: 30 },
-      music: { lyrics: false, background: false, backgroundSpin: false, cardSpin: false },
+      music: { lyrics: false, lyricsOffsetMs: -350, background: false, backgroundSpin: false, cardSpin: false },
       screens: { carousel: true, returnHome: false },
     })
 
@@ -244,6 +244,7 @@ describe("useSettings", () => {
     expect(s.houseName.value).toBe("Cedar")
     expect(s.hudEnabled.value).toBe(false)
     expect(s.lyricsEnabled.value).toBe(false)
+    expect(s.lyricsOffsetMs.value).toBe(-350)
     expect(s.musicBackground.value).toBe(false)
     expect(s.musicBackgroundSpin.value).toBe(false)
     expect(s.musicCardSpin.value).toBe(false)

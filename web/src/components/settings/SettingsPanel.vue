@@ -30,6 +30,8 @@ import {
   PhDeviceMobile,
   PhDownloadSimple,
   PhWarningCircle,
+  PhCaretLeft,
+  PhCaretRight,
 } from "@phosphor-icons/vue"
 import PageHeader from "@/components/ui/PageHeader.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
@@ -307,16 +309,51 @@ const musicSetters = {
   cardSpin: settings.updateMusicCardSpin,
 } as const
 
+/** Every music PATCH carries the whole block, so none of the choices drop out. */
+function musicPayload() {
+  return {
+    lyrics: settings.lyricsEnabled.value,
+    lyricsOffsetMs: settings.lyricsOffsetMs.value,
+    background: settings.musicBackground.value,
+    backgroundSpin: settings.musicBackgroundSpin.value,
+    cardSpin: settings.musicCardSpin.value,
+  }
+}
+
+let lyricsOffsetSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function saveMusic() {
+  if (lyricsOffsetSaveTimer !== null) {
+    clearTimeout(lyricsOffsetSaveTimer)
+    lyricsOffsetSaveTimer = null
+  }
+  householdApi.updateSettings({ music: musicPayload() }).catch(() => {})
+}
+
 function onMusicToggle(key: keyof typeof musicSetters, value: boolean) {
   musicSetters[key](!!value)
-  householdApi.updateSettings({
-    music: {
-      lyrics: settings.lyricsEnabled.value,
-      background: settings.musicBackground.value,
-      backgroundSpin: settings.musicBackgroundSpin.value,
-      cardSpin: settings.musicCardSpin.value,
-    },
-  }).catch(() => {})
+  saveMusic()
+}
+
+const lyricsOffsetLabel = computed(() => {
+  const seconds = settings.lyricsOffsetMs.value / 1000
+  const sign = seconds > 0 ? "+" : seconds < 0 ? "−" : ""
+  return `${sign}${Math.abs(seconds).toFixed(2)} s`
+})
+
+/** Nudge the delay in 50 ms steps; the delay is persisted once the tapping stops. */
+function onLyricsOffset(deltaMs: number) {
+  settings.updateLyricsOffset(settings.lyricsOffsetMs.value + deltaMs)
+  if (lyricsOffsetSaveTimer !== null) clearTimeout(lyricsOffsetSaveTimer)
+  lyricsOffsetSaveTimer = setTimeout(() => {
+    lyricsOffsetSaveTimer = null
+    householdApi.updateSettings({ music: musicPayload() }).catch(() => {})
+  }, 350)
+}
+
+function resetLyricsOffset() {
+  settings.updateLyricsOffset(0)
+  saveMusic()
 }
 
 /** Kiosk screen choices are household-wide, like the music options. */
@@ -710,12 +747,53 @@ async function sendTest() {
           <div class="setting-row">
             <div class="row-copy">
               <p class="row-title">Synced lyrics</p>
-              <p class="row-desc">Two lines of the song scroll along the bottom of the screen</p>
+              <p class="row-desc">The sung line and the next one along the bottom of the screen</p>
             </div>
             <UiToggle
               :model-value="settings.lyricsEnabled.value"
               @update:model-value="(v: boolean) => onMusicToggle('lyrics', v)"
             />
+          </div>
+
+          <div
+            v-if="settings.lyricsEnabled.value"
+            class="setting-row setting-row--nested setting-row--sync"
+          >
+            <div class="row-copy">
+              <p class="row-title">Lyrics delay</p>
+              <p class="row-desc">Left starts the line earlier, right delays it. Up to 2 seconds.</p>
+            </div>
+            <div class="lyric-offset" role="group" aria-label="Lyrics timing">
+              <button
+                class="lyric-offset__step"
+                type="button"
+                title="Earlier"
+                aria-label="Make lyrics earlier"
+                :disabled="settings.lyricsOffsetMs.value <= -2000"
+                @click="onLyricsOffset(-50)"
+              >
+                <PhCaretLeft :size="16" weight="bold" aria-hidden="true" />
+              </button>
+              <span class="lyric-offset__value" aria-live="polite">{{ lyricsOffsetLabel }}</span>
+              <button
+                class="lyric-offset__step"
+                type="button"
+                title="Later"
+                aria-label="Delay lyrics"
+                :disabled="settings.lyricsOffsetMs.value >= 2000"
+                @click="onLyricsOffset(50)"
+              >
+                <PhCaretRight :size="16" weight="bold" aria-hidden="true" />
+              </button>
+              <button
+                v-if="settings.lyricsOffsetMs.value !== 0"
+                class="lyric-offset__reset"
+                type="button"
+                @click="resetLyricsOffset"
+              >
+                Reset
+              </button>
+            </div>
           </div>
 
           <div class="setting-row">
@@ -1356,6 +1434,118 @@ async function sendTest() {
 /* Sub-option of the row above it (the cover spin follows the cover background). */
 .setting-row--nested {
   padding-left: var(--space-6);
+}
+
+/* Lyrics timing: two arrow targets around a fixed-width readout. The visual
+   buttons stay 34px so they sit quietly beside the switches, while ::after
+   gives each one a full 48px fingerprint. */
+.setting-row--sync {
+  flex-wrap: wrap;
+}
+
+.setting-row--sync .row-copy {
+  flex: 1 1 200px;
+}
+
+.lyric-offset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.lyric-offset__step {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  min-width: unset;
+  min-height: unset;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bgSurface);
+  color: var(--color-textPrimary);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast),
+    transform 80ms ease;
+}
+
+.lyric-offset__step::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: var(--radius-full);
+}
+
+.lyric-offset__step:hover {
+  background: var(--color-bgSubtle);
+  border-color: var(--color-borderStrong);
+}
+
+.lyric-offset__step:active {
+  transform: translateY(1px) scale(0.96);
+}
+
+.lyric-offset__step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.lyric-offset__step:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.lyric-offset__value {
+  min-width: 78px;
+  text-align: center;
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-textPrimary);
+}
+
+.lyric-offset__reset {
+  position: relative;
+  margin-left: 4px;
+  min-width: unset;
+  min-height: unset;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-textMuted);
+  font-family: var(--font-family);
+  font-size: var(--text-label-size);
+  cursor: pointer;
+}
+
+.lyric-offset__reset::after {
+  content: "";
+  position: absolute;
+  inset: -10px -4px;
+}
+
+.lyric-offset__reset:hover {
+  color: var(--color-textPrimary);
+  background: var(--color-bgSubtle);
+}
+
+.lyric-offset__reset:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .setting-row--sync .lyric-offset {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 /* ── Camera ── */
