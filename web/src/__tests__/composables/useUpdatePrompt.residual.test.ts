@@ -129,6 +129,20 @@ describe("useUpdatePrompt residual", () => {
     expect(installMock).not.toHaveBeenCalled()
   })
 
+  it("stops a stale tick when the notice is no longer interactive", async () => {
+    statusMock.mockResolvedValueOnce(
+      status({ auto: { enabled: true, checkIntervalMinutes: 5, autoInstall: true } }),
+    )
+    await refreshUpdatePrompt()
+
+    const { installing, countdown } = useUpdatePrompt()
+    expect(countdown.value).toBe(60)
+    installing.value = true
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(countdown.value).toBeNull()
+  })
+
   it("starts the countdown from the stream payload", () => {
     offerUpdatePrompt({ version: "0.3.0", auto_install: true })
     expect(useUpdatePrompt().prompt.value?.version).toBe("0.3.0")
