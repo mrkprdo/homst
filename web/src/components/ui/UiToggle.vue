@@ -25,7 +25,7 @@ function onClick() {
 </script>
 
 <template>
-  <button ref="toggleEl" class="ui-toggle" :class="{ on: modelValue }" role="switch" :aria-checked="modelValue"
+  <button ref="toggleEl" class="ui-toggle compact-control" :class="{ on: modelValue }" role="switch" :aria-checked="modelValue"
     type="button" @click="onClick">
     <span ref="knobEl" class="ui-toggle__knob" :style="{
       transform: `translateX(${modelValue ? '26px' : '0px'})`,
@@ -52,6 +52,15 @@ function onClick() {
 
 .ui-toggle.on {
   background: var(--color-primary);
+}
+
+/* The switch is 30px tall by design, but the row is not: expand the hit area
+   vertically so a finger does not have to land on the visual pill. */
+.ui-toggle::after {
+  content: "";
+  position: absolute;
+  inset: -7px 0;
+  border-radius: var(--radius-full);
 }
 
 .ui-toggle__knob {

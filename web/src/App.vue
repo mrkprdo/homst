@@ -305,9 +305,14 @@ const themeReady = ref(false)
 const themeTransitioning = ref(false)
 let themeTimer: ReturnType<typeof setTimeout>
 const appReady = ref(false)
+// Doherty threshold: never hold the whole shell behind a stalled settings
+// request. The dashboard can paint with defaults, then adopt household
+// settings when they arrive.
+let readyFallback: ReturnType<typeof setTimeout> | null = null
 
 onMounted(() => {
   requestAnimationFrame(() => { themeReady.value = true })
+  readyFallback = setTimeout(() => { appReady.value = true }, 2000)
   // Kicked off here (guarded internally) so the now-playing backdrop works on
   // every panel, not only after the home screen has mounted.
   void initSpotify()
@@ -325,10 +330,21 @@ onMounted(() => {
     })
     .catch(() => {})
     .finally(() => {
+      if (readyFallback !== null) {
+        clearTimeout(readyFallback)
+        readyFallback = null
+      }
       photosApi.list().then(photos => { settings.photos.value = Array.isArray(photos) ? photos : [] }).catch(() => {})
       appReady.value = true
       void openNotificationIntent()
     })
+})
+
+onUnmounted(() => {
+  if (readyFallback !== null) {
+    clearTimeout(readyFallback)
+    readyFallback = null
+  }
 })
 
 watch(isDark, (dark) => {
@@ -360,9 +376,9 @@ watch(() => settings.fontSize.value, (size) => {
 function panelEnter(el: Element, done: () => void) {
   animate(el, {
     opacity: [0, 1],
-    scale: [0.96, 1],
-    translateY: [14, 0],
-    ease: springs.enter,
+    scale: [0.98, 1],
+    translateY: [10, 0],
+    ease: springs.overlay,
     onComplete: done,
   })
 }
@@ -383,8 +399,9 @@ function panelLeave(el: Element, done: () => void) {
   <SpotifyBackdrop v-if="!isOnboarding" />
 
   <!-- App-level loading spinner -->
-  <div v-if="!appReady" class="app-loader">
-    <div class="app-spinner" />
+  <div v-if="!appReady" class="app-loader" role="status" aria-live="polite">
+    <div class="app-spinner" aria-hidden="true" />
+    <p class="app-loader__label">Loading your home…</p>
   </div>
 
   <!-- MOBILE branch -->
@@ -727,9 +744,17 @@ function panelLeave(el: Element, done: () => void) {
   inset: 0;
   z-index: 9999;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-3);
   background: var(--color-bgBase);
+}
+
+.app-loader__label {
+  font-size: var(--text-label-size);
+  letter-spacing: 0.06em;
+  color: var(--color-textSecondary);
 }
 
 .app-spinner {

@@ -27,10 +27,27 @@ body {
   height: 100%;
 }
 
-/* Touch target minimum */
-button, a, [role="button"], .clickable {
+/* Touch target baseline.
+   The wall display is driven by fingers, so 48px is the default box for real
+   controls. `:where()` keeps the specificity at zero: component styles can
+   still resize a control without fighting this rule. */
+:where(button, a, [role="button"], .clickable) {
   min-width: 48px;
   min-height: 48px;
+}
+
+/* For clickable surfaces that are not buttons (rows, tiles, custom roles). */
+.touch-target {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+/* Compact visual control: the caller owns the hit area.
+   Use only for dense chrome where a 48px box would break the composition, and
+   pair it with an expanded `::after` hit area or a larger parent target. */
+.compact-control {
+  min-width: unset;
+  min-height: unset;
 }
 
 /* Theme transition — only fires during the 400ms after a theme toggle */

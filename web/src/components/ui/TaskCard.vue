@@ -13,8 +13,15 @@ const props = defineProps<{
 
 const cardEl = ref<HTMLElement | null>(null)
 
-function onPointerDown() {
+let pressed = false
+
+function onPointerDown(e: PointerEvent) {
   if (props.done || !cardEl.value) return
+  if (e.pointerType === "mouse" && e.button !== 0) return
+  if (typeof e.pointerId === "number") {
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+  }
+  pressed = true
   animate(cardEl.value, {
     scaleX: 1.02,
     scaleY: 0.96,
@@ -25,13 +32,21 @@ function onPointerDown() {
 }
 
 function onPointerUp() {
-  if (!cardEl.value) return
+  if (!pressed || !cardEl.value) return
+  pressed = false
   animate(cardEl.value, {
     scaleX: [1.02, 1],
     scaleY: [0.96, 1],
     translateY: ["4px", "0px"],
     ease: springs.pop,
   })
+}
+
+/** Cards are divs for layout, so keyboard activation is supplied explicitly. */
+function onKeyDown(e: KeyboardEvent) {
+  if (e.key !== "Enter" && e.key !== " ") return
+  e.preventDefault()
+  ;(e.currentTarget as HTMLElement).click()
 }
 </script>
 
@@ -40,9 +55,13 @@ function onPointerUp() {
     ref="cardEl"
     class="task-card"
     :class="[`task-card--${color ?? 'mauve'}`, { 'task-card--done': done }]"
+    role="button"
+    tabindex="0"
     @pointerdown="onPointerDown"
     @pointerup="onPointerUp"
+    @pointercancel="onPointerUp"
     @pointerleave="onPointerUp"
+    @keydown="onKeyDown"
   >
     <div class="task-card__edge" />
     <div class="task-card__body">
@@ -81,6 +100,11 @@ function onPointerUp() {
 
 .task-card:hover:not(.task-card--done) {
   transform: translateY(-2px);
+}
+
+.task-card:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .task-card--peach:hover:not(.task-card--done) { box-shadow: 0 5px 0 0 var(--color-peach-dark), 0 12px 28px -4px var(--shadow-drop), inset 0 2px 6px var(--shadow-shine), inset 0 -2px 5px var(--shadow-inner); }

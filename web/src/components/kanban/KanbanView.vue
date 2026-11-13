@@ -65,7 +65,7 @@ onMounted(() => {
               @click="ui.openDrawer('task-detail', task.id)"
             />
             <div class="card-move-controls">
-              <button class="move-btn" title="Move to Doing" @click.stop="moveTask(task.id, 'doing')">
+              <button class="move-btn compact-control" title="Move to Doing" @click.stop="moveTask(task.id, 'doing')">
                 <PhArrowRight :size="12" />
               </button>
             </div>
@@ -91,10 +91,10 @@ onMounted(() => {
               @click="ui.openDrawer('task-detail', task.id)"
             />
             <div class="card-move-controls">
-              <button class="move-btn" title="Move to To Do" @click.stop="moveTask(task.id, 'todo')">
+              <button class="move-btn compact-control" title="Move to To Do" @click.stop="moveTask(task.id, 'todo')">
                 <PhArrowLeft :size="12" />
               </button>
-              <button class="move-btn" title="Move to Done" @click.stop="moveTask(task.id, 'done')">
+              <button class="move-btn compact-control" title="Move to Done" @click.stop="moveTask(task.id, 'done')">
                 <PhArrowRight :size="12" />
               </button>
             </div>
@@ -120,7 +120,7 @@ onMounted(() => {
               @click="ui.openDrawer('task-detail', task.id)"
             />
             <div class="card-move-controls">
-              <button class="move-btn" title="Move to Doing" @click.stop="moveTask(task.id, 'doing')">
+              <button class="move-btn compact-control" title="Move to Doing" @click.stop="moveTask(task.id, 'doing')">
                 <PhArrowLeft :size="12" />
               </button>
             </div>

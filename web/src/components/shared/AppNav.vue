@@ -42,9 +42,10 @@ onMounted(() => {
       class="nav-logo"
       :class="{ active: ui.activePanel.value === 'home' }"
       aria-label="Home"
+      title="Home"
       @click="ui.setPanel('home')"
     >
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="36" height="36">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="36" height="36" aria-hidden="true">
         <rect width="100" height="100" rx="28" fill="#e0e8e8" />
         <path d="M50 22 L78 46 L72 46 L72 76 L58 76 L58 58 L42 58 L42 76 L28 76 L28 46 L22 46 Z" fill="#586a6a" opacity="0.9" />
         <rect x="43" y="59" width="14" height="17" rx="4" fill="#e0e8e8" />
@@ -60,8 +61,9 @@ onMounted(() => {
       :class="{ active: ui.activePanel.value === item.id }"
       @click="ui.setPanel(item.id)"
       :aria-label="item.label"
+      :title="item.label"
     >
-      <component :is="item.icon" :size="22" />
+      <component :is="item.icon" :size="22" aria-hidden="true" />
     </button>
 
     <!-- Spacer -->
@@ -73,8 +75,9 @@ onMounted(() => {
       :class="{ active: ui.drawer.value.type === 'member-detail' }"
       @click="ui.openDrawer('member-detail')"
       aria-label="Profile"
+      title="Profile"
     >
-      <PhUserCircle :size="22" />
+      <PhUserCircle :size="22" aria-hidden="true" />
     </button>
   </nav>
 </template>
@@ -116,6 +119,10 @@ onMounted(() => {
               box-shadow var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94);
   /* Hidden until stagger reaches this element */
   opacity: 0;
+}
+
+.nav-logo svg {
+  flex-shrink: 0;
 }
 
 .nav-logo:hover svg rect:first-child {

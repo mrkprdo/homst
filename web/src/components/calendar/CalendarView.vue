@@ -102,6 +102,77 @@ function nextMonth() {
 }
 function goToToday() { const n=new Date(); currentMonth.value=n.getMonth(); currentYear.value=n.getFullYear(); selectedDate.value=n }
 function selectDay(day:number) { selectedDate.value = new Date(currentYear.value, currentMonth.value, day) }
+
+/**
+ * Month grid keyboard model: one tab stop (the lens anchor), arrow keys move
+ * the selection by day/week, Page Up/Down by month, Home/End to the week
+ * edges. Cross-month moves update the visible month and keep focus on the
+ * destination cell instead of dropping it back to <body>.
+ */
+const monthGridEl = ref<HTMLElement | null>(null)
+
+function focusMonthDate(date: Date) {
+  nextTick(() => {
+    const key = formatDateInput(date)
+    monthGridEl.value
+      ?.querySelector<HTMLElement>(`.day-cell[data-date="${key}"]`)
+      ?.focus()
+  })
+}
+
+function addMonthsClamped(date: Date, delta: number): Date {
+  const target = new Date(date.getFullYear(), date.getMonth() + delta, 1)
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()
+  target.setDate(Math.min(date.getDate(), lastDay))
+  return target
+}
+
+function selectMonthDate(date: Date) {
+  const changedMonth = date.getMonth() !== currentMonth.value || date.getFullYear() !== currentYear.value
+  if (changedMonth) {
+    monthNavDir.value = date > new Date(currentYear.value, currentMonth.value, 1) ? "forward" : "back"
+    currentMonth.value = date.getMonth()
+    currentYear.value = date.getFullYear()
+    handleNavChange(currentYear.value, currentMonth.value)
+  }
+  selectedDate.value = date
+}
+
+function onMonthCellKeydown(e: KeyboardEvent, date: Date) {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault()
+    selectMonthDate(new Date(date))
+    focusMonthDate(date)
+    return
+  }
+
+  let next: Date
+  switch (e.key) {
+    case "ArrowLeft":  next = new Date(date); next.setDate(next.getDate() - 1); break
+    case "ArrowRight": next = new Date(date); next.setDate(next.getDate() + 1); break
+    case "ArrowUp":    next = new Date(date); next.setDate(next.getDate() - 7); break
+    case "ArrowDown":  next = new Date(date); next.setDate(next.getDate() + 7); break
+    case "Home":       next = new Date(date); next.setDate(next.getDate() - next.getDay()); break
+    case "End":        next = new Date(date); next.setDate(next.getDate() + (6 - next.getDay())); break
+    case "PageUp":     next = addMonthsClamped(date, -1); break
+    case "PageDown":   next = addMonthsClamped(date, 1); break
+    default: return
+  }
+
+  e.preventDefault()
+  selectMonthDate(next)
+  focusMonthDate(next)
+}
+
+function monthCellLabel(date: Date): string {
+  const label = date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+  return isSameDate(date, selectedDate.value) ? `${label}, selected` : label
+}
 function formatDateInput(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, "0")
@@ -207,19 +278,6 @@ const monthRowTracks = computed(() =>
 // the row heights (the header strip stays a single compact line).
 function headerTrackScale(col: number): string {
   return (monthColWeights.value[col]! / monthColMaxWeight.value).toFixed(3)
-}
-
-function navigateToMonth(month: number, year: number, day?: number) {
-  if (year > currentYear.value || (year === currentYear.value && month > currentMonth.value)) {
-    monthNavDir.value = "forward"
-  } else {
-    monthNavDir.value = "back"
-  }
-  currentMonth.value = month
-  currentYear.value = year
-  if (day !== undefined) {
-    selectedDate.value = new Date(year, month, day)
-  }
 }
 
 // ── Week view
@@ -592,13 +650,18 @@ function onEventClick(eventId: string) {
           :style="{ '--track-scale': headerTrackScale(i) }"
         >{{ d }}</div>
       </div>
-      <div class="month-grid" :style="{ gridTemplateColumns: monthColTracks, gridTemplateRows: monthRowTracks }">
+      <div ref="monthGridEl" class="month-grid" role="grid" aria-label="Month calendar" :style="{ gridTemplateColumns: monthColTracks, gridTemplateRows: monthRowTracks }">
         <!-- Previous month days -->
         <div
           v-for="d in prevMonthDays"
           :key="'p'+d.year+'-'+d.month+'-'+d.day"
           class="day-cell adjacent"
-          @click="navigateToMonth(d.month, d.year, d.day)"
+          role="gridcell"
+          tabindex="-1"
+          :data-date="formatDateInput(new Date(d.year, d.month, d.day))"
+          :aria-label="monthCellLabel(new Date(d.year, d.month, d.day))"
+          @click="selectMonthDate(new Date(d.year, d.month, d.day))"
+          @keydown="onMonthCellKeydown($event, new Date(d.year, d.month, d.day))"
         >
           <span class="day-num">{{ d.day }}</span>
         </div>
@@ -608,8 +671,14 @@ function onEventClick(eventId: string) {
           :key="day"
           class="day-cell"
           :class="{today:isToday(day),selected:isSelected(day),'focus-anchor':day===monthAnchorDay}"
+          role="gridcell"
+          :tabindex="day === monthAnchorDay ? 0 : -1"
+          :data-date="formatDateInput(new Date(currentYear, currentMonth, day))"
+          :aria-label="monthCellLabel(new Date(currentYear, currentMonth, day))"
+          :aria-current="isToday(day) ? 'date' : undefined"
           @click="selectDay(day)"
           @dblclick="onMonthDayDblClick(day)"
+          @keydown="onMonthCellKeydown($event, new Date(currentYear, currentMonth, day))"
         >
           <span class="day-num">{{ day }}</span>
           <div class="day-events">
@@ -630,7 +699,12 @@ function onEventClick(eventId: string) {
           v-for="d in nextMonthDays"
           :key="'n'+d.year+'-'+d.month+'-'+d.day"
           class="day-cell adjacent"
-          @click="navigateToMonth(d.month, d.year, d.day)"
+          role="gridcell"
+          tabindex="-1"
+          :data-date="formatDateInput(new Date(d.year, d.month, d.day))"
+          :aria-label="monthCellLabel(new Date(d.year, d.month, d.day))"
+          @click="selectMonthDate(new Date(d.year, d.month, d.day))"
+          @keydown="onMonthCellKeydown($event, new Date(d.year, d.month, d.day))"
         >
           <span class="day-num">{{ d.day }}</span>
         </div>
@@ -826,6 +900,7 @@ function onEventClick(eventId: string) {
 .day-cell.selected{background:color-mix(in srgb,var(--color-accent-base) 26%,var(--color-bgElevated));box-shadow:inset 0 0 0 2px var(--color-accent-dark),0 2px 8px -2px var(--shadow-accent-drop)}
 .day-cell.selected:hover{background:color-mix(in srgb,var(--color-accent-base) 32%,var(--color-bgElevated))}
 .day-cell.selected.today{background:color-mix(in srgb,var(--color-accent-base) 36%,var(--color-bgElevated));box-shadow:inset 0 0 0 3px var(--color-accent-dark),0 3px 10px -2px var(--shadow-accent-drop)}
+.day-cell:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 
 /* The focus anchor lands with one short, transform-only settle. The grid
    weights themselves change instantly; this is the only motion, so it stays

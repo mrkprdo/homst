@@ -95,7 +95,7 @@ function select(value: T) {
     <button
       v-for="opt in options"
       :key="opt.value"
-      class="segmented-btn"
+      class="segmented-btn compact-control"
       :class="{ active: modelValue === opt.value }"
       :data-value="opt.value"
       @click="select(opt.value)"
@@ -142,6 +142,15 @@ function select(value: T) {
   min-height: unset;
   transition: color var(--duration-fast);
   white-space: nowrap;
+}
+
+/* The pill is compact, the target is not. Expand vertically only so adjacent
+   options never steal each other's taps. */
+.segmented-btn::after {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
+  border-radius: inherit;
 }
 
 .segmented-btn.active {

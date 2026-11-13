@@ -12,6 +12,7 @@ const props = defineProps<{
 defineEmits<{ click: [] }>()
 
 const chipEl = ref<HTMLElement | null>(null)
+let pressed = false
 
 function hexToRgba(hex: string, alpha: number): string {
   const c = hex.startsWith("#") ? hex.slice(1) : hex
@@ -28,8 +29,13 @@ const chipStyle = computed(() => ({
   "--chip-bg": hexToRgba(chipColor.value, 0.28),
 }))
 
-function onPointerDown() {
+function onPointerDown(e: PointerEvent) {
   if (!chipEl.value) return
+  if (e.pointerType === "mouse" && e.button !== 0) return
+  if (typeof e.pointerId === "number") {
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+  }
+  pressed = true
   // Promote only while a press animation is actually running. Leaving
   // will-change on every chip promoted ~90 layers in the month grid, and each
   // one had to be re-rastered when the lens resized the cells.
@@ -39,7 +45,8 @@ function onPointerDown() {
 
 function onPointerUp() {
   const el = chipEl.value
-  if (!el) return
+  if (!el || !pressed) return
+  pressed = false
   animate(el, {
     scale: [0.93, 1.06, 1],
     ease: springs.pop,
@@ -56,9 +63,11 @@ function onPointerUp() {
     role="button"
     tabindex="0"
     @click.stop="$emit('click')"
-    @keydown.enter.stop="$emit('click')"
+    @keydown.enter.prevent.stop="$emit('click')"
+    @keydown.space.prevent.stop="$emit('click')"
     @pointerdown="onPointerDown"
     @pointerup="onPointerUp"
+    @pointercancel="onPointerUp"
     @pointerleave="onPointerUp"
   >
     <span v-if="time && !allDay" class="event-chip__time">{{ time }}</span>
@@ -89,12 +98,17 @@ function onPointerUp() {
   transition: box-shadow var(--duration-fast), z-index 0s;
 }
 
-.event-chip:hover {
-  transform: translateY(-1px);
-  box-shadow:
-    0 1px 0 0 var(--shadow-lip),
-    0 3px 12px -2px color-mix(in srgb, var(--chip-color) 55%, transparent);
-  z-index: 10;
+/* Hover lift is a pointer affordance. A touchscreen cannot hover, but browsers
+   emulate it after a tap — leaving the chip raised until the next tap. Keep the
+   lift for real pointers only. */
+@media (hover: hover) {
+  .event-chip:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 1px 0 0 var(--shadow-lip),
+      0 3px 12px -2px color-mix(in srgb, var(--chip-color) 55%, transparent);
+    z-index: 10;
+  }
 }
 
 .event-chip:focus-visible {

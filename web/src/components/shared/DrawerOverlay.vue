@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue"
+import { ref, computed, watch, nextTick, onUnmounted } from "vue"
 import { useUi } from "@/composables/useUi"
 import { PhX } from "@phosphor-icons/vue"
 import QuickAddForm from "@/components/shared/QuickAddForm.vue"
@@ -10,25 +10,116 @@ const ui = useUi()
 const drawerEl = ref<HTMLElement | null>(null)
 const drawerVisible = computed(() => ui.drawer.value.type !== null)
 
+const drawerLabel = computed(() => {
+  switch (ui.drawer.value.type) {
+    case "event-detail": return "Event details"
+    case "task-detail": return "Task details"
+    case "member-detail": return "Household member"
+    case "quick-add": return "Quick add"
+    case "confirm": return "Confirm"
+    default: return "Details"
+  }
+})
+
 function onBackdropClick() {
   ui.closeDrawer()
 }
 
-watch(() => ui.isDrawerOpen.value, (open) => {
+const FOCUSABLE = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",")
+
+function focusableItems(): HTMLElement[] {
+  if (!drawerEl.value) return []
+  return Array.from(drawerEl.value.querySelectorAll<HTMLElement>(FOCUSABLE))
+    .filter((el) => el.getClientRects().length > 0)
+}
+
+let lastFocused: HTMLElement | null = null
+
+/**
+ * Dialogs own the keyboard while they are open: Escape closes (through the
+ * close guard, so unsaved work still prompts) and Tab cycles inside the
+ * drawer instead of moving into the dashboard behind the backdrop.
+ */
+function onDocumentKeydown(e: KeyboardEvent) {
+  if (!ui.isDrawerOpen.value) return
+
+  if (e.key === "Escape") {
+    e.preventDefault()
+    e.stopPropagation()
+    ui.closeDrawer()
+    return
+  }
+
+  if (e.key !== "Tab") return
+
+  const items = focusableItems()
+  if (!items.length) {
+    e.preventDefault()
+    drawerEl.value?.focus()
+    return
+  }
+
+  const first = items[0]!
+  const last = items[items.length - 1]!
+
+  // If focus escaped the dialog (or is still on the dialog shell itself),
+  // pull it back to the correct end before the browser walks the page behind.
+  if (!drawerEl.value?.contains(document.activeElement)) {
+    e.preventDefault()
+    ;(e.shiftKey ? last : first).focus()
+    return
+  }
+
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault()
+    first.focus()
+  }
+}
+
+watch(() => ui.isDrawerOpen.value, async (open) => {
   if (!drawerEl.value) return
   const width = drawerEl.value.offsetWidth
+
   if (open) {
+    lastFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    document.addEventListener("keydown", onDocumentKeydown, true)
+
     animate(drawerEl.value, {
       translateX: [`${width}px`, '0px'],
       ease: springs.overlay,
     })
+
+    await nextTick()
+    requestAnimationFrame(() => {
+      // Respect a field that asked for autofocus (Quick Add), otherwise give
+      // the dialog itself focus so the first Tab lands inside it.
+      if (drawerEl.value?.contains(document.activeElement)) return
+      drawerEl.value?.focus()
+    })
   } else {
+    document.removeEventListener("keydown", onDocumentKeydown, true)
     animate(drawerEl.value, {
       translateX: `${width}px`,
       duration: 200,
       ease: ease.in,
     })
+    lastFocused?.focus?.()
+    lastFocused = null
   }
+})
+
+onUnmounted(() => {
+  document.removeEventListener("keydown", onDocumentKeydown, true)
 })
 </script>
 
@@ -40,7 +131,15 @@ watch(() => ui.isDrawerOpen.value, (open) => {
       :class="{ 'backdrop--open': ui.isDrawerOpen.value }"
       @click="onBackdropClick"
     />
-    <div v-if="drawerVisible" ref="drawerEl" class="drawer clay-shadow-accent">
+    <div
+      v-if="drawerVisible"
+      ref="drawerEl"
+      class="drawer clay-shadow-accent"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="drawerLabel"
+      tabindex="-1"
+    >
       <div class="drawer-header">
         <!-- Branded header for profile drawer -->
         <div v-if="ui.drawer.value.type === 'member-detail'" class="drawer-brand">
@@ -102,6 +201,10 @@ watch(() => ui.isDrawerOpen.value, (open) => {
   display: flex;
   flex-direction: column;
   will-change: transform;
+}
+
+.drawer:focus {
+  outline: none;
 }
 
 .drawer-header {

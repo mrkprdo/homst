@@ -139,6 +139,15 @@ test.describe("Event Detail & Edit", () => {
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible()
   })
 
+  test("Escape closes the event drawer and returns focus to the chip", async ({ page }) => {
+    await openChip(page)
+    await expect(page.locator(".drawer")).toBeVisible()
+
+    await page.keyboard.press("Escape")
+    await expect(page.locator(".drawer")).toHaveCount(0, { timeout: 2000 })
+    await expect(page.locator(".event-chip").filter({ hasText: CHIP_TITLE })).toBeFocused()
+  })
+
   test("event detail shows the reminder", async ({ page }) => {
     await openChip(page)
     await expect(page.locator(".edp-fields")).toContainText("Reminder 30 minutes before")

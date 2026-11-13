@@ -64,6 +64,35 @@ test.describe("Calendar", () => {
     expect(await label.textContent()).not.toBe(firstLabel)
   })
 
+  test("month grid is one tab stop and arrow keys move the selection", async ({ page }) => {
+    await goToCalendar(page)
+    const tabStop = page.locator('.month-grid .day-cell[tabindex="0"]')
+    await expect(tabStop).toHaveCount(1)
+
+    const start = await tabStop.getAttribute("data-date")
+    await tabStop.focus()
+    await page.keyboard.press("ArrowRight")
+    await page.waitForTimeout(400)
+
+    const next = page.locator('.month-grid .day-cell[tabindex="0"]')
+    await expect(next).toBeFocused()
+    expect(await next.getAttribute("data-date")).not.toBe(start)
+  })
+
+  test("PageDown moves to the next month and keeps focus on the date", async ({ page }) => {
+    await goToCalendar(page)
+    const label = page.locator(".nav-label")
+    const firstLabel = await label.textContent()
+    const tabStop = page.locator('.month-grid .day-cell[tabindex="0"]')
+
+    await tabStop.focus()
+    await page.keyboard.press("PageDown")
+    await page.waitForTimeout(500)
+
+    expect(await label.textContent()).not.toBe(firstLabel)
+    await expect(page.locator('.month-grid .day-cell[tabindex="0"]')).toBeFocused()
+  })
+
   // ── Navigation ──
   test("navigation arrows cycle months in month view", async ({ page }) => {
     await goToCalendar(page)

@@ -1120,7 +1120,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
               <span v-for="d in ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']" :key="d">{{ d }}</span>
             </div>
             <div class="mini-cal-grid">
-              <button v-for="(day, i) in calendarDays" :key="i" class="mini-cal-day"
+              <button v-for="(day, i) in calendarDays" :key="i" class="mini-cal-day compact-control"
                 :class="{
                   'mini-cal-day--empty': !day.date,
                   'mini-cal-day--today': isToday(day.date),
@@ -1463,8 +1463,8 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1473,6 +1473,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   cursor: grab;
   z-index: 4;
   opacity: 0;
+  touch-action: none;
   transition: opacity var(--duration-fast), background var(--duration-fast);
   background: var(--color-bgSubtle);
 }
@@ -1481,7 +1482,15 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   cursor: grabbing;
 }
 
-.is-editing .widget:hover .drag-handle {
+/* Edit mode is used on the wall display too. Hover-only controls are invisible
+   there, so the handles stay visible whenever the layout is unlocked; hover and
+   keyboard focus only strengthen them. */
+.is-editing .widget .drag-handle {
+  opacity: 0.72;
+}
+
+.is-editing .widget:hover .drag-handle,
+.is-editing .widget:focus-within .drag-handle {
   opacity: 1;
 }
 
@@ -1490,23 +1499,51 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   position: absolute;
   bottom: 6px;
   right: 6px;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 3px;
   cursor: nwse-resize;
   z-index: 4;
   opacity: 0;
+  touch-action: none;
   transition: opacity var(--duration-fast);
   background: var(--color-primary);
   clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
 
-.is-editing .widget:hover .resize-handle {
-  opacity: 0.65;
+.is-editing .widget .resize-handle {
+  opacity: 0.7;
+}
+
+.is-editing .widget:hover .resize-handle,
+.is-editing .widget:focus-within .resize-handle {
+  opacity: 0.8;
 }
 
 .resize-handle:hover {
   opacity: 1 !important;
+}
+
+/* Touch screens need a finger-sized grab area, not a mouse-sized one. */
+@media (pointer: coarse) {
+  .drag-handle {
+    top: 6px;
+    right: 6px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .drag-handle svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .resize-handle {
+    bottom: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+  }
 }
 
 /* ── Lock toggle FAB ─────────────────────────────────────────────────────────── */
@@ -2323,7 +2360,12 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   text-align: left;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background var(--duration-fast);
+  transition: background var(--duration-fast), transform var(--duration-fast);
+}
+
+.schedule-row:active {
+  transform: scale(0.995);
+  transition-duration: 60ms;
 }
 
 .schedule-row:focus-visible {

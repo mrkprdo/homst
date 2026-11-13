@@ -11,8 +11,14 @@ const props = defineProps<{
 
 const btnEl = ref<HTMLElement | null>(null)
 
-function onPointerDown() {
-  if (props.disabled || !btnEl.value) return
+// A press is a real press, not any pointer that happens to leave the button.
+// The old pointerleave release made the button pop every time a mouse passed
+// over it, which read as a broken hover state.
+let pressed = false
+
+function press() {
+  if (props.disabled || !btnEl.value || pressed) return
+  pressed = true
   animate(btnEl.value, {
     scaleX: 1.06,
     scaleY: 0.84,
@@ -22,14 +28,35 @@ function onPointerDown() {
   })
 }
 
-function onPointerUp() {
-  if (!btnEl.value) return
+function release() {
+  if (!pressed || !btnEl.value) return
+  pressed = false
   animate(btnEl.value, {
     scaleX: [1.06, 1.02, 1],
     scaleY: [0.84, 1.02, 1],
     translateY: ["3px", "-1px", "0px"],
     ease: springs.pop,
   })
+}
+
+function onPointerDown(e: PointerEvent) {
+  // Ignore right/middle-click on mouse; pen and touch always have button 0.
+  if (e.pointerType === "mouse" && e.button !== 0) return
+  // Capture keeps pointerup on this button even if the pointer slides off,
+  // so a drag release cannot leave the button stuck in its pressed shape.
+  if (typeof e.pointerId === "number") {
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+  }
+  press()
+}
+
+function onKeyDown(e: KeyboardEvent) {
+  if (e.repeat) return
+  if (e.key === " " || e.key === "Enter") press()
+}
+
+function onKeyUp(e: KeyboardEvent) {
+  if (e.key === " " || e.key === "Enter") release()
 }
 </script>
 
@@ -40,12 +67,18 @@ function onPointerUp() {
     :class="[
       `ui-btn--${variant ?? 'primary'}`,
       `ui-btn--${size ?? 'md'}`,
+      { 'compact-control': (size ?? 'md') === 'sm' },
     ]"
     :disabled="disabled"
     :type="type ?? 'button'"
     @pointerdown="onPointerDown"
-    @pointerup="onPointerUp"
-    @pointerleave="onPointerUp"
+    @pointerup="release"
+    @pointercancel="release"
+    @pointerleave="release"
+    @keydown="onKeyDown"
+    @keyup="onKeyUp"
+    @click="release"
+    @blur="release"
   >
     <span class="ui-btn__inner"><slot /></span>
   </button>
@@ -92,6 +125,16 @@ function onPointerUp() {
 }
 
 .ui-btn--sm .ui-btn__inner { font-size: var(--text-label-size); }
+
+/* Compact pills keep their 30px visual height, but the hit area grows to a
+   fingertip. Horizontal expansion is small so side-by-side actions in a
+   settings row do not steal each other's taps. */
+.ui-btn--sm::after {
+  content: "";
+  position: absolute;
+  inset: -8px -2px;
+  border-radius: var(--radius-full);
+}
 
 /* ── Variants ── */
 .ui-btn--primary {
@@ -150,6 +193,17 @@ function onPointerUp() {
   min-height: unset;
   border-radius: 0;
   box-shadow: none;
+}
+
+/* The visible link is small by design; the hit area is not. Fitts's law and
+   the 44px touch-target rule both fail on a 20px-tall word, especially on the
+   wall display. The pseudo-element keeps the header visually quiet while
+   giving the shortcut a full-height target. */
+.ui-btn--link::after {
+  content: "";
+  position: absolute;
+  inset: -12px -10px;
+  border-radius: var(--radius-xs);
 }
 
 .ui-btn--link:hover { color: var(--color-primary); }
