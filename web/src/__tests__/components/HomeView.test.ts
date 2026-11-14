@@ -112,12 +112,14 @@ describe("HomeView", () => {
       await nextTick()
       const slides = wrapper.findAll(".photos-img")
       expect(slides.at(-1)?.attributes("src")).toBe("/p2.jpg")
-      // The outgoing photo stays underneath so the new one dissolves over it
-      // instead of both fading against the card background.
+      // The outgoing photo stays underneath while it fades out, so the new one
+      // dissolves over it instead of both dipping against the card background.
       expect(slides.length).toBe(2)
       expect(slides[0]!.attributes("src")).toBe("/p1.jpg")
       expect(slides[0]!.classes()).not.toContain("photos-img--dissolve")
+      expect(slides[0]!.classes()).toContain("photos-img--outgoing")
       expect(slides[1]!.classes()).toContain("photos-img--dissolve")
+      expect(slides[1]!.classes()).not.toContain("photos-img--outgoing")
 
       // Every WMO branch gets its own scene treatment, including the splits
       // that the old single-glyph map collapsed (freezing, showers, hail,

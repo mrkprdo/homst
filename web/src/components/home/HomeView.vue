@@ -1220,12 +1220,27 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
             <span class="block-title"><PhImage :size="18" /><span class="block-title-text">Photos</span></span>
           </div>
           <div v-if="activePhotos.length" class="photos-body">
+            <!-- Blurred cover copy fills the letterbox left by object-fit: contain. -->
             <img
-              v-for="slide in photoSlides"
+              v-for="(slide, index) in photoSlides"
+              :key="`bg-${slide.key}`"
+              :src="slide.url"
+              class="photos-backdrop"
+              :class="{
+                'photos-img--dissolve': slide.dissolving,
+                'photos-img--outgoing': index < photoSlides.length - 1,
+              }"
+              aria-hidden="true"
+            />
+            <img
+              v-for="(slide, index) in photoSlides"
               :key="slide.key"
               :src="slide.url"
               class="photos-img"
-              :class="{ 'photos-img--dissolve': slide.dissolving }"
+              :class="{
+                'photos-img--dissolve': slide.dissolving,
+                'photos-img--outgoing': index < photoSlides.length - 1,
+              }"
             />
           </div>
           <UiEmptyState v-else class="widget-empty" message="No photos selected">
@@ -1673,26 +1688,53 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   overflow: hidden;
   min-height: 0;
   position: relative;
+  background: var(--color-bgSubtle);
+}
+
+/* Fills the letterbox behind the contained photo with a blurred, dimmed
+   cover copy of the same frame — matching the camera card's backdrop. */
+.photos-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(28px) saturate(1.15) brightness(0.55);
+  transform: scale(1.12);
+  pointer-events: none;
 }
 
 .photos-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   position: absolute;
   inset: 0;
+  z-index: 1;
 }
 
-/* Incoming frames dissolve over the previous one, which stays fully opaque
-   underneath. Deliberately slow (2s on a 5s rotation) so the slideshow reads as
-   calm rather than a hard cut. The global low-power rules shorten this. */
+/* Incoming frames dissolve over the previous one while the previous fades
+   out. Fading the outgoing frame matters now that the sharp photo uses
+   `contain`: without it, a wider previous photo would stay fully visible in
+   the letterbox around a smaller incoming one. The global low-power rules
+   shorten this. */
 .photos-img--dissolve {
   animation: photo-dissolve 2s ease-in-out both;
+}
+
+.photos-img--outgoing {
+  animation: photo-fade-out 2s ease-in-out both;
+  pointer-events: none;
 }
 
 @keyframes photo-dissolve {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+@keyframes photo-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* ── Shared widget chrome + size tiers ──────────────────────────────────────── */
