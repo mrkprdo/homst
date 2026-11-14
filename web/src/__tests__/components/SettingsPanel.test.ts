@@ -438,4 +438,55 @@ describe("SettingsPanel", () => {
 
     expect(wrapper.text()).toContain("Could not save the layout")
   })
+
+  it("filters cards to the ones holding every search word", async () => {
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.find(".settings-search__input").exists()).toBe(true)
+    expect(wrapper.find(".settings-search__count").text()).toBe("")
+
+    await wrapper.find(".settings-search__input").setValue("camera")
+    await nextTick()
+
+    expect(wrapper.find(".settings-card--camera").classes()).not.toContain("is-filtered-out")
+    expect(wrapper.find(".settings-card--music").classes()).toContain("is-filtered-out")
+    expect(wrapper.find(".settings-search__count").text()).toBe("1 card")
+
+    // Words may live in different rows of the same card.
+    await wrapper.find(".settings-search__input").setValue("camera password")
+    await nextTick()
+    expect(wrapper.find(".settings-card--camera").classes()).not.toContain("is-filtered-out")
+    expect(wrapper.find(".settings-search__count").text()).toBe("1 card")
+  })
+
+  it("shows an empty state and clears the filter", async () => {
+    const wrapper = mount(SettingsPanel)
+
+    await wrapper.find(".settings-search__input").setValue("no-such-setting")
+    await nextTick()
+
+    expect(wrapper.findAll(".is-filtered-out")).toHaveLength(12)
+    expect(wrapper.find(".settings-search-empty").text()).toContain("No settings match")
+    expect(wrapper.find(".settings-search__count").text()).toBe("0 cards")
+
+    await wrapper.find(".settings-search__clear").trigger("click")
+    await nextTick()
+
+    expect((wrapper.find(".settings-search__input").element as HTMLInputElement).value).toBe("")
+    expect(wrapper.findAll(".is-filtered-out")).toHaveLength(0)
+    expect(wrapper.find(".settings-search-empty").exists()).toBe(false)
+    expect(wrapper.find(".settings-search__count").text()).toBe("")
+  })
+
+  it("clears the search with Escape", async () => {
+    const wrapper = mount(SettingsPanel)
+    const input = wrapper.find(".settings-search__input")
+
+    await input.setValue("theme")
+    await nextTick()
+    expect(wrapper.findAll(".is-filtered-out").length).toBeGreaterThan(0)
+
+    await input.trigger("keydown", { key: "Escape" })
+    await nextTick()
+    expect(wrapper.findAll(".is-filtered-out")).toHaveLength(0)
+  })
 })

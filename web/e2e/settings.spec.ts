@@ -134,6 +134,28 @@ test.describe("Settings", () => {
     await expect(sections).toHaveCount(12)
   })
 
+  test("search narrows the cards and clears again", async ({ page }) => {
+    await openSettings(page)
+    const search = page.getByRole("searchbox", { name: "Search settings" })
+
+    await search.fill("camera")
+    await expect(page.locator(".settings-card--camera")).toBeVisible()
+    await expect(page.locator(".settings-card--music")).toBeHidden()
+    await expect(page.locator(".settings-search__count")).toHaveText("1 card")
+    await expect
+      .poll(() => page.evaluate(() => CSS.highlights.has("settings-search")))
+      .toBe(true)
+
+    await search.fill("no-such-setting")
+    await expect(page.locator(".settings-search-empty")).toBeVisible()
+    await expect(page.locator(".settings-card--music")).toBeHidden()
+
+    await page.getByRole("button", { name: "Clear search" }).first().click()
+    await expect(search).toHaveValue("")
+    await expect(page.locator(".settings-card--music")).toBeVisible()
+    await expect(page.locator(".settings-search-empty")).toHaveCount(0)
+  })
+
   test("resetting the home layout asks for confirmation and saves the default", async ({ page }) => {
     await openSettings(page)
     const card = page.locator(".settings-card.settings-card--home")

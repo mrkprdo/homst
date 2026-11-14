@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from "vue"
+import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue"
 import {
   useSettings,
   applyHouseholdSettings,
@@ -32,6 +32,8 @@ import {
   PhWarningCircle,
   PhCaretLeft,
   PhCaretRight,
+  PhMagnifyingGlass,
+  PhX,
 } from "@phosphor-icons/vue"
 import PageHeader from "@/components/ui/PageHeader.vue"
 import UiSegmentedControl from "@/components/ui/UiSegmentedControl.vue"
@@ -433,13 +435,154 @@ async function sendTest() {
     testing.value = false
   }
 }
+
+// ── Search ──
+// The cards are hand-written sections, so instead of teaching every one of
+// them about the query, the panel filters its own children: a card stays if
+// its text holds every word in the search. Matches are painted with the CSS
+// Highlight API, which marks ranges without touching the DOM Vue owns.
+const HIGHLIGHT_NAME = "settings-search"
+
+const searchQuery = ref("")
+const searchInputEl = ref<HTMLInputElement | null>(null)
+const masonryEl = ref<HTMLElement | null>(null)
+const matchCount = ref(0)
+const cardCount = ref(0)
+
+const searchTokens = computed(() => searchQuery.value.toLowerCase().split(/\s+/).filter(Boolean))
+const searching = computed(() => searchTokens.value.length > 0)
+
+/** Chromium, Safari 17.2+, and Firefox 140+ paint ranges; elsewhere filtering still works. */
+function highlightSupport() {
+  if (typeof CSS === "undefined" || typeof Highlight === "undefined") return null
+  if (!CSS.highlights) return null
+  return { registry: CSS.highlights, Highlight }
+}
+
+const highlight = highlightSupport()
+
+const UNSEARCHABLE = new Set(["SCRIPT", "STYLE", "INPUT", "TEXTAREA", "SELECT", "OPTION", "NOSCRIPT"])
+
+function collectMatches(root: HTMLElement, tokens: string[], ranges: Range[]) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement
+      if (!parent || UNSEARCHABLE.has(parent.tagName) || !node.nodeValue) {
+        return NodeFilter.FILTER_REJECT
+      }
+      return NodeFilter.FILTER_ACCEPT
+    },
+  })
+
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const text = node.nodeValue ?? ""
+    const lower = text.toLowerCase()
+    for (const token of tokens) {
+      let from = 0
+      for (;;) {
+        const index = lower.indexOf(token, from)
+        if (index < 0) break
+        const range = document.createRange()
+        range.setStart(node, index)
+        range.setEnd(node, index + token.length)
+        ranges.push(range)
+        from = index + token.length
+      }
+    }
+  }
+}
+
+function paintMatches(ranges: Range[]) {
+  if (!highlight) return
+  if (ranges.length === 0) {
+    highlight.registry.delete(HIGHLIGHT_NAME)
+    return
+  }
+  highlight.registry.set(HIGHLIGHT_NAME, new highlight.Highlight(...ranges))
+}
+
+function applySearch() {
+  const root = masonryEl.value
+  if (!root) return
+
+  const cards = Array.from(root.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement,
+  )
+  const tokens = searchTokens.value
+  const ranges: Range[] = []
+  let matches = 0
+
+  for (const card of cards) {
+    const text = (card.textContent ?? "").toLowerCase()
+    const visible = tokens.length === 0 || tokens.every((token) => text.includes(token))
+    card.classList.toggle("is-filtered-out", !visible)
+    if (!visible) continue
+    matches += 1
+    if (tokens.length) collectMatches(card, tokens, ranges)
+  }
+
+  cardCount.value = cards.length
+  matchCount.value = matches
+  paintMatches(ranges)
+}
+
+function clearSearch() {
+  searchQuery.value = ""
+  searchInputEl.value?.focus()
+}
+
+// Vue patches text as settings change (a nested row appears, a version arrives),
+// so re-run the filter whenever the cards' content moves.
+let searchObserver: MutationObserver | null = null
+
+onMounted(() => {
+  applySearch()
+  if (typeof MutationObserver === "undefined" || !masonryEl.value) return
+  searchObserver = new MutationObserver(applySearch)
+  searchObserver.observe(masonryEl.value, { childList: true, subtree: true, characterData: true })
+})
+
+onBeforeUnmount(() => {
+  searchObserver?.disconnect()
+  paintMatches([])
+})
+
+watch(searchTokens, applySearch, { flush: "post" })
 </script>
 
 <template>
   <div class="settings-panel">
     <PageHeader title="Settings" />
 
-    <div class="settings-masonry">
+    <div class="settings-search" role="search">
+      <PhMagnifyingGlass :size="18" class="settings-search__icon" aria-hidden="true" />
+      <input
+        ref="searchInputEl"
+        v-model="searchQuery"
+        class="settings-search__input"
+        type="search"
+        placeholder="Search settings"
+        aria-label="Search settings"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        @keydown.esc.prevent="clearSearch"
+      />
+      <span class="settings-search__count" aria-live="polite">
+        <template v-if="searching">{{ matchCount }} {{ matchCount === 1 ? "card" : "cards" }}</template>
+      </span>
+      <button
+        v-if="searchQuery"
+        class="settings-search__clear"
+        type="button"
+        aria-label="Clear search"
+        @click="clearSearch"
+      >
+        <PhX :size="16" weight="bold" aria-hidden="true" />
+      </button>
+    </div>
+
+    <div ref="masonryEl" class="settings-masonry">
       <!-- ── Theme ── -->
       <section class="settings-card settings-card--preset">
         <header class="card-header">
@@ -1028,6 +1171,14 @@ async function sendTest() {
       <!-- ── Software update ── -->
       <SoftwareUpdateCard class="settings-card--software" />
     </div>
+
+    <div v-if="searching && matchCount === 0" class="settings-search-empty" role="status">
+      <p class="settings-search-empty__title">No settings match “{{ searchQuery.trim() }}”</p>
+      <p class="settings-search-empty__hint">
+        Try a shorter word like “theme”, “music”, or “camera”.
+      </p>
+      <UiButton size="sm" variant="ghost" @click="clearSearch">Clear search</UiButton>
+    </div>
   </div>
 </template>
 
@@ -1036,6 +1187,155 @@ async function sendTest() {
   width: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* ── Search ──
+   A single quiet bar above the cards. It spans the panel, stays at the 48px
+   touch floor, and borrows the accent only when focused. */
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 48px;
+  margin-bottom: var(--space-4);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bgSurface);
+  transition:
+    border-color var(--duration-fast),
+    box-shadow var(--duration-fast);
+}
+
+.settings-search:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primaryLight);
+}
+
+.settings-search__icon {
+  flex-shrink: 0;
+  color: var(--color-textMuted);
+  transition: color var(--duration-fast);
+}
+
+.settings-search:focus-within .settings-search__icon {
+  color: var(--color-primary);
+}
+
+.settings-search__input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-textPrimary);
+  font-family: var(--font-family);
+  font-size: var(--text-body-size);
+  font-weight: var(--font-weight-thin);
+}
+
+.settings-search__input::placeholder {
+  color: var(--color-textMuted);
+}
+
+/* The bar's own clear button replaces the browser's. */
+.settings-search__input::-webkit-search-cancel-button,
+.settings-search__input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.settings-search__count {
+  flex-shrink: 0;
+  font-size: var(--text-label-size);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-textSecondary);
+}
+
+.settings-search__count:empty {
+  display: none;
+}
+
+.settings-search__clear {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  min-width: unset;
+  min-height: unset;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+  color: var(--color-textSecondary);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast),
+    transform 80ms ease;
+}
+
+/* 48px fingerprint around the 32px chip. */
+.settings-search__clear::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: var(--radius-full);
+}
+
+.settings-search__clear:hover {
+  background: color-mix(in srgb, var(--color-primary) 24%, var(--color-bgSurface));
+  color: var(--color-textPrimary);
+}
+
+.settings-search__clear:active {
+  transform: scale(0.94);
+}
+
+.settings-search__clear:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Painted through the Highlight API so the cards' DOM stays untouched. */
+:global(::highlight(settings-search)) {
+  background-color: color-mix(in srgb, var(--color-primary) 42%, transparent);
+  color: inherit;
+}
+
+/* On a dark surface the accent is light, so marked text flips to ink. */
+:global(html.dark ::highlight(settings-search)) {
+  background-color: color-mix(in srgb, var(--color-primary) 82%, transparent);
+  color: var(--color-textInverse);
+}
+
+.settings-search-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-12) var(--space-5);
+  text-align: center;
+  color: var(--color-textSecondary);
+}
+
+.settings-search-empty__title {
+  font-size: var(--text-heading-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--text-heading-line-height);
+  color: var(--color-textPrimary);
+}
+
+.settings-search-empty__hint {
+  max-width: 48ch;
+  font-size: var(--text-label-size);
+  line-height: 1.5;
 }
 
 /* ── Masonry layout ───────────────────────────────────────────────────────────
@@ -1054,6 +1354,11 @@ async function sendTest() {
   -webkit-column-break-inside: avoid;
   page-break-inside: avoid;
   margin: 0 0 var(--space-4);
+}
+
+/* Hidden cards leave the column flow entirely, so the rest rebalance. */
+.settings-masonry > .is-filtered-out {
+  display: none;
 }
 
 @media (min-width: 860px) {
