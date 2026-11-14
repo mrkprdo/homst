@@ -489,4 +489,41 @@ describe("SettingsPanel", () => {
     await nextTick()
     expect(wrapper.findAll(".is-filtered-out")).toHaveLength(0)
   })
+
+  it("paints matches through the Highlight API when the browser supports it", async () => {
+    const registry = new Map<string, { ranges: Range[] }>()
+    const set = vi.fn((name: string, highlight: { ranges: Range[] }) => registry.set(name, highlight))
+    const remove = vi.fn((name: string) => registry.delete(name))
+
+    class HighlightStub {
+      ranges: Range[]
+      constructor(...ranges: Range[]) {
+        this.ranges = ranges
+      }
+    }
+
+    vi.stubGlobal("Highlight", HighlightStub)
+    vi.stubGlobal("CSS", { highlights: { set, delete: remove } })
+
+    try {
+      const wrapper = mount(SettingsPanel)
+      await flushPromises()
+      // Mounting without a query clears any previous paint.
+      expect(remove).toHaveBeenCalledWith("settings-search")
+
+      await wrapper.find(".settings-search__input").setValue("camera")
+      await nextTick()
+
+      expect(set).toHaveBeenCalled()
+      expect(registry.get("settings-search")!.ranges.length).toBeGreaterThan(0)
+
+      await wrapper.find(".settings-search__clear").trigger("click")
+      await nextTick()
+
+      expect(registry.has("settings-search")).toBe(false)
+      expect(wrapper.findAll(".is-filtered-out")).toHaveLength(0)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
