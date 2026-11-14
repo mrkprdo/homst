@@ -1426,12 +1426,16 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   min-height: 0;
   container-type: size;
   container-name: w;
+  /* Keep the edit outline present (just transparent) at all times. Declaring it
+     only inside .is-editing makes unlock transition outline-color from its
+     initial `currentColor` (near-white in dark mode) to transparent, which
+     flashes a white outline around every card as edit mode starts. */
+  outline: 2px dashed transparent;
+  transition: outline-color var(--duration-fast);
 }
 
 .is-editing .widget {
   border-radius: var(--radius-md);
-  outline: 2px dashed transparent;
-  transition: outline-color var(--duration-fast);
 }
 
 .is-editing .widget:hover {
