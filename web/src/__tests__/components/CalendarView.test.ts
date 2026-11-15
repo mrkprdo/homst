@@ -59,8 +59,13 @@ describe("CalendarView", () => {
     const before = grid.style.gridTemplateColumns
 
     const days = wrapper.findAll(".day-cell:not(.adjacent)")
-    const todayDate = new Date().getDate()
-    const target = days.find((_, index) => index + 1 !== todayDate)!
+    // Only the column weights shift the grid template, so the target must sit
+    // outside today's weekday column. Picking "any day but today" broke on
+    // dates like the 15th, where the 1st lands in the same Sunday column.
+    const today = new Date()
+    const target = days.find(
+      (_, index) => new Date(today.getFullYear(), today.getMonth(), index + 1).getDay() !== today.getDay(),
+    )!
     await target.trigger("click")
     await nextTick()
 
