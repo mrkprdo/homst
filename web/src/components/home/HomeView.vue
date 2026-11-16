@@ -12,7 +12,6 @@ import { expandEvents } from "@/utils/recurrence"
 import type { Event as CalendarEvent } from "@/composables/useEvents"
 import type { Task } from "@/composables/useTasks"
 import { memberColorHex, type MemberColor } from "@/types/household"
-import { readableTextOn } from "@/utils/color"
 import { wifiQrPayload } from "@/lib/wifiQr"
 import { householdApi } from "@/api/household"
 import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
@@ -321,23 +320,6 @@ const clockParts = computed(() => {
   const [hours = "", minutes = "", seconds = ""] = clock.split(":")
   return { hours, minutes, seconds, period }
 })
-
-// ── House card: family and guest Wi-Fi ────────────────────────────────────────
-const familyMembers = computed(() =>
-  members.value.filter(m => m.name.trim()).slice(0, 5),
-)
-const extraFamilyCount = computed(() =>
-  Math.max(0, members.value.filter(m => m.name.trim()).length - familyMembers.value.length),
-)
-const familyLabel = computed(() => {
-  const names = familyMembers.value.map(m => m.name.trim())
-  if (extraFamilyCount.value) names.push(`${extraFamilyCount.value} more`)
-  return `Family: ${names.join(", ")}`
-})
-
-function memberInitial(name: string): string {
-  return (name.trim()[0] ?? "?").toUpperCase()
-}
 
 /** No network name means nothing to scan, so the QR (and its panel) disappear. */
 const wifiPayload = computed(() => wifiQrPayload({
@@ -1011,32 +993,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
                 <p class="datetime-date">{{ dateStr }}</p>
               </div>
             </div>
-
-            <ul
-              v-if="familyMembers.length"
-              class="house-family"
-              :aria-label="familyLabel"
-            >
-              <li
-                v-for="member in familyMembers"
-                :key="member.id"
-                class="house-member"
-                :title="member.name"
-              >
-                <span
-                  class="house-member-avatar"
-                  :style="{ background: member.color, color: readableTextOn(member.color) }"
-                  aria-hidden="true"
-                >
-                  <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
-                  <template v-else>{{ memberInitial(member.name) }}</template>
-                </span>
-                <span class="house-member-name">{{ member.name }}</span>
-              </li>
-              <li v-if="extraFamilyCount" class="house-member house-member--more">
-                +{{ extraFamilyCount }}
-              </li>
-            </ul>
 
             <div
               v-if="wifiPayload"
@@ -2041,65 +1997,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   vertical-align: middle;
 }
 
-/* Family: avatar chips, names appear once the tile is wide enough. */
-.house-family {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(3px, 1.2cqw, var(--space-2));
-  max-width: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.house-member {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-.house-member-avatar {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: clamp(22px, 6.4cqh, 34px);
-  height: clamp(22px, 6.4cqh, 34px);
-  border-radius: var(--radius-full);
-  font-size: clamp(10px, 3cqh, 14px);
-  font-weight: var(--font-weight-medium);
-  line-height: 1;
-  overflow: hidden;
-  box-shadow: 0 2px 0 0 color-mix(in srgb, var(--color-borderStrong) 55%, transparent);
-}
-
-.house-member-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.house-member-name {
-  display: none;
-  min-width: 0;
-  max-width: 5.5em;
-  font-size: var(--text-label-size);
-  color: var(--color-textSecondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.house-member--more {
-  padding: 0 2px;
-  font-size: var(--text-label-size);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-textMuted);
-}
-
 /* Guest Wi-Fi: a bare QR with its label underneath. */
 .house-wifi {
   display: flex;
@@ -2113,7 +2010,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .house-wifi__code {
   display: block;
-  width: clamp(72px, min(72cqw, 46cqh), 280px);
+  width: clamp(72px, min(72cqw, 56cqh), 280px);
   max-width: 100%;
   aspect-ratio: 1;
   border-radius: 4px;
@@ -2153,6 +2050,12 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
+@container w (max-height: 8em) {
+  .house-wifi__label {
+    display: none;
+  }
+}
+
 /* Short tiles: clock on the left, QR on the right. */
 @container w (max-height: 12em) {
   .house-body {
@@ -2168,16 +2071,12 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
     text-align: left;
   }
 
-  .house-family {
-    display: none;
-  }
-
   .house-wifi {
     flex-shrink: 0;
   }
 
   .house-wifi__code {
-    width: clamp(64px, min(38cqw, 60cqh), 200px);
+    width: clamp(64px, min(40cqw, 62cqh), 220px);
   }
 
   .house-wifi__label {
@@ -2193,24 +2092,10 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
-/* A wide single-row tile has room for the family beside the clock and QR. */
+/* A wide single-row tile can afford a bigger clock and QR. */
 @container w (max-height: 12em) and (min-width: 32em) {
-  .house-time {
-    flex: 0 0 auto;
-  }
-
-  .house-family {
-    display: flex;
-    flex: 1;
-    justify-content: flex-start;
-  }
-
-  .house-member-name {
-    display: inline;
-  }
-
   .house-wifi__code {
-    width: clamp(96px, min(24cqw, 62cqh), 220px);
+    width: clamp(96px, min(24cqw, 64cqh), 240px);
   }
 
   .datetime-clock {
@@ -2224,7 +2109,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 /* Compact heights: give the QR the room, drop secondary context. */
 @container w (min-height: 12em) and (max-height: 14.5em) and (max-width: 25.9em) {
-  .house-family,
   .datetime-meta {
     display: none;
   }
@@ -2235,56 +2119,36 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 @container w (min-height: 14.5em) and (max-height: 22em) and (max-width: 25.9em) {
-  .house-family,
   .datetime-house {
     display: none;
   }
 
   .house-wifi__code {
-    width: clamp(72px, min(72cqw, 44cqh), 200px);
+    width: clamp(72px, min(72cqw, 50cqh), 220px);
   }
 }
 
-/* Roomy tiles: clock and family lead on the left, the QR sits on the right. */
+/* Roomy tiles: clock leads on the left, the QR sits on the right. */
 @container w (min-width: 26em) and (min-height: 12em) {
   .house-body {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "time wifi"
-      "family wifi";
-    align-content: center;
+    flex-direction: row;
     align-items: center;
-    justify-items: start;
+    justify-content: space-between;
     column-gap: clamp(12px, 3cqw, var(--space-6));
-    row-gap: clamp(3px, 1.2cqh, var(--space-2));
     padding-inline: clamp(12px, 3cqw, var(--space-6));
   }
 
   .house-time {
-    grid-area: time;
     align-items: flex-start;
     text-align: left;
   }
 
-  .house-family {
-    grid-area: family;
-    justify-content: flex-start;
-  }
-
-  .house-member-name {
-    display: inline;
-  }
-
   .house-wifi {
-    grid-area: wifi;
-    justify-self: end;
-    align-self: center;
     flex-shrink: 0;
   }
 
   .house-wifi__code {
-    width: clamp(96px, min(34cqw, 56cqh), 280px);
+    width: clamp(96px, min(34cqw, 60cqh), 280px);
   }
 
   .datetime-time {
@@ -2320,17 +2184,6 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
   .datetime-clock-side {
     font-size: clamp(14px, min(7.5cqh, 2.6cqw), 30px);
-  }
-
-  .house-member-avatar {
-    width: clamp(28px, 6cqh, 44px);
-    height: clamp(28px, 6cqh, 44px);
-    font-size: clamp(12px, 2.8cqh, 17px);
-  }
-
-  .house-member-name {
-    max-width: 7em;
-    font-size: var(--text-body-size);
   }
 
   .house-wifi__label {

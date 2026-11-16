@@ -258,26 +258,13 @@ describe("HomeView — layout engine & edit mode", () => {
     wrapper.unmount()
   })
 
-  it("shows the House card with family and only shows the Wi-Fi QR when configured", async () => {
-    const { wrapper, members, settings } = await freshMount({
-      body: { houseName: "Cedar House" },
-      seed: ({ members }) => {
-        members.upsertMember({
-          id: "m1", householdId: "h", name: "Alice", avatarUrl: null,
-          color: "#b1b695", role: "admin", joinedAt: "",
-        })
-        members.upsertMember({
-          id: "m2", householdId: "h", name: "Bob", avatarUrl: null,
-          color: "#a690a4", role: "member", joinedAt: "",
-        })
-      },
-    })
+  it("shows the House card and only shows the Wi-Fi QR when configured", async () => {
+    const { wrapper, settings } = await freshMount({ body: { houseName: "Cedar House" } })
     await nextTick()
 
     expect(wrapper.find(".block-title-text").text()).toBe("House")
     expect(wrapper.find(".datetime-card .block-title svg").exists()).toBe(false)
-    expect(wrapper.find(".house-family").text()).toContain("Alice")
-    expect(wrapper.find(".house-family").text()).toContain("Bob")
+    expect(wrapper.find(".house-family").exists()).toBe(false)
     expect(wrapper.find(".house-wifi").exists()).toBe(false)
 
     settings.applyWifiSettings({ ssid: "CedarNet", password: "secret", encryption: "WPA" })
@@ -289,25 +276,6 @@ describe("HomeView — layout engine & edit mode", () => {
     settings.applyWifiSettings({ ssid: "" })
     await nextTick()
     expect(wrapper.find(".house-wifi").exists()).toBe(false)
-
-    // Avatars replace initials when a member has a picture; extra members
-    // collapse into a count so the chips never overflow the tile.
-    for (let i = 3; i <= 9; i++) {
-      members.upsertMember({
-        id: `m${i}`, householdId: "h", name: `Member ${i}`,
-        avatarUrl: i === 3 ? "https://example.com/avatar.png" : null,
-        color: "#afd2e9", role: "member", joinedAt: "",
-      })
-    }
-    await nextTick()
-    expect(wrapper.find(".house-member-avatar img").exists()).toBe(true)
-    expect(wrapper.find(".house-member--more").text()).toBe("+4")
-
-    members.removeMember("m1")
-    members.removeMember("m2")
-    for (let i = 3; i <= 9; i++) members.removeMember(`m${i}`)
-    await nextTick()
-    expect(wrapper.find(".house-family").exists()).toBe(false)
     wrapper.unmount()
   })
 
