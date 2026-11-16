@@ -12,6 +12,8 @@ import {
 } from "@/composables/useSettings"
 import { getAnimationEnabled, setAnimationEnabled } from "@/lib/motion"
 import { householdApi } from "@/api/household"
+import type { WifiEncryption } from "@/api/household"
+import { wifiQrPayload } from "@/lib/wifiQr"
 import { DEFAULT_LAYOUT, writeCachedHomeLayout } from "@/lib/homeLayout"
 import { notificationsApi } from "@/api/notifications"
 import { isServerUnreachable } from "@/api/client"
@@ -43,6 +45,7 @@ import UiInput from "@/components/ui/UiInput.vue"
 import UiSelect from "@/components/ui/UiSelect.vue"
 import SoftwareUpdateCard from "@/components/settings/SoftwareUpdateCard.vue"
 import NestSettingsCard from "@/components/settings/NestSettingsCard.vue"
+import WifiQr from "@/components/home/WifiQr.vue"
 
 const settings = useSettings()
 
@@ -268,6 +271,13 @@ onMounted(async () => {
     cameraRotation.value = String(s.camera.rotation ?? 0)
     settings.applyCameraSettings(s.camera)
   }
+  if (s?.wifi) {
+    wifiSsid.value = s.wifi.ssid ?? ""
+    wifiPassword.value = s.wifi.password ?? ""
+    wifiEncryption.value = s.wifi.encryption ?? "WPA"
+    wifiHidden.value = s.wifi.hidden === true
+    settings.applyWifiSettings(s.wifi)
+  }
   defaultReminder.value = settings.defaultReminderMinutes.value != null
     ? String(settings.defaultReminderMinutes.value)
     : ""
@@ -409,6 +419,69 @@ function removeCamera() {
   cameraRotation.value = "0"
   void saveCamera()
 }
+
+// ── Guest Wi-Fi ──
+const wifiSsid = ref("")
+const wifiPassword = ref("")
+const wifiEncryption = ref<WifiEncryption>("WPA")
+const wifiHidden = ref(false)
+const wifiSaving = ref(false)
+const wifiMessage = ref("")
+const wifiError = ref("")
+
+const wifiPreview = computed(() => wifiQrPayload({
+  ssid: wifiSsid.value,
+  password: wifiPassword.value,
+  encryption: wifiEncryption.value,
+  hidden: wifiHidden.value,
+}))
+
+async function saveWifi() {
+  wifiSaving.value = true
+  wifiMessage.value = ""
+  wifiError.value = ""
+  const wifi = {
+    ssid: wifiSsid.value.trim(),
+    password: wifiEncryption.value === "nopass" ? "" : wifiPassword.value,
+    encryption: wifiEncryption.value,
+    hidden: wifiHidden.value,
+  }
+  try {
+    const res = await householdApi.updateSettings({ wifi })
+    if (res.settings) applyHouseholdSettings(res.settings)
+    else settings.applyWifiSettings(wifi)
+    wifiPassword.value = wifi.password
+    wifiMessage.value = wifi.ssid ? "Wi-Fi saved." : "Wi-Fi removed."
+  } catch (err) {
+    wifiError.value = err instanceof Error ? err.message : "Could not save the Wi-Fi details."
+  } finally {
+    wifiSaving.value = false
+  }
+}
+
+function removeWifi() {
+  wifiSsid.value = ""
+  wifiPassword.value = ""
+  wifiEncryption.value = "WPA"
+  wifiHidden.value = false
+  void saveWifi()
+}
+
+/** Mirror Wi-Fi changes made on another client. */
+watch(
+  () => [
+    settings.wifiSsid.value,
+    settings.wifiPassword.value,
+    settings.wifiEncryption.value,
+    settings.wifiHidden.value,
+  ] as const,
+  ([ssid, password, encryption, hidden]) => {
+    wifiSsid.value = ssid
+    wifiPassword.value = password
+    wifiEncryption.value = encryption
+    wifiHidden.value = hidden
+  },
+)
 
 /** Keep the shared settings store in sync so event forms pre-fill immediately. */
 function onDefaultReminderChange(value: string) {
@@ -1168,6 +1241,104 @@ watch(searchTokens, applySearch, { flush: "post" })
         </div>
       </section>
 
+      <!-- ── Guest Wi-Fi ── -->
+      <section class="settings-card settings-card--wifi">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Guest Wi-Fi</h3>
+            <p class="card-desc">Show a scan-to-join QR code on the House card</p>
+          </div>
+          <span v-if="settings.wifiSsid.value" class="selected-badge">On</span>
+        </header>
+
+        <div class="card-body">
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Network name</p>
+              <p class="row-desc">Leave blank to hide the QR code</p>
+            </div>
+            <UiInput
+              v-model="wifiSsid"
+              class="wifi-input"
+              placeholder="HomeWiFi"
+              maxlength="32"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+          </div>
+
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Security</p>
+              <p class="row-desc">Match the setting on your router</p>
+            </div>
+            <UiSelect v-model="wifiEncryption" class="wifi-security-select">
+              <option value="WPA">WPA / WPA2 / WPA3</option>
+              <option value="WEP">WEP</option>
+              <option value="nopass">Open (no password)</option>
+            </UiSelect>
+          </div>
+
+          <div v-if="wifiEncryption !== 'nopass'" class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Password</p>
+              <p class="row-desc">Kept in household settings so every screen can draw the QR</p>
+            </div>
+            <UiInput
+              v-model="wifiPassword"
+              type="password"
+              class="wifi-input"
+              placeholder="Network password"
+              maxlength="63"
+              autocomplete="new-password"
+            />
+          </div>
+
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Hidden network</p>
+              <p class="row-desc">The router does not broadcast its name</p>
+            </div>
+            <UiToggle v-model="wifiHidden" />
+          </div>
+
+          <div v-if="wifiPreview" class="wifi-preview">
+            <div class="wifi-preview__tile">
+              <WifiQr
+                class="wifi-preview__code"
+                :payload="wifiPreview"
+                :label="`Preview of the Wi-Fi QR code for ${wifiSsid.trim()}`"
+              />
+              <p class="wifi-preview__label">WiFi</p>
+            </div>
+            <p class="row-desc">This is how it appears on the House card.</p>
+          </div>
+
+          <div class="wifi-actions">
+            <UiButton size="sm" :disabled="wifiSaving" @click="saveWifi">
+              {{ wifiSaving ? "Saving…" : "Save Wi-Fi" }}
+            </UiButton>
+            <UiButton
+              v-if="wifiSsid.trim()"
+              size="sm"
+              variant="ghost"
+              :disabled="wifiSaving"
+              @click="removeWifi"
+            >
+              Remove
+            </UiButton>
+          </div>
+
+          <p v-if="wifiMessage" class="card-foot reset-message" role="status">{{ wifiMessage }}</p>
+          <p v-if="wifiError" class="card-foot reset-error" role="alert">{{ wifiError }}</p>
+        </div>
+
+        <p class="card-foot">
+          The QR is generated on this device and only shows when a network name is set.
+        </p>
+      </section>
+
       <!-- ── Software update ── -->
       <SoftwareUpdateCard class="settings-card--software" />
     </div>
@@ -1175,7 +1346,7 @@ watch(searchTokens, applySearch, { flush: "post" })
     <div v-if="searching && matchCount === 0" class="settings-search-empty" role="status">
       <p class="settings-search-empty__title">No settings match “{{ searchQuery.trim() }}”</p>
       <p class="settings-search-empty__hint">
-        Try a shorter word like “theme”, “music”, or “camera”.
+        Try a shorter word like “theme”, “music”, “camera”, or “wifi”.
       </p>
       <UiButton size="sm" variant="ghost" @click="clearSearch">Clear search</UiButton>
     </div>
@@ -1874,6 +2045,69 @@ watch(searchTokens, applySearch, { flush: "post" })
   gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
+}
+
+/* ── Guest Wi-Fi ── */
+.settings-card--wifi .setting-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.wifi-input {
+  flex: 1;
+}
+
+.wifi-security-select {
+  max-width: 16rem;
+}
+
+.wifi-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bgSubtle);
+}
+
+.wifi-preview__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.wifi-preview__code {
+  width: clamp(104px, 18vw, 176px);
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: var(--radius-xs);
+}
+
+.wifi-preview__label {
+  font-size: var(--text-micro-size);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--color-textMuted);
+}
+
+.wifi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 480px) {
+  .wifi-preview {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 /* ── Inline notes ── */

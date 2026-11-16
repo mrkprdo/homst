@@ -1,6 +1,6 @@
 import { nextTick, ref } from "vue"
 import { householdApi } from "@/api/household"
-import type { CameraSettings, HouseholdSettings } from "@/api/household"
+import type { CameraSettings, HouseholdSettings, WifiEncryption, WifiSettings } from "@/api/household"
 import { photosApi } from "@/api/photos"
 import { HOME_LAYOUT_EVENT } from "@/lib/homeLayout"
 
@@ -94,6 +94,11 @@ const cameraUsername = ref("")
 const cameraPasswordSet = ref(false)
 const cameraRotation = ref(0)
 const cameraStreamPath = ref<string | null>(null)
+/** Guest Wi-Fi details encoded into the House card QR (empty SSID hides it). */
+const wifiSsid = ref("")
+const wifiPassword = ref("")
+const wifiEncryption = ref<WifiEncryption>("WPA")
+const wifiHidden = ref(false)
 /** Household default reminder lead (minutes before start); null = no default. */
 const defaultReminderMinutes = ref<number | null>(null)
 /** Last accent picked in each preset, so switching back restores it. */
@@ -236,6 +241,13 @@ function applyCameraSettings(camera: CameraSettings | null) {
   cameraStreamPath.value = camera?.streamPath ?? null
 }
 
+function applyWifiSettings(wifi: WifiSettings | null | undefined) {
+  wifiSsid.value = wifi?.ssid ?? ""
+  wifiPassword.value = wifi?.password ?? ""
+  wifiEncryption.value = wifi?.encryption ?? "WPA"
+  wifiHidden.value = wifi?.hidden === true
+}
+
 function updateDefaultReminderMinutes(minutes: number | null) {
   defaultReminderMinutes.value = minutes
 }
@@ -269,6 +281,7 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
     if (s.autoSunset !== undefined) autoSunset.value = s.autoSunset ?? null
     if (s.houseName !== undefined) updateHouseName(s.houseName)
     if (s.camera !== undefined) applyCameraSettings(s.camera)
+    if (s.wifi !== undefined) applyWifiSettings(s.wifi)
     if (s.notifications) {
       if (s.notifications.hud !== undefined) updateHudEnabled(s.notifications.hud !== false)
       updateDefaultReminderMinutes(s.notifications.defaultReminderMinutes ?? null)
@@ -325,6 +338,7 @@ export function useSettings() {
     lyricsEnabled, lyricsOffsetMs, musicBackground, musicBackgroundSpin, musicCardSpin,
     carouselEnabled, returnHomeEnabled,
     cameraUrl, cameraUsername, cameraPasswordSet, cameraRotation, cameraStreamPath,
+    wifiSsid, wifiPassword, wifiEncryption, wifiHidden,
     defaultReminderMinutes,
     autoThemeDark, autoSunrise, autoSunset,
     accentPalette, accentSets, fontSizeScale,
@@ -333,6 +347,7 @@ export function useSettings() {
     updateLyricsEnabled, updateLyricsOffset, updateMusicBackground, updateMusicBackgroundSpin, updateMusicCardSpin,
     updateCarouselEnabled, updateReturnHomeEnabled,
     updateHouseName, updateDefaultReminderMinutes, applyCameraSettings,
+    applyWifiSettings,
     applyHouseholdSettings, refreshFromServer, refreshPhotos,
   }
 }
@@ -361,6 +376,10 @@ export function _resetSettings() {
   cameraPasswordSet.value = false
   cameraRotation.value = 0
   cameraStreamPath.value = null
+  wifiSsid.value = ""
+  wifiPassword.value = ""
+  wifiEncryption.value = "WPA"
+  wifiHidden.value = false
   defaultReminderMinutes.value = null
   serverApplyDepth = 0
   accentMemory.default = presetDefaultAccent.default

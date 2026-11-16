@@ -464,7 +464,7 @@ describe("SettingsPanel", () => {
     await wrapper.find(".settings-search__input").setValue("no-such-setting")
     await nextTick()
 
-    expect(wrapper.findAll(".is-filtered-out")).toHaveLength(12)
+    expect(wrapper.findAll(".is-filtered-out")).toHaveLength(13)
     expect(wrapper.find(".settings-search-empty").text()).toContain("No settings match")
     expect(wrapper.find(".settings-search__count").text()).toBe("0 cards")
 

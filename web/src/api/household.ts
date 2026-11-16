@@ -33,7 +33,19 @@ export interface HouseholdSettings {
   screens?: ScreenPreferences
   updates?: UpdatePreferences
   camera?: CameraSettings | null
+  wifi?: WifiSettings | null
 }
+
+/** Guest network details shared with every screen so the house card can show a join QR. */
+export interface WifiSettings {
+  ssid?: string
+  password?: string
+  /** WPA covers WPA/WPA2/WPA3; "nopass" is an open network. */
+  encryption?: WifiEncryption
+  hidden?: boolean
+}
+
+export type WifiEncryption = "WPA" | "WEP" | "nopass"
 
 /** The server keeps the password; clients only learn whether one is saved. */
 export interface CameraSettings {

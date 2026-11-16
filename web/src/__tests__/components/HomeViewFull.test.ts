@@ -171,7 +171,7 @@ describe("HomeView — layout engine & edit mode", () => {
     const { wrapper } = await freshMount({ body: { houseName: "Minimums" } })
     await wrapper.find(".lock-toggle").trigger("click")
 
-    // Date & Time ships 1×2 at column 3; drag both axes in until it is 1×1.
+    // The House card ships 1×2 at column 3; drag both axes in until it is 1×1.
     expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 3 / span 1")
     const handle = wrapper.findAll(".resize-handle")[0]
     handle.element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
@@ -193,7 +193,7 @@ describe("HomeView — layout engine & edit mode", () => {
         ],
       },
     })
-    // Rejected → the default layout survives (Date & Time is one column wide)
+    // Rejected → the default layout survives (the House card is one column wide)
     expect(wrapper.findAll(".widget").length).toBe(9)
     expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 3 / span 1")
     wrapper.unmount()
@@ -255,6 +255,59 @@ describe("HomeView — layout engine & edit mode", () => {
     expect(wrapper.find(".datetime-clock").text()).toMatch(/^\d{2}:\d{2}$/)
     expect(wrapper.find(".datetime-seconds").text()).toMatch(/^\d{2}$/)
     expect(wrapper.find(".datetime-period").text()).toMatch(/^(AM|PM)$/)
+    wrapper.unmount()
+  })
+
+  it("shows the House card with family and only shows the Wi-Fi QR when configured", async () => {
+    const { wrapper, members, settings } = await freshMount({
+      body: { houseName: "Cedar House" },
+      seed: ({ members }) => {
+        members.upsertMember({
+          id: "m1", householdId: "h", name: "Alice", avatarUrl: null,
+          color: "#b1b695", role: "admin", joinedAt: "",
+        })
+        members.upsertMember({
+          id: "m2", householdId: "h", name: "Bob", avatarUrl: null,
+          color: "#a690a4", role: "member", joinedAt: "",
+        })
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.find(".block-title-text").text()).toBe("House")
+    expect(wrapper.find(".datetime-card .block-title svg").exists()).toBe(false)
+    expect(wrapper.find(".house-family").text()).toContain("Alice")
+    expect(wrapper.find(".house-family").text()).toContain("Bob")
+    expect(wrapper.find(".house-wifi").exists()).toBe(false)
+
+    settings.applyWifiSettings({ ssid: "CedarNet", password: "secret", encryption: "WPA" })
+    await nextTick()
+
+    expect(wrapper.find(".house-wifi__label").text()).toBe("WiFi")
+    expect(wrapper.find(".house-wifi svg").exists()).toBe(true)
+
+    settings.applyWifiSettings({ ssid: "" })
+    await nextTick()
+    expect(wrapper.find(".house-wifi").exists()).toBe(false)
+
+    // Avatars replace initials when a member has a picture; extra members
+    // collapse into a count so the chips never overflow the tile.
+    for (let i = 3; i <= 9; i++) {
+      members.upsertMember({
+        id: `m${i}`, householdId: "h", name: `Member ${i}`,
+        avatarUrl: i === 3 ? "https://example.com/avatar.png" : null,
+        color: "#afd2e9", role: "member", joinedAt: "",
+      })
+    }
+    await nextTick()
+    expect(wrapper.find(".house-member-avatar img").exists()).toBe(true)
+    expect(wrapper.find(".house-member--more").text()).toBe("+4")
+
+    members.removeMember("m1")
+    members.removeMember("m2")
+    for (let i = 3; i <= 9; i++) members.removeMember(`m${i}`)
+    await nextTick()
+    expect(wrapper.find(".house-family").exists()).toBe(false)
     wrapper.unmount()
   })
 

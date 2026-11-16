@@ -12,12 +12,15 @@ import { expandEvents } from "@/utils/recurrence"
 import type { Event as CalendarEvent } from "@/composables/useEvents"
 import type { Task } from "@/composables/useTasks"
 import { memberColorHex, type MemberColor } from "@/types/household"
+import { readableTextOn } from "@/utils/color"
+import { wifiQrPayload } from "@/lib/wifiQr"
 import { householdApi } from "@/api/household"
-import { PhArrowRight, PhCircle, PhCheckCircle, PhClock, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
+import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
 import CameraCard from "@/components/home/CameraCard.vue"
+import WifiQr from "@/components/home/WifiQr.vue"
 import TemperatureCard from "@/components/home/TemperatureCard.vue"
 import WeatherScene from "@/components/home/WeatherScene.vue"
 import { animate, stagger, springs, ease } from "@/lib/motion"
@@ -318,6 +321,31 @@ const clockParts = computed(() => {
   const [hours = "", minutes = "", seconds = ""] = clock.split(":")
   return { hours, minutes, seconds, period }
 })
+
+// ── House card: family and guest Wi-Fi ────────────────────────────────────────
+const familyMembers = computed(() =>
+  members.value.filter(m => m.name.trim()).slice(0, 5),
+)
+const extraFamilyCount = computed(() =>
+  Math.max(0, members.value.filter(m => m.name.trim()).length - familyMembers.value.length),
+)
+const familyLabel = computed(() => {
+  const names = familyMembers.value.map(m => m.name.trim())
+  if (extraFamilyCount.value) names.push(`${extraFamilyCount.value} more`)
+  return `Family: ${names.join(", ")}`
+})
+
+function memberInitial(name: string): string {
+  return (name.trim()[0] ?? "?").toUpperCase()
+}
+
+/** No network name means nothing to scan, so the QR (and its panel) disappear. */
+const wifiPayload = computed(() => wifiQrPayload({
+  ssid: settings.wifiSsid.value,
+  password: settings.wifiPassword.value,
+  encryption: settings.wifiEncryption.value,
+  hidden: settings.wifiHidden.value,
+}))
 
 // ── Schedule date navigation ──────────────────────────────────────────────────
 /** A glance at another day should not stick around forever on a kiosk. */
@@ -872,6 +900,7 @@ function onLayoutUpdated(e: Event) {
 onMounted(async () => {
   const stored = await householdApi.getSettings().catch(() => null)
   if (stored?.houseName !== undefined) settings.houseName.value = stored.houseName
+  if (stored?.wifi) settings.applyWifiSettings(stored.wifi)
   if (stored?.widgetLayout) {
     applyLayout(stored.widgetLayout)
   }
@@ -958,27 +987,68 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         }" />
       </template>
 
-      <!-- Date & Time -->
+      <!-- House: date & time, family, guest Wi-Fi -->
       <div :ref="(el) => registerWidgetEl('datetime', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'datetime' }"
         :style="{ ...widgetStyle(getWidget('datetime')!), '--wobble-delay': '0ms' }">
-        <UiCard class="home-block datetime-card" :padding="false">
+        <UiCard class="home-block datetime-card house-card" :padding="false">
           <div class="block-header">
             <span class="block-title">
-              <PhClock :size="18" /><span class="block-title-text">Date &amp; Time</span>
+              <span class="block-title-text">House</span>
             </span>
           </div>
-          <div class="datetime-display" aria-hidden="true">
-            <p class="datetime-time">
-              <span class="datetime-clock">{{ clockParts.hours }}:{{ clockParts.minutes }}</span>
-              <span class="datetime-clock-side">
-                <span class="datetime-seconds">{{ clockParts.seconds }}</span>
-                <span class="datetime-period">{{ clockParts.period }}</span>
-              </span>
-            </p>
-            <div class="datetime-meta">
-              <p class="datetime-house">{{ settings.houseName.value || 'Home' }}</p>
-              <p class="datetime-date">{{ dateStr }}</p>
+          <div class="house-body">
+            <div class="house-time" aria-hidden="true">
+              <p class="datetime-time">
+                <span class="datetime-clock">{{ clockParts.hours }}:{{ clockParts.minutes }}</span>
+                <span class="datetime-clock-side">
+                  <span class="datetime-seconds">{{ clockParts.seconds }}</span>
+                  <span class="datetime-period">{{ clockParts.period }}</span>
+                </span>
+              </p>
+              <div class="datetime-meta">
+                <p class="datetime-house">{{ settings.houseName.value || 'Home' }}</p>
+                <p class="datetime-date">{{ dateStr }}</p>
+              </div>
+            </div>
+
+            <ul
+              v-if="familyMembers.length"
+              class="house-family"
+              :aria-label="familyLabel"
+            >
+              <li
+                v-for="member in familyMembers"
+                :key="member.id"
+                class="house-member"
+                :title="member.name"
+              >
+                <span
+                  class="house-member-avatar"
+                  :style="{ background: member.color, color: readableTextOn(member.color) }"
+                  aria-hidden="true"
+                >
+                  <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
+                  <template v-else>{{ memberInitial(member.name) }}</template>
+                </span>
+                <span class="house-member-name">{{ member.name }}</span>
+              </li>
+              <li v-if="extraFamilyCount" class="house-member house-member--more">
+                +{{ extraFamilyCount }}
+              </li>
+            </ul>
+
+            <div
+              v-if="wifiPayload"
+              class="house-wifi"
+              :title="`Scan to join ${settings.wifiSsid.value}`"
+            >
+              <WifiQr
+                class="house-wifi__code"
+                :payload="wifiPayload"
+                :label="`Wi-Fi QR code for ${settings.wifiSsid.value}`"
+              />
+              <p class="house-wifi__label">WiFi</p>
             </div>
           </div>
         </UiCard>
@@ -1858,22 +1928,31 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
-/* ── Date & Time ─────────────────────────────────────────────────────────────── */
-.datetime-card {
+/* ── House (date & time, family, guest Wi-Fi) ────────────────────────────────── */
+.house-card {
   --hero-tint: var(--color-primary);
 }
 
-.datetime-display {
+.house-body {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  gap: clamp(4px, 2cqh, var(--space-3));
-  padding: 0 clamp(8px, 2.4cqw, var(--space-6)) clamp(4px, 2cqh, var(--space-4));
+  gap: clamp(5px, 2cqh, var(--space-4));
+  padding: 0 clamp(10px, 2.6cqw, var(--space-6)) clamp(8px, 2.4cqh, var(--space-4));
   overflow: hidden;
+}
+
+.house-time {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(2px, 1cqh, var(--space-2));
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
 }
 
 .datetime-time {
@@ -1889,7 +1968,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 .datetime-clock {
-  font-size: clamp(30px, min(24cqh, 16cqw), 104px);
+  font-size: clamp(30px, min(20cqh, 18cqw), 96px);
   font-weight: 600;
   line-height: 0.92;
   letter-spacing: -0.025em;
@@ -1902,7 +1981,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   align-items: flex-start;
   gap: 1px;
   padding-top: 0.16em;
-  font-size: clamp(11px, 6.4cqh, 24px);
+  font-size: clamp(11px, 5.4cqh, 22px);
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.08em;
@@ -1938,7 +2017,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .datetime-house {
   font-family: var(--font-display, var(--font-family));
-  font-size: clamp(var(--text-micro-size), 4.2cqh, var(--text-label-size));
+  font-size: clamp(var(--text-micro-size), 3.8cqh, var(--text-label-size));
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1946,7 +2025,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 .datetime-date {
-  font-size: clamp(var(--text-micro-size), 4.6cqh, var(--text-body-size));
+  font-size: clamp(var(--text-micro-size), 4.2cqh, var(--text-body-size));
   color: var(--color-textSecondary);
 }
 
@@ -1960,6 +2039,92 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   border-radius: 50%;
   background: color-mix(in srgb, var(--color-textMuted) 60%, transparent);
   vertical-align: middle;
+}
+
+/* Family: avatar chips, names appear once the tile is wide enough. */
+.house-family {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(3px, 1.2cqw, var(--space-2));
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.house-member {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.house-member-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: clamp(22px, 6.4cqh, 34px);
+  height: clamp(22px, 6.4cqh, 34px);
+  border-radius: var(--radius-full);
+  font-size: clamp(10px, 3cqh, 14px);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  overflow: hidden;
+  box-shadow: 0 2px 0 0 color-mix(in srgb, var(--color-borderStrong) 55%, transparent);
+}
+
+.house-member-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.house-member-name {
+  display: none;
+  min-width: 0;
+  max-width: 5.5em;
+  font-size: var(--text-label-size);
+  color: var(--color-textSecondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.house-member--more {
+  padding: 0 2px;
+  font-size: var(--text-label-size);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-textMuted);
+}
+
+/* Guest Wi-Fi: a bare QR with its label underneath. */
+.house-wifi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(3px, 1cqh, 6px);
+  flex-shrink: 0;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.house-wifi__code {
+  display: block;
+  width: clamp(72px, min(72cqw, 46cqh), 280px);
+  max-width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+}
+
+.house-wifi__label {
+  font-size: var(--text-micro-size);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--color-textMuted);
 }
 
 /* Very narrow tiles: cap the clock by width so it never ellipsizes. */
@@ -1988,15 +2153,138 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 }
 
-/* Roomy tiles: the clock leads on the left, context sits behind a rule. */
-@container w (min-width: 26em) {
-  .datetime-display {
+/* Short tiles: clock on the left, QR on the right. */
+@container w (max-height: 12em) {
+  .house-body {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    gap: clamp(12px, 3cqw, var(--space-8));
-    padding-inline: clamp(12px, 3cqw, var(--space-8));
+    column-gap: clamp(8px, 2.4cqw, var(--space-4));
+  }
+
+  .house-time {
+    flex: 1;
+    align-items: flex-start;
     text-align: left;
+  }
+
+  .house-family {
+    display: none;
+  }
+
+  .house-wifi {
+    flex-shrink: 0;
+  }
+
+  .house-wifi__code {
+    width: clamp(64px, min(38cqw, 60cqh), 200px);
+  }
+
+  .house-wifi__label {
+    letter-spacing: 0.1em;
+  }
+
+  .datetime-house {
+    display: none;
+  }
+
+  .datetime-date::before {
+    display: none;
+  }
+}
+
+/* A wide single-row tile has room for the family beside the clock and QR. */
+@container w (max-height: 12em) and (min-width: 32em) {
+  .house-time {
+    flex: 0 0 auto;
+  }
+
+  .house-family {
+    display: flex;
+    flex: 1;
+    justify-content: flex-start;
+  }
+
+  .house-member-name {
+    display: inline;
+  }
+
+  .house-wifi__code {
+    width: clamp(96px, min(24cqw, 62cqh), 220px);
+  }
+
+  .datetime-clock {
+    font-size: clamp(32px, min(42cqh, 16cqw), 76px);
+  }
+
+  .datetime-clock-side {
+    font-size: clamp(11px, 14cqh, 22px);
+  }
+}
+
+/* Compact heights: give the QR the room, drop secondary context. */
+@container w (min-height: 12em) and (max-height: 14.5em) and (max-width: 25.9em) {
+  .house-family,
+  .datetime-meta {
+    display: none;
+  }
+
+  .house-wifi__code {
+    width: clamp(72px, min(72cqw, 48cqh), 200px);
+  }
+}
+
+@container w (min-height: 14.5em) and (max-height: 22em) and (max-width: 25.9em) {
+  .house-family,
+  .datetime-house {
+    display: none;
+  }
+
+  .house-wifi__code {
+    width: clamp(72px, min(72cqw, 44cqh), 200px);
+  }
+}
+
+/* Roomy tiles: clock and family lead on the left, the QR sits on the right. */
+@container w (min-width: 26em) and (min-height: 12em) {
+  .house-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "time wifi"
+      "family wifi";
+    align-content: center;
+    align-items: center;
+    justify-items: start;
+    column-gap: clamp(12px, 3cqw, var(--space-6));
+    row-gap: clamp(3px, 1.2cqh, var(--space-2));
+    padding-inline: clamp(12px, 3cqw, var(--space-6));
+  }
+
+  .house-time {
+    grid-area: time;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .house-family {
+    grid-area: family;
+    justify-content: flex-start;
+  }
+
+  .house-member-name {
+    display: inline;
+  }
+
+  .house-wifi {
+    grid-area: wifi;
+    justify-self: end;
+    align-self: center;
+    flex-shrink: 0;
+  }
+
+  .house-wifi__code {
+    width: clamp(96px, min(34cqw, 56cqh), 280px);
   }
 
   .datetime-time {
@@ -2004,25 +2292,49 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   }
 
   .datetime-clock {
-    font-size: clamp(32px, min(38cqh, 9.5cqw), 84px);
+    font-size: clamp(32px, min(28cqh, 13cqw), 96px);
   }
 
   .datetime-clock-side {
-    font-size: clamp(12px, min(8cqh, 2.4cqw), 26px);
+    font-size: clamp(12px, min(6.5cqh, 2.4cqw), 24px);
   }
 
   .datetime-meta {
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 2px;
-    padding-left: clamp(12px, 2.4cqw, var(--space-6));
-    border-left: 2px solid color-mix(in srgb, var(--hero-tint) 32%, transparent);
-    text-align: left;
+    justify-content: flex-start;
   }
 
   .datetime-date::before {
     display: none;
+  }
+}
+
+/* Generous tiles: let the hero clock and QR grow into the space. */
+@container w (min-width: 32em) and (min-height: 20em) {
+  .house-body {
+    gap: clamp(8px, 2.2cqh, var(--space-5));
+  }
+
+  .datetime-clock {
+    font-size: clamp(56px, min(30cqh, 14cqw), 132px);
+  }
+
+  .datetime-clock-side {
+    font-size: clamp(14px, min(7.5cqh, 2.6cqw), 30px);
+  }
+
+  .house-member-avatar {
+    width: clamp(28px, 6cqh, 44px);
+    height: clamp(28px, 6cqh, 44px);
+    font-size: clamp(12px, 2.8cqh, 17px);
+  }
+
+  .house-member-name {
+    max-width: 7em;
+    font-size: var(--text-body-size);
+  }
+
+  .house-wifi__label {
+    font-size: var(--text-label-size);
   }
 }
 
