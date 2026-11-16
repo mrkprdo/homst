@@ -103,7 +103,25 @@ describe("useCameraStream", () => {
     noVideo.wrapper.unmount()
   })
 
+  it("prefers hls.js even when the browser claims native HLS", async () => {
+    // Chromium can advertise native HLS and then re-fetch the playlist in a
+    // zero-delay loop; hls.js keeps the reload on the playlist's cadence.
+    vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("maybe")
+
+    const path = ref("/both.m3u8")
+    const { wrapper } = mountStream(path)
+    await nextTick()
+
+    expect(hls.instances).toHaveLength(1)
+    expect(hls.instances[0].loaded).toBe("/both.m3u8")
+    const video = wrapper.find("video").element as HTMLVideoElement
+    expect(video.getAttribute("src")).toBeNull()
+    wrapper.unmount()
+  })
+
   it("plays native HLS and swallows a rejected play promise", async () => {
+    // Native is the fallback only: no MSE, but HLS is supported (Safari, iOS).
+    hls.FakeHls.supported = false
     vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("maybe")
     vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValue(new Error("blocked"))
 
@@ -349,6 +367,7 @@ describe("useCameraStream", () => {
 
   it("reloads the video element when native HLS stalls", async () => {
     vi.useFakeTimers()
+    hls.FakeHls.supported = false
     vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("maybe")
     const path = ref("/native.m3u8")
     const { wrapper, api } = mountStream(path)

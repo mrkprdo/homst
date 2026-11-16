@@ -40,9 +40,9 @@ const MAX_NETWORK_RETRIES = 2
 const MAX_MEDIA_RETRIES = 2
 
 /**
- * Attach an HLS stream to a <video> element and watchdog it. Native HLS is
- * used where the browser supports it (Safari, iOS); everything else goes
- * through hls.js.
+ * Attach an HLS stream to a <video> element and watchdog it. Playback goes
+ * through hls.js wherever MSE exists; browsers without it (Safari, iOS) fall
+ * back to native HLS.
  *
  * When no frame arrives for `STALL_TIMEOUT_MS`, the stream is flagged as
  * "retrieving" and the pipeline is nudged. After `MAX_RETRIES` failed nudges
@@ -206,7 +206,19 @@ export function useCameraStream(streamPath: Ref<string | null>) {
       if (status.value === "loading") fail(TIMEOUT_ERROR)
     }, START_TIMEOUT_MS)
 
-    if (el.canPlayType("application/vnd.apple.mpegurl")) {
+    // Prefer hls.js wherever MSE is available, even when the browser claims
+    // native HLS support. Chromium on some displays advertises support and then
+    // re-fetches the playlist in a zero-delay loop — one wall display polled a
+    // 2s-target playlist ~45 times a second and pinned a core. hls.js reloads
+    // on the playlist's own cadence, so it is the safe default. Only browsers
+    // without MSE (Safari, iOS) still need the native path.
+    if (!Hls.isSupported()) {
+      if (!el.canPlayType("application/vnd.apple.mpegurl")) {
+        clearStartTimer()
+        status.value = "error"
+        error.value = "This browser cannot play HLS video."
+        return
+      }
       el.addEventListener("timeupdate", onTimeUpdate)
       el.src = path
       play(el)
@@ -214,13 +226,6 @@ export function useCameraStream(streamPath: Ref<string | null>) {
       clearStartTimer()
       lastFrameAt = Date.now()
       startWatchdog()
-      return
-    }
-
-    if (!Hls.isSupported()) {
-      clearStartTimer()
-      status.value = "error"
-      error.value = "This browser cannot play HLS video."
       return
     }
 
