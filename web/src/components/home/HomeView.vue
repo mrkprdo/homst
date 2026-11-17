@@ -1420,7 +1420,13 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  /* Contain the canvas without slicing what the cards paint. Cards sit flush
+     against the canvas edges, so plain `hidden` cut the Futur ink lip off the
+     bottom row and the edit-mode outlines off every outer edge. The margin
+     gives the 3px lip and the 2px outlines room to paint, still well inside
+     the main panel's 16px padding. */
+  overflow: clip;
+  overflow-clip-margin: 6px;
 }
 
 /* ── Widget canvas — absolute, fills home-view ──────────────────────────────── */

@@ -35,6 +35,9 @@ test.describe("Home dashboard", () => {
   })
 
   test("renders every widget on the home panel", async ({ page }) => {
+    // Assert at wall-display size: the House card drops its date line on short
+    // tiles by container query, so the default 720px-tall window would hide it.
+    await page.setViewportSize({ width: 1920, height: 1080 })
     await expect(page.locator(".home-view")).toBeVisible()
     await expect(page.locator(".widget")).toHaveCount(9)
 
@@ -49,6 +52,17 @@ test.describe("Home dashboard", () => {
     const monthName = new Date().toLocaleString("en-US", { month: "long", year: "numeric" })
     await expect(page.locator(".widget").filter({ hasText: monthName })).toBeVisible()
     await expect(page.locator(".mini-cal-day")).not.toHaveCount(0)
+  })
+
+  test("home canvas leaves room for the card ink lip", async ({ page }) => {
+    const style = await page.locator(".home-view").evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { overflow: s.overflow, margin: Number.parseFloat(s.overflowClipMargin) || 0 }
+    })
+    // Futur cards paint a 3px ink lip below their box. Cards sit flush with the
+    // canvas, so clipping hard at its edge sliced the lip off the bottom row.
+    expect(style.overflow).toBe("clip")
+    expect(style.margin).toBeGreaterThanOrEqual(3)
   })
 
   test("widgets without data show their empty states", async ({ page }) => {

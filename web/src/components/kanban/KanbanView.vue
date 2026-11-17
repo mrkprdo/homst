@@ -143,7 +143,10 @@ onMounted(() => {
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
   flex: 1;
-  overflow: hidden;
+  /* The columns are Futur cards whose ink lip paints 3px past the box; clip
+     with a margin so the bottom of each column keeps it. */
+  overflow: clip;
+  overflow-clip-margin: 6px;
 }
 
 .tasks-column {
