@@ -131,7 +131,30 @@ test.describe("Settings", () => {
   test("settings sections exist", async ({ page }) => {
     await openSettings(page)
     const sections = page.locator(".settings-card")
-    await expect(sections).toHaveCount(12)
+    await expect(sections).toHaveCount(13)
+  })
+
+  test("cards spread evenly across the masonry columns on a wall display", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await openSettings(page)
+    const columnHeights = await page.evaluate(() => {
+      const root = document.querySelector(".settings-masonry") as HTMLElement
+      const spans = new Map<number, { top: number; bottom: number }>()
+      for (const el of Array.from(root.children) as HTMLElement[]) {
+        const box = el.getBoundingClientRect()
+        const x = Math.round(box.x)
+        const span = spans.get(x) ?? { top: Number.POSITIVE_INFINITY, bottom: Number.NEGATIVE_INFINITY }
+        spans.set(x, {
+          top: Math.min(span.top, box.top),
+          bottom: Math.max(span.bottom, box.bottom),
+        })
+      }
+      return [...spans.values()].map((span) => span.bottom - span.top)
+    })
+    // Hand-pinned column breaks used to funnel every newer card into the last
+    // column; the tallest column must now stay close to the shortest one.
+    expect(columnHeights).toHaveLength(3)
+    expect(Math.max(...columnHeights)).toBeLessThanOrEqual(Math.min(...columnHeights) * 1.35)
   })
 
   test("search narrows the cards and clears again", async ({ page }) => {

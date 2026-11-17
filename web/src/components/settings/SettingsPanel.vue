@@ -1513,7 +1513,13 @@ watch(searchTokens, applySearch, { flush: "post" })
    Settings cards have genuinely different heights. A balanced column flow
    keeps their natural rhythm instead of stretching short cards into tall grid
    rows, while DOM order stays the reading order: identity, display, systems.
-   Cards never split across columns. */
+   Cards never split across columns.
+
+   Balance is left entirely to the browser. Do not hand-pin cards with
+   `break-after: column`: those hints only fit the card set they were written
+   for, and every later card is then forced into the last column, which is how
+   the newer cards (Nest, Motion, Home, Wi-Fi, Software update) ended up piled
+   in one long column. */
 .settings-masonry {
   column-count: 1;
   column-gap: var(--space-4);
@@ -1541,14 +1547,6 @@ watch(searchTokens, applySearch, { flush: "post" })
 @media (min-width: 1400px) {
   .settings-masonry {
     column-count: 3;
-  }
-
-  /* Keep the three columns balanced at wall-display widths: identity and
-     display settings lead, systems follow. Without these boundaries the
-     column balancer can push the whole system group into the last column. */
-  .settings-card--reminders,
-  .settings-card--camera {
-    break-after: column;
   }
 }
 

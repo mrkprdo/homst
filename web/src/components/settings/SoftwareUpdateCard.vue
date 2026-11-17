@@ -323,7 +323,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="update-card settings-card">
+  <section class="update-card settings-card settings-card--software">
     <header class="card-header">
       <div class="card-heading">
         <h3 class="card-title">Software update</h3>
@@ -543,7 +543,7 @@ onUnmounted(() => {
         <UiButton size="sm" variant="ghost" @click="load()">Retry</UiButton>
       </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>
