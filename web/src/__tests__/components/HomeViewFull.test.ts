@@ -263,7 +263,8 @@ describe("HomeView — layout engine & edit mode", () => {
     await nextTick()
 
     expect(wrapper.find(".block-title-text").text()).toBe("House")
-    expect(wrapper.find(".datetime-card .block-title svg").exists()).toBe(false)
+    // Every card header now leads with its icon, then the title text.
+    expect(wrapper.find(".datetime-card .block-title").element.children).toHaveLength(2)
     expect(wrapper.find(".house-family").exists()).toBe(false)
     expect(wrapper.find(".house-wifi").exists()).toBe(false)
 

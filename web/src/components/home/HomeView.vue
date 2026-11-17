@@ -14,7 +14,7 @@ import type { Task } from "@/composables/useTasks"
 import { memberColorHex, type MemberColor } from "@/types/household"
 import { wifiQrPayload } from "@/lib/wifiQr"
 import { householdApi } from "@/api/household"
-import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage } from "@phosphor-icons/vue"
+import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage, PhHouse, PhListChecks } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
@@ -976,7 +976,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         <UiCard class="home-block datetime-card house-card" :padding="false">
           <div class="block-header">
             <span class="block-title">
-              <span class="block-title-text">House</span>
+              <PhHouse :size="18" /><span class="block-title-text">House</span>
             </span>
           </div>
           <div class="house-body">
@@ -1138,18 +1138,18 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
           <div class="block-header calendar-header">
             <div class="calendar-month-nav">
               <PhCalendarBlank :size="18" class="calendar-month-nav__icon" />
-              <button type="button" class="calendar-month-nav__arrow" aria-label="Previous month"
-                @click="stepCalendarMonth(-1)">
-                <PhCaretLeft :size="14" weight="bold" />
-              </button>
-              <button type="button" class="calendar-month-nav__label"
+              <button type="button" class="calendar-month-nav__label compact-control"
                 :class="{ 'is-current': isViewingCurrentMonth }"
                 :title="isViewingCurrentMonth ? monthName : 'Back to this month'"
                 :aria-label="isViewingCurrentMonth ? monthName : `Back to this month, ${monthName}`"
                 @click="resetCalendarMonth">
                 {{ monthName }}
               </button>
-              <button type="button" class="calendar-month-nav__arrow" aria-label="Next month"
+              <button type="button" class="calendar-month-nav__arrow compact-control" aria-label="Previous month"
+                @click="stepCalendarMonth(-1)">
+                <PhCaretLeft :size="14" weight="bold" />
+              </button>
+              <button type="button" class="calendar-month-nav__arrow compact-control" aria-label="Next month"
                 @click="stepCalendarMonth(1)">
                 <PhCaretRight :size="14" weight="bold" />
               </button>
@@ -1205,7 +1205,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
         :style="{ ...widgetStyle(getWidget('todos')!), '--wobble-delay': '340ms' }">
         <UiCard class="home-block" :padding="false">
           <div class="block-header">
-            <span class="block-title"><span class="block-title-text">To Do</span></span>
+            <span class="block-title"><PhListChecks :size="18" /><span class="block-title-text">To Do</span></span>
             <UiButton variant="link" size="sm" @click="ui.setPanel('tasks')">
               All
               <PhArrowRight :size="13" />
@@ -1241,7 +1241,11 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
       <div :ref="(el) => registerWidgetEl('photos', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'photos' }"
         :style="{ ...widgetStyle(getWidget('photos')!), '--wobble-delay': '160ms' }">
-        <UiCard class="home-block photos-card" :padding="false">
+        <UiCard
+          class="home-block photos-card"
+          :class="{ 'photos-card--live': activePhotos.length > 0 }"
+          :padding="false"
+        >
           <div class="block-header">
             <span class="block-title"><PhImage :size="18" /><span class="block-title-text">Photos</span></span>
           </div>
@@ -1716,14 +1720,40 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 /* ── Photos slideshow ───────────────────────────────────────────────────────── */
+/* The photo is the card surface, like the camera and weather cards: it paints
+   behind the header instead of sitting in a body block below it. */
+.photos-card {
+  position: relative;
+}
+
+.photos-card--live::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: clamp(36px, 26cqh, 88px);
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-bgSurface) 88%, transparent),
+    transparent
+  );
+}
+
+.photos-card > .block-header {
+  position: relative;
+  z-index: 2;
+}
+
 .photos-body {
-  flex: 1;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   min-height: 0;
-  position: relative;
   background: var(--color-bgSubtle);
 }
 
@@ -1837,55 +1867,9 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   font-size: var(--text-label-size);
 }
 
-/* One-row tiles: compact chrome, smaller title, tighter shortcut. */
-@container w (max-height: 12em) {
-  .block-header {
-    padding-top: var(--space-2);
-    margin-bottom: var(--space-1);
-  }
-
-  .block-title {
-    gap: var(--space-1);
-    font-size: var(--text-micro-size);
-  }
-
-  .block-title svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  .block-header :deep(.ui-btn--sm) {
-    padding: 0 var(--space-1);
-  }
-}
-
-@container w (max-height: 8em) {
-  .block-header {
-    padding-top: var(--space-1);
-  }
-}
-
 /* Narrow tiles: drop the header shortcut instead of truncating the title. */
 @container w (max-width: 16em) {
   .block-header :deep(.ui-btn--sm) {
-    display: none;
-  }
-}
-
-/* Single-cell tiles: reclaim header padding for the title. */
-@container w (max-width: 9em) {
-  .block-header {
-    padding-inline: var(--space-2);
-  }
-}
-
-/* Tiny tiles: drop the chrome so the content keeps the whole cell. */
-@container w (max-height: 6em) {
-
-  .datetime-card .block-header,
-  .weather-card .block-header,
-  .spotify-card .block-header,
-  .photos-card .block-header {
     display: none;
   }
 }
@@ -2723,27 +2707,37 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 .calendar-month-nav {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
 .calendar-month-nav__icon {
   flex-shrink: 0;
+  color: var(--color-textMuted);
 }
 
 .calendar-month-nav__arrow {
+  position: relative;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   border: none;
   border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-textMuted);
   cursor: pointer;
   transition: background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
+}
+
+/* Keep the fingertip-sized hit area without making the header taller than the
+   other cards' headers. */
+.calendar-month-nav__arrow::after {
+  content: "";
+  position: absolute;
+  inset: -14px -2px;
 }
 
 .calendar-month-nav__arrow:hover {
@@ -2756,16 +2750,23 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 }
 
 .calendar-month-nav__label {
+  position: relative;
   min-width: 0;
-  padding: 2px var(--space-1);
+  /* Grow the tap target without making the header taller than the others;
+     the negative block margin removes the padding from layout. */
+  margin-block: -12px;
+  padding: 12px var(--space-1);
   border: none;
   border-radius: var(--radius-xs);
   background: transparent;
-  font-family: var(--font-family);
-  font-size: var(--text-heading-size);
-  font-weight: var(--font-weight-medium);
+  background-clip: content-box;
+  font-family: var(--font-display, var(--font-family));
+  font-size: var(--text-label-size);
+  font-weight: 600;
+  letter-spacing: 0.1em;
   line-height: 1.3;
-  color: var(--color-textPrimary);
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2775,6 +2776,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .calendar-month-nav__label:hover {
   background: var(--color-bgSubtle);
+  color: var(--color-textPrimary);
 }
 
 .calendar-month-nav__label.is-current {
@@ -2783,6 +2785,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
 .calendar-month-nav__label.is-current:hover {
   background: transparent;
+  color: var(--color-textSecondary);
 }
 
 .calendar-month-nav__arrow:focus-visible,

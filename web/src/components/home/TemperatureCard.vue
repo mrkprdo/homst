@@ -238,9 +238,13 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-size: var(--text-heading-size);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-display, var(--font-family));
+  font-size: var(--text-label-size);
+  font-weight: 600;
+  letter-spacing: 0.1em;
   line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -640,16 +644,6 @@ onUnmounted(() => {
 @container w (max-height: 13em) {
   .temperature-average {
     display: block;
-  }
-
-  .block-header {
-    padding-top: var(--space-2);
-    margin-bottom: var(--space-1);
-  }
-
-  .block-title {
-    gap: var(--space-1);
-    font-size: var(--text-label-size);
   }
 
   .temperature-body {

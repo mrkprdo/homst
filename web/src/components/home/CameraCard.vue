@@ -23,7 +23,28 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
 </script>
 
 <template>
-  <UiCard class="home-block camera-card" :padding="false">
+  <UiCard
+    class="home-block camera-card"
+    :class="{ 'camera-card--live': configured }"
+    :padding="false"
+  >
+    <!-- The stream is the card surface: it paints under the header and the
+         readout instead of living in a body block below them. -->
+    <div v-if="configured" class="camera-scene" aria-hidden="true">
+      <canvas ref="backdrop" class="camera-backdrop" />
+      <video
+        ref="video"
+        class="camera-video"
+        :class="[
+          `camera-video--rotate-${rotation}`,
+          { 'camera-video--stalled': stalled },
+        ]"
+        autoplay
+        muted
+        playsinline
+      />
+    </div>
+
     <div class="block-header">
       <span class="block-title">
         <PhVideoCamera :size="18" /><span class="block-title-text">Camera</span>
@@ -39,18 +60,6 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
     </div>
 
     <div v-else class="camera-body">
-      <canvas ref="backdrop" class="camera-backdrop" aria-hidden="true" />
-      <video
-        ref="video"
-        class="camera-video"
-        :class="[
-          `camera-video--rotate-${rotation}`,
-          { 'camera-video--stalled': stalled },
-        ]"
-        autoplay
-        muted
-        playsinline
-      />
       <div v-if="status === 'loading'" class="camera-overlay">
         <span class="camera-loading">Connecting…</span>
       </div>
@@ -73,7 +82,37 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
 
 <style scoped>
 .camera-card {
+  position: relative;
   overflow: hidden;
+}
+
+/* Full-card video surface, like the weather scene. */
+.camera-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  /* Only a live frame should look like a video surface. Empty/loading states
+     keep the card background instead of a black rectangle. */
+  background: var(--color-bgSubtle);
+  /* Lets the rotated video use the whole card's width/height as cq units. */
+  container-type: size;
+}
+
+/* A live video can be any brightness; dim only the strip behind the header so
+   its icon and title stay readable. */
+.camera-card--live::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: clamp(36px, 26cqh, 88px);
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-bgSurface) 88%, transparent),
+    transparent
+  );
 }
 
 /* Match the shared card chrome from HomeView. Scoped styles on the parent
@@ -94,9 +133,13 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-size: var(--text-heading-size);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-display, var(--font-family));
+  font-size: var(--text-label-size);
+  font-weight: 600;
+  letter-spacing: 0.1em;
   line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -104,6 +147,7 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
 
 .block-title svg {
   flex-shrink: 0;
+  color: var(--color-textMuted);
 }
 
 .block-title-text {
@@ -113,52 +157,17 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
   white-space: nowrap;
 }
 
-/* Compact chrome in short tiles, mirroring the other cards. */
-@container w (max-height: 12em) {
-  .block-header {
-    padding-top: var(--space-2);
-    margin-bottom: var(--space-1);
-  }
-
-  .block-title {
-    gap: var(--space-1);
-    font-size: var(--text-label-size);
-  }
-
-  .block-title svg {
-    width: 14px;
-    height: 14px;
-  }
-}
-
-@container w (max-height: 8em) {
-  .block-header {
-    padding-top: var(--space-1);
-  }
-}
-
-@container w (max-width: 9em) {
-  .block-header {
-    padding-inline: var(--space-2);
-  }
-}
-
-@container w (max-height: 6em) {
-  .camera-card .block-header {
-    display: none;
-  }
+/* The scrim and the header sit above the scene; so does every state overlay. */
+.camera-card > .block-header,
+.camera-card > .camera-body {
+  position: relative;
+  z-index: 2;
 }
 
 .camera-body {
-  position: relative;
   flex: 1;
   min-height: 0;
-  /* Only a live frame should look like a video surface. Empty/loading states
-     keep the card background instead of a black rectangle. */
-  background: var(--color-bgSubtle);
   overflow: hidden;
-  /* Lets the rotated video use the body's own width/height as cq units. */
-  container-type: size;
 }
 
 .camera-body--center {
