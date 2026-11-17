@@ -352,6 +352,34 @@ describe("useCameraStream", () => {
     wrapper.unmount()
   })
 
+  it("cancels and ignores frame callbacks from a torn-down pipeline", async () => {
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+    const el = wrapper.find("video").element as HTMLVideoElement
+    let frameCb: (() => void) | null = null
+    const cancelled: number[] = []
+    el.requestVideoFrameCallback = ((cb: () => void) => {
+      frameCb = cb
+      return 7
+    }) as typeof el.requestVideoFrameCallback
+    el.cancelVideoFrameCallback = ((handle: number) => {
+      cancelled.push(handle)
+    }) as typeof el.cancelVideoFrameCallback
+
+    playingInstance(api)
+    expect(frameCb).not.toBeNull()
+    api.retry()
+    await nextTick()
+    expect(cancelled).toEqual([7])
+
+    // A stale callback from the old pipeline must not report progress or
+    // re-register itself on the new one.
+    frameCb!()
+    expect(api.status.value).toBe("loading")
+    wrapper.unmount()
+  })
+
   it("does not rebuild for a frozen render while the page is hidden", async () => {
     // Background tabs stop composing frames without anything being broken.
     vi.useFakeTimers()
