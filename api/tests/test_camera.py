@@ -1223,6 +1223,40 @@ async def test_stream_marks_each_run_as_a_discontinuity(
 
 
 @pytest.mark.asyncio
+async def test_start_rolls_back_when_the_swap_fails(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first, second = FakeProcess(), FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+    source = camera.build_stream_url(CAMERA)
+    token = camera.camera_token(source)
+    directory = camera.output_dir(token)
+    old_playlist = (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(second)
+    )
+    real_rename = Path.rename
+
+    def fail_swap(self, target):
+        if self.name == f"{token}.staging":
+            raise OSError("disk full")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", fail_swap)
+    with pytest.raises(OSError, match="disk full"):
+        await camera.camera_stream._start_locked(source, token)
+
+    # The old stream is back in place and no staging litter remains.
+    assert (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8") == old_playlist
+    assert not (camera.CAMERA_ROOT / f"{token}.staging").exists()
+    assert not (camera.CAMERA_ROOT / f"{token}.old").exists()
+
+
+@pytest.mark.asyncio
 async def test_restart_survives_a_redis_failure(
     camera_root, redis, ffmpeg, monkeypatch
 ):
