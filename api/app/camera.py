@@ -433,12 +433,15 @@ class CameraStream:
         await self._refresh_owner()
 
     async def _wait_for_playlist(
-        self, token: str, process: asyncio.subprocess.Process | None = None
+        self,
+        token: str,
+        process: asyncio.subprocess.Process | None = None,
+        directory: Path | None = None,
     ) -> None:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + START_TIMEOUT
+        path = playlist_path(token) if directory is None else directory / PLAYLIST_NAME
         while loop.time() < deadline:
-            path = playlist_path(token)
             try:
                 if path.is_file() and path.stat().st_size > 0:
                     return
@@ -459,8 +462,13 @@ class CameraStream:
             )
 
         directory = output_dir(token)
-        shutil.rmtree(directory, ignore_errors=True)
-        directory.mkdir(parents=True, exist_ok=True)
+        # Build the replacement stream in a staging directory and swap it in
+        # only once ffmpeg is producing output. Viewers keep downloading the
+        # old playlist and segments for the whole restart instead of hitting
+        # 404s while the camera connection is reopened.
+        staging = CAMERA_ROOT / f"{token}.staging"
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True, exist_ok=True)
 
         args = [
             ffmpeg,
@@ -507,13 +515,16 @@ class CameraStream:
             "-hls_delete_threshold",
             str(HLS_DELETE_THRESHOLD),
             "-hls_flags",
-            "delete_segments+omit_endlist+independent_segments",
+            # discont_start marks every run as a discontinuity: a restarted
+            # ffmpeg begins a fresh timestamp timeline, and players must
+            # re-probe it instead of appending new frames at the old offsets.
+            "delete_segments+omit_endlist+independent_segments+discont_start",
             "-hls_segment_filename",
-            str(directory / "seg_%06d.ts"),
-            str(directory / PLAYLIST_NAME),
+            str(staging / "seg_%06d.ts"),
+            str(staging / PLAYLIST_NAME),
         ]
 
-        log_path = directory / "ffmpeg.log"
+        log_path = staging / "ffmpeg.log"
         try:
             log_file = open(log_path, "wb")
             try:
@@ -525,10 +536,10 @@ class CameraStream:
             finally:
                 log_file.close()
         except OSError as exc:
-            detail = _read_ffmpeg_log(directory, source)
+            detail = _read_ffmpeg_log(staging, source)
             if detail:
                 logger.warning("Camera ffmpeg failed to start: %s", detail)
-            shutil.rmtree(directory, ignore_errors=True)
+            shutil.rmtree(staging, ignore_errors=True)
             message = f"Could not start the camera stream. {detail}".strip()
             raise CameraError(message, 503) from exc
 
@@ -536,15 +547,35 @@ class CameraStream:
         self._source = source
         self._token = token
         try:
-            await self._wait_for_playlist(token, process)
+            await self._wait_for_playlist(token, process, directory=staging)
         except CameraError as exc:
-            detail = _read_ffmpeg_log(directory, source)
+            detail = _read_ffmpeg_log(staging, source)
             if detail:
                 logger.warning("Camera ffmpeg failed: %s", detail)
+            shutil.rmtree(staging, ignore_errors=True)
             await self._stop_locked(keep_monitor=keep_monitor)
             if detail:
                 raise CameraError(f"{exc} ffmpeg: {detail}") from exc
             raise
+
+        # The new stream is producing output. Swap it in for the old one in two
+        # renames; the live path is only absent for the instant between them.
+        # Non-owner workers keep serving the old playlist throughout the restart
+        # and poll for the file if it is briefly missing, and the owner
+        # serializes on the stream lock, so the gap is not observable in
+        # practice. A failed swap rolls back to the old stream.
+        retired = CAMERA_ROOT / f"{token}.old"
+        shutil.rmtree(retired, ignore_errors=True)
+        try:
+            if directory.exists():
+                directory.rename(retired)
+            staging.rename(directory)
+        except OSError:
+            if retired.exists() and not directory.exists():
+                retired.rename(directory)
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        shutil.rmtree(retired, ignore_errors=True)
 
     async def restart(self) -> None:
         """Restart ffmpeg for the current source, keeping the health monitor."""

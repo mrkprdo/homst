@@ -1162,6 +1162,67 @@ async def test_restart_replaces_the_ffmpeg_process(
 
 
 @pytest.mark.asyncio
+async def test_restart_keeps_serving_the_old_stream_until_the_new_one_is_ready(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first, second = FakeProcess(), FakeProcess()
+    monkeypatch.setattr(
+        camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
+    )
+    await camera.camera_stream.ensure(CAMERA)
+    token = camera.camera_token(camera.build_stream_url(CAMERA))
+    directory = camera.output_dir(token)
+    (directory / "seg_000001.ts").write_bytes(b"old segment")
+    old_playlist = (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8")
+
+    # The replacement ffmpeg needs a moment to reopen the camera. Until it
+    # produces output, viewers must still see the old playlist and segments —
+    # a 404 window here is what used to kill kiosk clients for good.
+    started = asyncio.Event()
+
+    async def slow_create(*args, **kwargs):
+        started.set()
+        await asyncio.sleep(0.05)
+        playlist = Path(args[-1])
+        playlist.parent.mkdir(parents=True, exist_ok=True)
+        playlist.write_text("#EXTM3U\n# new run\n", encoding="utf-8")
+        return second
+
+    monkeypatch.setattr(camera.asyncio, "create_subprocess_exec", slow_create)
+    restart_task = asyncio.create_task(camera.camera_stream.restart())
+    await started.wait()
+    assert (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8") == old_playlist
+    assert (directory / "seg_000001.ts").read_bytes() == b"old segment"
+    await restart_task
+
+    assert (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8") == "#EXTM3U\n# new run\n"
+    assert camera.camera_stream._process is second
+    assert not (camera.CAMERA_ROOT / f"{token}.staging").exists()
+    assert not (camera.CAMERA_ROOT / f"{token}.old").exists()
+
+
+@pytest.mark.asyncio
+async def test_stream_marks_each_run_as_a_discontinuity(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    captured: list[tuple] = []
+
+    async def create(*args, **kwargs):
+        captured.append(args)
+        playlist = Path(args[-1])
+        playlist.parent.mkdir(parents=True, exist_ok=True)
+        playlist.write_text("#EXTM3U\n", encoding="utf-8")
+        return FakeProcess()
+
+    monkeypatch.setattr(camera.asyncio, "create_subprocess_exec", create)
+    await camera.camera_stream.ensure(CAMERA)
+    flags = captured[0][captured[0].index("-hls_flags") + 1]
+    # A restarted ffmpeg begins a fresh timestamp timeline; players need the
+    # discontinuity tag to re-probe it instead of mis-appending new frames.
+    assert "discont_start" in flags
+
+
+@pytest.mark.asyncio
 async def test_restart_survives_a_redis_failure(
     camera_root, redis, ffmpeg, monkeypatch
 ):

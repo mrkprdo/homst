@@ -283,6 +283,145 @@ describe("useCameraStream", () => {
     wrapper.unmount()
   })
 
+  it("reconnects on its own after a fatal HTTP error", async () => {
+    // The server deletes the playlist while ffmpeg restarts after a camera
+    // hiccup. A kiosk must recover from that window without a human tap.
+    vi.useFakeTimers()
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+
+    const instance = playingInstance(api)
+    instance.handlers["error"]!("error", {
+      fatal: true,
+      type: "network",
+      response: { code: 502, text: "" },
+    })
+    expect(api.status.value).toBe("error")
+    expect(instance.destroyed).toBe(true)
+
+    const instancesBefore = hls.instances.length
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(hls.instances.length).toBe(instancesBefore + 1)
+    expect(api.status.value).toBe("loading")
+
+    playingInstance(api)
+    wrapper.unmount()
+  })
+
+  /** Stub the compositor-frame signal on the video element. */
+  function stubRenderFrames(el: HTMLVideoElement) {
+    let frameCb: (() => void) | null = null
+    el.requestVideoFrameCallback = ((cb: () => void) => {
+      frameCb = cb
+      return 1
+    }) as typeof el.requestVideoFrameCallback
+    return {
+      /** Present one frame to the compositor. */
+      render: () => frameCb?.(),
+      get pending() {
+        return frameCb !== null
+      },
+    }
+  }
+
+  it("rebuilds the pipeline when the picture freezes but the clock keeps advancing", async () => {
+    // A stuck hardware decoder can leave timeupdate firing while the picture
+    // is frozen. Only a full rebuild (fresh MediaSource + decoder) fixes that.
+    vi.useFakeTimers()
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+    const frames = stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
+
+    const instance = playingInstance(api)
+    expect(frames.pending).toBe(true)
+
+    // The clock keeps ticking; no frame ever reaches the compositor.
+    for (let step = 0; step < 5; step++) {
+      await vi.advanceTimersByTimeAsync(4_000)
+      await wrapper.find("video").trigger("timeupdate")
+    }
+    expect(instance.destroyed).toBe(true)
+    expect(hls.instances).toHaveLength(2)
+    expect(api.status.value).toBe("loading")
+
+    playingInstance(api)
+    frames.render()
+    expect(api.status.value).toBe("playing")
+    wrapper.unmount()
+  })
+
+  it("does not rebuild for a frozen render while the page is hidden", async () => {
+    // Background tabs stop composing frames without anything being broken.
+    vi.useFakeTimers()
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      configurable: true,
+    })
+    try {
+      const path = ref("/live.m3u8")
+      const { wrapper, api } = mountStream(path)
+      await nextTick()
+      stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
+
+      const instance = playingInstance(api)
+      for (let step = 0; step < 5; step++) {
+        await vi.advanceTimersByTimeAsync(4_000)
+        await wrapper.find("video").trigger("timeupdate")
+      }
+      expect(api.status.value).toBe("playing")
+      expect(instance.destroyed).toBe(false)
+      wrapper.unmount()
+    } finally {
+      Reflect.deleteProperty(document, "visibilityState")
+    }
+  })
+
+  it("treats presented frames as progress even without timeupdate", async () => {
+    vi.useFakeTimers()
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+    const frames = stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
+
+    const instance = playingInstance(api)
+    for (let step = 0; step < 6; step++) {
+      await vi.advanceTimersByTimeAsync(4_000)
+      frames.render()
+    }
+    expect(api.status.value).toBe("playing")
+    expect(instance.destroyed).toBe(false)
+    wrapper.unmount()
+  })
+
+  it("escalates a permanently frozen decoder to the slow reconnect cadence", async () => {
+    vi.useFakeTimers()
+    const path = ref("/live.m3u8")
+    const { wrapper, api } = mountStream(path)
+    await nextTick()
+    stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
+
+    playingInstance(api)
+    // Every rebuild comes back playing (clock alive) but never renders again.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      for (let step = 0; step < 5; step++) {
+        await vi.advanceTimersByTimeAsync(4_000)
+        await wrapper.find("video").trigger("timeupdate")
+      }
+      if (api.status.value === "loading") playingInstance(api)
+    }
+    expect(api.status.value).toBe("failed")
+    expect(api.error.value).toBe("failed retrieving stream")
+    // 1 initial pipeline + 3 rebuilds, then the slow-cadence reconnect.
+    expect(hls.instances).toHaveLength(4)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(hls.instances).toHaveLength(5)
+    expect(api.status.value).toBe("loading")
+    wrapper.unmount()
+  })
+
   it("flags a stalled stream as retrieving and recovers when frames return", async () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")

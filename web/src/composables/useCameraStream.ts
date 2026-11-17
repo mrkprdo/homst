@@ -48,6 +48,13 @@ const MAX_MEDIA_RETRIES = 2
  * "retrieving" and the pipeline is nudged. After `MAX_RETRIES` failed nudges
  * it stays "failed" and reconnects every `RETRY_INTERVAL_MS` until frames
  * return.
+ *
+ * "A frame arrived" means two things: the playback clock advanced
+ * (`timeupdate`) and, where the browser supports it, a frame was actually
+ * presented for composition (`requestVideoFrameCallback`). Low-power
+ * Chromium can keep the clock running while the decoder or video overlay is
+ * stuck — a frozen picture that `timeupdate` alone would never notice. That
+ * case rebuilds the whole pipeline instead of nudging the loader.
  */
 export function useCameraStream(streamPath: Ref<string | null>) {
   const video = ref<HTMLVideoElement | null>(null)
@@ -61,6 +68,14 @@ export function useCameraStream(streamPath: Ref<string | null>) {
   let retryTimer: ReturnType<typeof setTimeout> | null = null
   let retrieveAttempts = 0
   let lastFrameAt = 0
+  // Rendered-frame watchdog. `timeupdate` tracks the playback clock, which on a
+  // stuck hardware decoder keeps advancing while the picture is frozen.
+  // requestVideoFrameCallback fires only when a frame reaches the compositor,
+  // so it is the one signal that can see that freeze.
+  let lastRenderAt = 0
+  let renderSupported = false
+  let renderGen = 0
+  let renderHandle = 0
 
   function clearStartTimer() {
     if (startTimer !== null) {
@@ -94,8 +109,34 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     if (result && typeof result.catch === "function") result.catch(() => {})
   }
 
+  /** Stop the rendered-frame loop; a generation guard kills pending callbacks. */
+  function stopRenderWatch() {
+    renderGen += 1
+    const el = video.value
+    if (el && renderHandle && typeof el.cancelVideoFrameCallback === "function") {
+      el.cancelVideoFrameCallback(renderHandle)
+    }
+    renderHandle = 0
+  }
+
+  /** Track frames actually presented for composition, where the browser can. */
+  function startRenderWatch(el: HTMLVideoElement) {
+    renderSupported = typeof el.requestVideoFrameCallback === "function"
+    if (!renderSupported) return
+    const gen = renderGen
+    lastRenderAt = Date.now()
+    const tick = () => {
+      if (gen !== renderGen) return
+      lastRenderAt = Date.now()
+      markFrame()
+      renderHandle = el.requestVideoFrameCallback(tick)
+    }
+    renderHandle = el.requestVideoFrameCallback(tick)
+  }
+
   /** Tear down the current pipeline without touching the status. */
   function teardown() {
+    stopRenderWatch()
     if (hls) {
       hls.destroy()
       hls = null
@@ -116,6 +157,11 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     status.value = "error"
     error.value = message
     destroy()
+    // A kiosk has nobody to press "Try again". A camera hiccup can take the
+    // stream down for a while, and a Wi-Fi blip can outlast the immediate
+    // retries — both answer with a transient HTTP/network error. Treat every
+    // failure as recoverable and reconnect on the slow cadence.
+    scheduleRetry()
   }
 
   /** Turn an hls.js network failure into the server's message when possible. */
@@ -137,8 +183,18 @@ export function useCameraStream(streamPath: Ref<string | null>) {
   function startWatchdog() {
     stopWatchdog()
     watchdogTimer = setInterval(() => {
-      const stalled = status.value === "playing" || status.value === "retrieving"
-      if (stalled && Date.now() - lastFrameAt >= STALL_TIMEOUT_MS) handleStall()
+      const active = status.value === "playing" || status.value === "retrieving"
+      if (!active) return
+      const now = Date.now()
+      const clockStalled = now - lastFrameAt >= STALL_TIMEOUT_MS
+      // A frozen decoder can leave the clock (and `timeupdate`) running, so
+      // also watch presented frames. Only while the page is visible: a
+      // background tab stops composing frames without anything being broken.
+      const renderStalled =
+        renderSupported &&
+        document.visibilityState === "visible" &&
+        now - lastRenderAt >= STALL_TIMEOUT_MS
+      if (clockStalled || renderStalled) handleStall(renderStalled)
     }, HEALTH_CHECK_INTERVAL_MS)
   }
 
@@ -177,7 +233,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     }, RETRY_INTERVAL_MS)
   }
 
-  function handleStall() {
+  function handleStall(decoderStuck = false) {
     retrieveAttempts += 1
     if (retrieveAttempts > MAX_RETRIES) {
       status.value = "failed"
@@ -189,6 +245,16 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     status.value = "retrieving"
     error.value = RETRIEVING_MESSAGE
     lastFrameAt = Date.now()
+    lastRenderAt = Date.now()
+    if (decoderStuck) {
+      // The loader is healthy but the decoder/overlay is frozen; nudging the
+      // loader cannot fix that. Rebuild the whole pipeline (fresh MediaSource
+      // and decoder) while keeping the recovery budget, so a decoder that
+      // stays dead still escalates to the slow reconnect cadence.
+      destroy()
+      beginPlayback()
+      return
+    }
     recoverStream()
     startWatchdog()
   }
@@ -225,6 +291,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
       status.value = "playing"
       clearStartTimer()
       lastFrameAt = Date.now()
+      startRenderWatch(el)
       startWatchdog()
       return
     }
@@ -286,6 +353,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
       clearStartTimer()
       play(el)
       lastFrameAt = Date.now()
+      startRenderWatch(el)
       startWatchdog()
     })
     instance.loadSource(path)
