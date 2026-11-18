@@ -59,7 +59,7 @@ const WIDGET_LABELS: Record<string, string> = {
   todos: "To Do",
   photos: "Photos",
   spotify: "Spotify",
-  temperatures: "Indoor temperatures",
+  temperatures: "Temps",
   camera: "Camera",
 }
 

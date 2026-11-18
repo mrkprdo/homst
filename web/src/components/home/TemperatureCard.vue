@@ -96,7 +96,7 @@ onUnmounted(() => {
   <UiCard class="home-block temperature-card" :padding="false">
     <div class="block-header">
       <span class="block-title">
-        <PhThermometer :size="18" /><span class="block-title-text">Indoor Temps</span>
+        <PhThermometer :size="18" /><span class="block-title-text">Temps</span>
       </span>
       <span v-if="stats" class="temperature-average">{{ formatTemp(stats.average) }}°</span>
     </div>
