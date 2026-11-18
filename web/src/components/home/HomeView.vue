@@ -3827,6 +3827,45 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
+/* Cramped one-row tiles (1×1 next to wider 2×1 players): the 48px touch box
+   dwarfs the card, so draw the control at its natural size and give it a
+   transparent hit area instead. */
+@container w (max-height: 13em) and (max-width: 20em) {
+  .spotify-connect-btn {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    padding: var(--space-1) var(--space-2);
+    border-width: 1.5px;
+    box-shadow: 0 2px 0 0 var(--color-ink, color-mix(in srgb, var(--color-primaryDark) 60%, transparent));
+    font-size: var(--text-micro-size);
+  }
+
+  .spotify-idle .spotify-connect-btn::after {
+    content: "";
+    position: absolute;
+    inset: -9px -7px;
+  }
+}
+
+/* Narrow one-row tiles: drop the idle copy first, then the record, so the
+   control never gets pushed out of the card. */
+@container w (max-width: 12em) and (max-height: 13em) {
+  .spotify-idle-text {
+    display: none;
+  }
+}
+
+@container w (max-width: 10em) and (max-height: 13em) {
+  .spotify-idle {
+    justify-content: center;
+  }
+
+  .spotify-vinyl--idle {
+    display: none;
+  }
+}
+
 /* Tiny one-row tiles: keep the track title, drop the rest of the details. */
 @container w (max-height: 4.5em) {
   .spotify-body--playing .spotify-artist,
@@ -3842,8 +3881,8 @@ function onCanvasDoubleClick(e: MouseEvent) {
     gap: 4px;
   }
 
-  .spotify-setup-input,
-  .spotify-connect-btn {
+  .spotify-setup-input-row .spotify-setup-input,
+  .spotify-setup-input-row .spotify-connect-btn {
     width: 100%;
     padding: 4px var(--space-2);
   }
