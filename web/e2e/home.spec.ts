@@ -140,6 +140,37 @@ test.describe("Home dashboard", () => {
     await expect(page.locator(".grid-cell-bg")).toHaveCount(0)
   })
 
+  test("double-clicking a card expands it into a blow-up view", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    const house = page.locator(".widget").filter({ hasText: "Cedar House" }).first()
+
+    await house.locator(".home-block").dblclick()
+
+    const stage = page.locator(".card-blowup__stage")
+    await expect(stage).toBeVisible()
+    await expect(stage.locator(".widget")).toHaveCount(1)
+    await expect(stage.locator(".datetime-house")).toHaveText("Cedar House")
+    // The card left its grid cell while expanded.
+    await expect(page.locator(".widget-canvas .widget")).toHaveCount(8)
+
+    const box = await stage.boundingBox()
+    expect(box!.width).toBeGreaterThan(1000)
+
+    await page.locator(".card-blowup__close").click()
+    await expect(page.locator(".card-blowup")).toHaveCount(0)
+    await expect(page.locator(".widget-canvas .widget")).toHaveCount(9)
+  })
+
+  test("card surfaces do not allow text selection", async ({ page }) => {
+    const card = page.locator(".widget").first()
+    expect(await card.evaluate(el => getComputedStyle(el).userSelect)).toBe("none")
+
+    // Form fields inside a card stay editable.
+    const input = page.locator(".spotify-setup-input")
+    await expect(input).toBeVisible()
+    expect(await input.evaluate(el => getComputedStyle(el).userSelect)).toBe("text")
+  })
+
   test("schedule header link jumps to the calendar panel", async ({ page }) => {
     await page
       .locator(".widget")

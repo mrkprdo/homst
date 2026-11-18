@@ -112,6 +112,21 @@ export function getAnimationEnabled(): boolean {
   return !isLowPower
 }
 
+/**
+ * A single compositor-only transform (one layer moving/scaling) is cheap
+ * enough for a weak display, unlike the blur/spring/paint work the low-power
+ * budget exists to avoid. Callers must still honour an explicit "animations
+ * off" choice and the system reduced-motion preference.
+ */
+export function canAnimateTransform(): boolean {
+  if (typeof window === "undefined") return false
+  if (getUserAnimationOverride() === false) return false
+  try {
+    if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false
+  } catch {}
+  return true
+}
+
 /** Persist user animation preference and apply it immediately. */
 export function setAnimationEnabled(enabled: boolean): void {
   try {

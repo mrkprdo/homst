@@ -8,13 +8,14 @@ import { useWeather } from "@/composables/useWeather"
 import { useSpotify } from "@/composables/useSpotify"
 import { useSettings } from "@/composables/useSettings"
 import { useFittedList } from "@/composables/useFittedList"
+import { useCardBlowup } from "@/composables/useCardBlowup"
 import { expandEvents } from "@/utils/recurrence"
 import type { Event as CalendarEvent } from "@/composables/useEvents"
 import type { Task } from "@/composables/useTasks"
 import { memberColorHex, type MemberColor } from "@/types/household"
 import { wifiQrPayload } from "@/lib/wifiQr"
 import { householdApi } from "@/api/household"
-import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage, PhHouse, PhListChecks } from "@phosphor-icons/vue"
+import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage, PhHouse, PhListChecks, PhX } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
@@ -37,6 +38,30 @@ const { todos, doing, ensureLoaded } = useTasks()
 const { members, ensureLoaded: loadMembers } = useMembers()
 const ui = useUi()
 const settings = useSettings()
+
+// Double-clicking a card lifts it out of the grid into a centred, larger view
+// of the same live element.
+const {
+  active: blowupActive,
+  ready: blowupReady,
+  label: blowupLabel,
+  stageEl: blowupStageEl,
+  closeEl: blowupCloseEl,
+  open: openBlowup,
+  close: closeBlowup,
+} = useCardBlowup()
+
+const WIDGET_LABELS: Record<string, string> = {
+  datetime: "House",
+  schedule: "Schedule",
+  weather: "Weather",
+  calendar: "Calendar",
+  todos: "To Do",
+  photos: "Photos",
+  spotify: "Spotify",
+  temperatures: "Indoor temperatures",
+  camera: "Camera",
+}
 
 const { weather, loading: weatherLoading, error: weatherError, refresh: refreshWeather, startAutoRefresh, stopAutoRefresh, weatherLabel } = useWeather()
 const { currentTrack, connected: spotifyConnected, error: spotifyError, needsConfig: spotifyNeedsConfig, setClientId, connect: connectSpotify, init: initSpotify, disconnect: disconnectSpotify, formatTime } = useSpotify()
@@ -290,8 +315,12 @@ const lockBtnEl = ref<HTMLElement | null>(null)
 // Widget DOM refs for anime.js targeting
 const widgetEls: Record<string, HTMLElement> = {}
 function registerWidgetEl(id: string, el: HTMLElement | null) {
-  if (el) widgetEls[id] = el
-  else delete widgetEls[id]
+  if (el) {
+    el.dataset.widgetId = id
+    widgetEls[id] = el
+  } else {
+    delete widgetEls[id]
+  }
 }
 
 // ── Canvas size tracking (ResizeObserver) ─────────────────────────────────────
@@ -370,7 +399,10 @@ function resetScheduleToToday() {
 // Moving to another screen (or anything that keeps this view alive off-screen)
 // puts the card back to Today.
 watch(() => ui.activePanel.value, panel => {
-  if (panel !== "home") resetScheduleToToday()
+  if (panel !== "home") {
+    resetScheduleToToday()
+    closeBlowup()
+  }
 })
 
 const scheduleDate = computed(() => {
@@ -951,6 +983,24 @@ function widgetStyle(w: WidgetDef) {
 }
 
 function getWidget(id: string) { return widgets.find(w => w.id === id) }
+
+/**
+ * Double-click support is delegated from the canvas so every card gets it
+ * without extra markup. Controls inside a card keep their own double-click
+ * behaviour (calendar days, buttons, links), and layout editing disables the
+ * gesture so a drag never opens a card by accident.
+ */
+function onCanvasDoubleClick(e: MouseEvent) {
+  if (unlocked.value || dragType || blowupActive.value) return
+  const target = e.target as HTMLElement | null
+  if (!target) return
+  if (target.closest("button, a, input, select, textarea, summary, label, [role='button'], [role='link'], [contenteditable='true']")) return
+  const widget = target.closest<HTMLElement>(".widget")
+  if (!widget || !canvasEl.value?.contains(widget)) return
+  const id = widget.dataset.widgetId
+  if (!id) return
+  void openBlowup(widget, WIDGET_LABELS[id] ?? "Card")
+}
 </script>
 
 <template>
@@ -960,7 +1010,7 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
       gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
       gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)`,
       gap: `${GAP}px`,
-    }">
+    }" @dblclick="onCanvasDoubleClick">
       <!-- Grid overlay cells (shown in edit mode) -->
       <template v-if="unlocked">
         <div v-for="i in GRID_COLS * GRID_ROWS" :key="'gc-' + i" class="grid-cell-bg" aria-hidden="true" :style="{
@@ -1415,6 +1465,20 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
       <PhLockOpen v-if="unlocked" :size="18" />
       <PhLock v-else :size="18" />
     </button>
+
+    <!-- Double-clicked card, lifted out of the grid. The real element is moved
+         into the stage so its live content and controls keep working. -->
+    <Teleport to="body">
+      <div v-if="blowupActive" class="card-blowup" :class="{ 'card-blowup--ready': blowupReady }" role="dialog"
+        aria-modal="true" :aria-label="`${blowupLabel} card expanded`">
+        <div class="card-blowup__backdrop" @click="closeBlowup" />
+        <div ref="blowupStageEl" class="card-blowup__stage" />
+        <button ref="blowupCloseEl" type="button" class="card-blowup__close" aria-label="Close expanded card"
+          title="Close (Esc)" @click="closeBlowup">
+          <PhX :size="22" weight="bold" />
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -1462,12 +1526,25 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   min-height: 0;
   container-type: size;
   container-name: w;
+  /* The card surface is a display, not a document: double-clicking to expand
+     it must not select labels or values. Form fields opt back in below. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   /* Keep the edit outline present (just transparent) at all times. Declaring it
      only inside .is-editing makes unlock transition outline-color from its
      initial `currentColor` (near-white in dark mode) to transparent, which
      flashes a white outline around every card as edit mode starts. */
   outline: 2px dashed transparent;
   transition: outline-color var(--duration-fast);
+}
+
+/* Editing a form value still needs normal text selection. */
+.widget :deep(input),
+.widget :deep(textarea),
+.widget :deep([contenteditable="true"]) {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .is-editing .widget {
@@ -3774,6 +3851,86 @@ function getWidget(id: string) { return widgets.find(w => w.id === id) }
   .spotify-error {
     display: none;
   }
+}
+
+/* ── Card blow-up ──────────────────────────────────────────────────────────────
+   A double-clicked home card is moved into this layer and eased from its grid
+   cell to a large centred view. Below the drawer (100) so task/event details can
+   still open above it, and above the nav. */
+.card-blowup {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.card-blowup__backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--color-bgBase);
+  opacity: 0;
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card-blowup--ready .card-blowup__backdrop {
+  opacity: 0.82;
+}
+
+:global(.dark) .card-blowup--ready .card-blowup__backdrop {
+  opacity: 0.88;
+}
+
+.card-blowup__stage {
+  position: relative;
+  width: min(94vw, 1480px);
+  height: min(88vh, 920px);
+}
+
+.card-blowup__stage :deep(.widget) {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 34px 90px -34px rgba(0, 0, 0, 0.62),
+    0 12px 34px -14px rgba(0, 0, 0, 0.38);
+  will-change: transform;
+}
+
+.card-blowup__close {
+  position: absolute;
+  top: max(var(--space-4), env(safe-area-inset-top));
+  right: max(var(--space-4), env(safe-area-inset-right));
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bgElevated);
+  color: var(--color-textSecondary);
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast),
+    transform var(--duration-fast);
+}
+
+.card-blowup__close:hover {
+  background: var(--color-bgSubtle);
+  color: var(--color-textPrimary);
+  transform: scale(1.06);
+}
+
+.card-blowup__close:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 </style>
