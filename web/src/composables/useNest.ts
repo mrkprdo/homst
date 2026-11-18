@@ -14,8 +14,26 @@ const EMPTY: NestTemperatures = {
   authType: null,
   connected: false,
   rooms: [],
+  history: {},
   updatedAt: null,
   error: null,
+}
+
+function normalizeHistory(data: unknown): Record<string, Array<[number, number]>> {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return {}
+  const history: Record<string, Array<[number, number]>> = {}
+  for (const [roomId, samples] of Object.entries(data)) {
+    if (!Array.isArray(samples)) continue
+    const points = samples.filter(
+      (pair): pair is [number, number] =>
+        Array.isArray(pair)
+        && pair.length === 2
+        && typeof pair[0] === "number"
+        && typeof pair[1] === "number",
+    )
+    if (points.length) history[roomId] = points
+  }
+  return history
 }
 
 function normalize(data: unknown): NestTemperatures {
@@ -26,6 +44,7 @@ function normalize(data: unknown): NestTemperatures {
     authType: value.authType === "google" || value.authType === "nest" ? value.authType : null,
     connected: value.connected === true,
     rooms: Array.isArray(value.rooms) ? value.rooms : [],
+    history: normalizeHistory(value.history),
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null,
     error: typeof value.error === "string" ? value.error : null,
   }

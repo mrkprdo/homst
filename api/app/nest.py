@@ -14,6 +14,7 @@ so the rotated values are written back to the database.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -49,6 +50,7 @@ SETTING_AUTH_TYPE = "nest_auth_type"
 SETTING_ISSUE_TOKEN = "nest_issue_token"
 SETTING_COOKIES = "nest_cookies"
 SETTING_ACCESS_TOKEN = "nest_access_token"
+SETTING_TEMP_HISTORY = "nest_temp_history"
 CREDENTIAL_KEYS = (
     SETTING_AUTH_TYPE,
     SETTING_ISSUE_TOKEN,
@@ -60,6 +62,11 @@ CACHE_TTL_SECONDS = 60
 ERROR_CACHE_TTL_SECONDS = 20
 SESSION_FALLBACK_SECONDS = 60 * 60
 SENSOR_OFFLINE_AFTER_SECONDS = 4 * 60 * 60
+
+# Rolling sparkline history: never keep more than 12 hours, and one sample
+# every 5 minutes is plenty of resolution for a tile-sized line graph.
+HISTORY_WINDOW_SECONDS = 12 * 60 * 60
+HISTORY_SAMPLE_SECONDS = 5 * 60
 
 _AUTH_ERROR = (
     "Nest sign-in expired. Open Settings → Indoor temperatures and paste fresh credentials."
@@ -471,6 +478,59 @@ async def _save_setting(db: AsyncSession, key: str, value: str) -> None:
     await db.commit()
 
 
+def _parse_history(raw: str | None) -> dict[str, list[list[float]]]:
+    """Read the stored sparkline history, ignoring anything malformed."""
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    history: dict[str, list[list[float]]] = {}
+    for room_id, samples in data.items():
+        if not isinstance(room_id, str) or not isinstance(samples, list):
+            continue
+        points = [
+            [float(t), float(c)]
+            for t, c in (
+                pair for pair in samples if isinstance(pair, list) and len(pair) == 2
+            )
+            if isinstance(t, (int, float)) and isinstance(c, (int, float))
+        ]
+        if points:
+            history[room_id] = points
+    return history
+
+
+async def _record_history(
+    db: AsyncSession,
+    rooms: list[dict[str, Any]],
+    now: float,
+) -> dict[str, list[list[float]]]:
+    """Append one sample per room to a rolling 12-hour history.
+
+    Samples are throttled to one every ``HISTORY_SAMPLE_SECONDS`` so the
+    payload stays small; anything older than the window is dropped, and
+    rooms that no longer exist are forgotten.
+    """
+    row = await db.get(ServerSetting, SETTING_TEMP_HISTORY)
+    history = _parse_history(row.value if row else None)
+    cutoff = now - HISTORY_WINDOW_SECONDS
+    current: dict[str, list[list[float]]] = {}
+
+    for room in rooms:
+        points = [pair for pair in history.get(room["id"], []) if pair[0] >= cutoff]
+        if not points or now - points[-1][0] >= HISTORY_SAMPLE_SECONDS:
+            points.append([round(now), round(room["temperatureC"], 2)])
+        current[room["id"]] = points
+
+    if current != history:
+        await _save_setting(db, SETTING_TEMP_HISTORY, json.dumps(current, separators=(",", ":")))
+    return current
+
+
 async def save_credentials(
     db: AsyncSession,
     *,
@@ -509,7 +569,8 @@ async def save_credentials(
 
 
 async def clear_credentials(db: AsyncSession) -> None:
-    result = await db.execute(select(ServerSetting).where(ServerSetting.key.in_(CREDENTIAL_KEYS)))
+    keys = (*CREDENTIAL_KEYS, SETTING_TEMP_HISTORY)
+    result = await db.execute(select(ServerSetting).where(ServerSetting.key.in_(keys)))
     for row in result.scalars():
         await db.delete(row)
     await db.commit()
@@ -541,6 +602,7 @@ def _empty_status(*, configured: bool, auth_type: str | None = None) -> dict[str
         "authType": auth_type,
         "connected": False,
         "rooms": [],
+        "history": {},
         "updatedAt": None,
         "error": None if not configured else _AUTH_ERROR,
     }
@@ -569,11 +631,13 @@ async def get_temperatures(
         active_client = _new_client() if owned_client else client
         try:
             rooms = await _fetch_rooms(db, creds, active_client)
+            history = await _record_history(db, rooms, time.time())
             data = {
                 "configured": True,
                 "authType": creds["type"],
                 "connected": True,
                 "rooms": rooms,
+                "history": history,
                 "updatedAt": datetime.now(timezone.utc).isoformat(),
                 "error": None,
             }
@@ -584,6 +648,7 @@ async def get_temperatures(
                 "authType": creds["type"],
                 "connected": False,
                 "rooms": previous["rooms"] if previous else [],
+                "history": previous.get("history", {}) if previous else {},
                 "updatedAt": previous["updatedAt"] if previous else None,
                 "error": str(exc),
             }
@@ -594,6 +659,7 @@ async def get_temperatures(
                 "authType": creds["type"],
                 "connected": False,
                 "rooms": previous["rooms"] if previous else [],
+                "history": previous.get("history", {}) if previous else {},
                 "updatedAt": previous["updatedAt"] if previous else None,
                 "error": str(exc),
             }
@@ -604,6 +670,7 @@ async def get_temperatures(
                 "authType": creds["type"],
                 "connected": False,
                 "rooms": previous["rooms"] if previous else [],
+                "history": previous.get("history", {}) if previous else {},
                 "updatedAt": previous["updatedAt"] if previous else None,
                 "error": _SERVICE_ERROR,
             }

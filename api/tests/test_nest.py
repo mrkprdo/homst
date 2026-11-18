@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 import httpx
@@ -350,9 +351,72 @@ async def test_unconfigured_status(db_session):
         "authType": None,
         "connected": False,
         "rooms": [],
+        "history": {},
         "updatedAt": None,
         "error": None,
     }
+
+
+def test_parse_history_rejects_malformed_payloads():
+    assert nest._parse_history(None) == {}
+    assert nest._parse_history("not json") == {}
+    assert nest._parse_history("[]") == {}
+    assert nest._parse_history(json.dumps({"a": "nope", "b": [[1, 20], "x", [2], [3, 21]]})) == {
+        "b": [[1.0, 20.0], [3.0, 21.0]]
+    }
+
+
+async def test_history_records_throttles_and_prunes(db_session):
+    now = 1_000_000.0
+    rooms = [{"id": "kryptonite.a", "temperatureC": 20.5}]
+    expired = now - nest.HISTORY_WINDOW_SECONDS - 60
+    await nest._save_setting(
+        db_session,
+        nest.SETTING_TEMP_HISTORY,
+        json.dumps(
+            {
+                "kryptonite.a": [[expired, 19.0], [now - 600, 20.0]],
+                "kryptonite.gone": [[now - 60, 18.0]],
+            }
+        ),
+    )
+
+    history = await nest._record_history(db_session, rooms, now)
+    assert history == {"kryptonite.a": [[now - 600, 20.0], [now, 20.5]]}
+
+    # A fetch inside the sample interval adds nothing.
+    assert await nest._record_history(db_session, rooms, now + 60) == history
+
+    # Once the interval passes a new sample lands, and the window stays 12 h.
+    later = await nest._record_history(db_session, rooms, now + nest.HISTORY_SAMPLE_SECONDS)
+    assert later["kryptonite.a"][-1] == [now + nest.HISTORY_SAMPLE_SECONDS, 20.5]
+    cutoff = now + nest.HISTORY_SAMPLE_SECONDS - nest.HISTORY_WINDOW_SECONDS
+    assert all(t >= cutoff for t, _ in later["kryptonite.a"])
+
+
+async def test_temperatures_carry_history_and_clear_removes_it(db_session):
+    await save_credentials(db_session, account_type="nest", access_token="legacy")
+    client = _client(_nest_handler)
+    try:
+        first = await get_temperatures(db_session, force=True, client=client)
+    finally:
+        await client.aclose()
+
+    assert set(first["history"]) == {room["id"] for room in first["rooms"]}
+    assert all(len(points) == 1 for points in first["history"].values())
+
+    async def unauthorized(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401)
+
+    bad = _client(unauthorized)
+    try:
+        failed = await get_temperatures(db_session, force=True, client=bad)
+    finally:
+        await bad.aclose()
+    assert failed["history"] == first["history"]
+
+    await clear_credentials(db_session)
+    assert await db_session.get(ServerSetting, nest.SETTING_TEMP_HISTORY) is None
 
 
 async def test_request_json_error_branches():

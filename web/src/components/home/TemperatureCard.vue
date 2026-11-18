@@ -70,6 +70,50 @@ function roomTitle(room: NestRoom) {
   return room.room && room.room !== room.name ? `${room.room} · ${room.name}` : room.name
 }
 
+const round1 = (value: number) => Math.round(value * 10) / 10
+
+/** Catmull-Rom spline through every sample, emitted as cubic Béziers. */
+function smoothPath(points: Array<{ x: number; y: number }>) {
+  let d = `M${points[0]!.x} ${points[0]!.y}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i]!
+    const p1 = points[i]!
+    const p2 = points[i + 1]!
+    const p3 = points[i + 2] ?? p2
+    const c1x = round1(p1.x + (p2.x - p0.x) / 6)
+    const c1y = round1(p1.y + (p2.y - p0.y) / 6)
+    const c2x = round1(p2.x - (p3.x - p1.x) / 6)
+    const c2y = round1(p2.y - (p3.y - p1.y) / 6)
+    d += ` C${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`
+  }
+  return d
+}
+
+/**
+ * Subtle 12-hr trend drawn behind each tile's content. Each room scales to
+ * its own min/max (with a 0.2° floor so near-flat readings stay centered).
+ */
+const sparklines = computed(() => {
+  const history = status.value?.history ?? {}
+  const paths: Record<string, { line: string; area: string }> = {}
+  for (const room of rooms.value) {
+    const samples = history[room.id]
+    if (!samples || samples.length < 2) continue
+    const temps = samples.map(([, temp]) => temp)
+    const min = Math.min(...temps)
+    const max = Math.max(...temps)
+    const mid = (min + max) / 2
+    const span = Math.max(max - min, 0.2)
+    const points = samples.map(([, temp], index) => ({
+      x: round1((index / (samples.length - 1)) * 100),
+      y: round1(16 - ((temp - mid) / span) * 12),
+    }))
+    const line = smoothPath(points)
+    paths[room.id] = { line, area: `${line} L100 32 L0 32 Z` }
+  }
+  return paths
+})
+
 /** How far this room sits from the indoor average, for the tile footer. */
 function averageDelta(room: NestRoom) {
   if (!stats.value) return ""
@@ -182,6 +226,16 @@ onUnmounted(() => {
           :style="tileStyle(room)"
           :title="roomTitle(room)"
         >
+          <svg
+            v-if="sparklines[room.id]"
+            class="room-spark"
+            viewBox="0 0 100 32"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <path class="room-spark-area" :d="sparklines[room.id]?.area" />
+            <path class="room-spark-line" :d="sparklines[room.id]?.line" />
+          </svg>
           <span v-if="room.active" class="room-active-dot" aria-label="Active temperature sensor" />
           <div class="room-head">
             <PhHouse
@@ -488,6 +542,28 @@ onUnmounted(() => {
   opacity: 0.55;
 }
 
+/* ── 12-hr trend: a quiet background layer, never part of the layout ──────── */
+.room-spark {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.room-spark-area {
+  fill: color-mix(in srgb, var(--color-accent-base) 7%, transparent);
+}
+
+.room-spark-line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-accent-base) 45%, transparent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
 .room-tile--active .room-head {
   padding-right: 10px;
 }
@@ -504,6 +580,7 @@ onUnmounted(() => {
 }
 
 .room-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -527,6 +604,7 @@ onUnmounted(() => {
 }
 
 .room-temp-row {
+  position: relative;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -555,6 +633,7 @@ onUnmounted(() => {
 }
 
 .room-meta {
+  position: relative;
   display: flex;
   align-items: center;
   min-height: 1.1em;

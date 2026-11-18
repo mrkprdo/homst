@@ -17,6 +17,8 @@ export interface NestTemperatures {
   authType: "google" | "nest" | null
   connected: boolean
   rooms: NestRoom[]
+  /** Rolling 12-hr sparkline samples per room id: [epochSeconds, tempC][]. */
+  history?: Record<string, Array<[number, number]>>
   updatedAt: string | null
   error: string | null
 }

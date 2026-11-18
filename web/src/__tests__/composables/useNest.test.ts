@@ -35,6 +35,7 @@ describe("useNest", () => {
       authType: null,
       connected: false,
       rooms: [],
+      history: {},
       updatedAt: null,
       error: null,
     })
@@ -49,6 +50,19 @@ describe("useNest", () => {
     expect(api.status.value?.authType).toBeNull()
     expect(api.status.value?.rooms).toEqual([])
     expect(api.status.value?.error).toBeNull()
+  })
+
+  it("keeps only well-formed history samples", async () => {
+    const api = useNest()
+    vi.spyOn(nestApi, "getTemperatures").mockResolvedValueOnce({
+      ...CONNECTED,
+      history: {
+        "kryptonite.1": [[1, 20], [2, "x"], [3], "nope", [4, 21]],
+        "kryptonite.2": "nope",
+      },
+    } as unknown as NestTemperatures)
+    await api.refresh()
+    expect(api.status.value?.history).toEqual({ "kryptonite.1": [[1, 20], [4, 21]] })
   })
 
   it("applies a status returned by the settings card", () => {

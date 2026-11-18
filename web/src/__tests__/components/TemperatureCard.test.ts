@@ -110,6 +110,32 @@ describe("TemperatureCard", () => {
     wrapper.unmount()
   })
 
+  it("draws a background trend line for rooms with history", async () => {
+    vi.spyOn(nestApi, "getTemperatures").mockResolvedValue(status({
+      rooms: ROOMS,
+      history: {
+        "device.1": [[0, 21], [3600, 21.8], [7200, 21.5]],
+        "kryptonite.1": [[0, 19]],
+      },
+    }))
+
+    const wrapper = mount(TemperatureCard)
+    await flushPromises()
+
+    const tiles = wrapper.findAll(".room-tile")
+    expect(tiles[0]!.find(".room-spark").exists()).toBe(true)
+    const line = tiles[0]!.find(".room-spark-line").attributes("d") ?? ""
+    expect(line).toMatch(/^M0 /)
+    // Smooth curve: one cubic Bézier per segment, no straight polyline joins.
+    expect(line.match(/ C/g)).toHaveLength(2)
+    expect(line).not.toContain(" L")
+    expect(tiles[0]!.find(".room-spark-area").attributes("d")).toMatch(/Z$/)
+    // A single sample is not a line yet, and rooms without history get none.
+    expect(tiles[1]!.find(".room-spark").exists()).toBe(false)
+    expect(tiles[2]!.find(".room-spark").exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it("shows a credential error with a Settings shortcut", async () => {
     vi.spyOn(nestApi, "getTemperatures").mockResolvedValue(status({
       connected: false,
