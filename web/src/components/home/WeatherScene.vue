@@ -54,12 +54,12 @@ function dropStyle(n: number) {
 }
 
 function flakeStyle(n: number) {
-  const size = 4 + ((n * 7) % 4)
+  const size = 2.3 + ((n * 7) % 4) * 0.6
   return {
     left: `${4 + spread(n, 53)}%`,
     top: `${spread(n, 29)}%`,
-    width: `${size}px`,
-    height: `${size}px`,
+    width: `calc(var(--wx-u) * ${size})`,
+    height: `calc(var(--wx-u) * ${size})`,
     animationDelay: `-${((n * 1.13) % 7).toFixed(2)}s`,
     animationDuration: `${(5.5 + ((n * 11) % 40) / 10).toFixed(2)}s`,
   }
@@ -161,8 +161,14 @@ function hailStyle(n: number) {
 <style scoped>
 /* A full-card weather window: the condition is the surface, not a badge.
    Everything is bounded to the card, uses transform/opacity only, and falls
-   back to a composed still frame when motion is reduced. */
+   back to a composed still frame when motion is reduced.
+
+   --wx-u is 1% of the card's smaller side. Every sized element AND its offset
+   is expressed in it, so the whole scene scales as one proportional picture
+   at any grid size. Mixing %-of-card offsets with px-capped sizes used to push
+   the sun/clouds past the card edge once a card grew past the caps. */
 .weather-scene {
+  --wx-u: min(1cqh, 1cqw);
   --wx-cloud: color-mix(in srgb, var(--color-info) 44%, var(--color-bgSurface));
   position: absolute;
   inset: 0;
@@ -253,9 +259,9 @@ function hailStyle(n: number) {
 /* ── Sun / moon ───────────────────────────────────────────────────────────── */
 .wx-celestial {
   position: absolute;
-  top: -18%;
-  right: -8%;
-  width: clamp(84px, min(62cqh, 54cqw), 280px);
+  top: calc(var(--wx-u) * -18);
+  right: calc(var(--wx-u) * -14);
+  width: calc(var(--wx-u) * 62);
   aspect-ratio: 1;
   display: none;
 }
@@ -337,8 +343,8 @@ function hailStyle(n: number) {
 
 .wx-stars i {
   position: absolute;
-  width: 2px;
-  height: 2px;
+  width: calc(var(--wx-u) * 1.2);
+  height: calc(var(--wx-u) * 1.2);
   border-radius: 50%;
   background: color-mix(in srgb, #fff 78%, var(--color-sky-light));
   opacity: 0.35;
@@ -396,15 +402,15 @@ function hailStyle(n: number) {
 
 .wx-cloud--a {
   top: 13%;
-  left: -8%;
-  width: clamp(96px, 44cqw, 330px);
+  left: calc(var(--wx-u) * -14);
+  width: calc(var(--wx-u) * 74);
   animation: wx-drift-a 38s ease-in-out infinite alternate;
 }
 
 .wx-cloud--b {
   top: 34%;
-  right: -12%;
-  width: clamp(116px, 54cqw, 400px);
+  right: calc(var(--wx-u) * -20);
+  width: calc(var(--wx-u) * 91);
   opacity: 0.36;
   animation: wx-drift-b 52s ease-in-out infinite alternate;
 }
@@ -412,7 +418,7 @@ function hailStyle(n: number) {
 .wx-cloud--c {
   top: 58%;
   left: 24%;
-  width: clamp(72px, 30cqw, 230px);
+  width: calc(var(--wx-u) * 51);
   opacity: 0.22;
   animation: wx-drift-c 66s ease-in-out infinite alternate;
 }
@@ -450,7 +456,7 @@ function hailStyle(n: number) {
   position: absolute;
   left: -12%;
   width: 124%;
-  height: clamp(26px, 26cqh, 96px);
+  height: calc(var(--wx-u) * 26);
   background: radial-gradient(
     ellipse 50% 50% at 50% 50%,
     color-mix(in srgb, var(--color-info) 16%, transparent) 0%,
@@ -493,8 +499,8 @@ function hailStyle(n: number) {
 
 .wx-drop {
   position: absolute;
-  width: 2px;
-  height: clamp(10px, 9cqh, 28px);
+  width: calc(var(--wx-u) * 1.2);
+  height: calc(var(--wx-u) * 9);
   border-radius: var(--radius-full);
   background: linear-gradient(
     180deg,
@@ -508,7 +514,7 @@ function hailStyle(n: number) {
 
 .is-drizzle .wx-drop {
   opacity: 0.34 !important;
-  height: clamp(7px, 6cqh, 19px);
+  height: calc(var(--wx-u) * 6);
 }
 
 /* ── Snow ─────────────────────────────────────────────────────────────────── */
@@ -546,7 +552,7 @@ function hailStyle(n: number) {
 
 .wx-glint {
   position: absolute;
-  width: clamp(6px, 2.2cqh, 11px);
+  width: calc(var(--wx-u) * 3.5);
   aspect-ratio: 1;
   border-radius: 1px;
   background: color-mix(in srgb, #fff 74%, var(--color-sky-light));
@@ -581,7 +587,7 @@ function hailStyle(n: number) {
 
 .wx-hailstone {
   position: absolute;
-  width: clamp(4px, 1.9cqh, 7px);
+  width: calc(var(--wx-u) * 2.3);
   aspect-ratio: 1;
   border-radius: 50%;
   background: color-mix(in srgb, #fff 76%, var(--color-sky-lighter));
@@ -620,7 +626,7 @@ function hailStyle(n: number) {
   position: absolute;
   right: 17%;
   bottom: 16%;
-  width: clamp(22px, 16cqh, 56px);
+  width: calc(var(--wx-u) * 16);
   display: none;
   color: color-mix(in srgb, #fff 34%, var(--color-warning));
 }
