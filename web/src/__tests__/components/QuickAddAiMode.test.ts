@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { mount } from "@vue/test-utils"
+import { nextTick } from "vue"
 import QuickAddForm from "@/components/shared/QuickAddForm.vue"
 import { useUi } from "@/composables/useUi"
 import { useEvents } from "@/composables/useEvents"
@@ -52,5 +53,18 @@ describe("QuickAddForm AI mode", () => {
     await wrapper.find(".quick-add-form").trigger("keydown", { key: "Enter" })
     expect(fetchMock.mock.calls.some(call => String(call[0]).includes("/events"))).toBe(false)
     vi.restoreAllMocks()
+  })
+
+  it("only offers AI import in the calendar quick-add", async () => {
+    const wrapper = mountForm()
+    await wrapper.findAll("button").find(button => button.text() === "AI import")!.trigger("click")
+    expect(wrapper.find(".ai-stub").exists()).toBe(true)
+
+    useUi().activePanel.value = "tasks"
+    await nextTick()
+
+    expect(wrapper.find(".mode-switch").exists()).toBe(false)
+    expect(wrapper.find(".ai-stub").exists()).toBe(false)
+    expect(wrapper.find("input[placeholder='Task title']").exists()).toBe(true)
   })
 })

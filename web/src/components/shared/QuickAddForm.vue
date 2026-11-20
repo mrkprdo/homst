@@ -37,6 +37,12 @@ onMounted(async () => {
 const isEvent = computed(() => ui.activePanel.value === "calendar")
 const isTask  = computed(() => ui.activePanel.value === "tasks" || ui.activePanel.value === "home")
 
+// AI import creates calendar events, so it only belongs in the calendar
+// quick-add. Switching to a task panel drops back to the manual form.
+watch(isEvent, (event) => {
+  if (!event) mode.value = "manual"
+})
+
 /** Pre-fill value for the "Remind me" select from the household default. */
 function defaultReminderValue(): string {
   return defaultReminderMinutes.value != null ? String(defaultReminderMinutes.value) : ""
@@ -303,7 +309,7 @@ const canSubmit = computed(() => {
 
 <template>
   <div class="quick-add-form" @keydown="handleKeydown">
-    <div class="mode-switch" role="tablist" aria-label="Add mode">
+    <div v-if="isEvent" class="mode-switch" role="tablist" aria-label="Add mode">
       <button
         type="button"
         role="tab"
@@ -325,7 +331,7 @@ const canSubmit = computed(() => {
       </button>
     </div>
 
-    <template v-if="mode === 'manual'">
+    <template v-if="mode === 'manual' || !isEvent">
     <!-- ── Event form ── -->
     <template v-if="isEvent">
       <UiField label="Title">
