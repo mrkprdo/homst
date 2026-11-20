@@ -20,6 +20,7 @@ from app.db import Base, engine
 from app.mdns import homst_mdns
 from app.redis_client import close_redis, get_redis
 from app.routers import calendar, holidays, stream, tasks, users
+from app.routers.ai import router as ai_router
 from app.routers.announcements import router as announcements_router
 from app.routers.camera import router as camera_router
 from app.routers.nest import router as nest_router
@@ -36,6 +37,7 @@ _SAFE_MIGRATIONS = [
     "ALTER TABLE members ADD COLUMN IF NOT EXISTS color VARCHAR(50)",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS assignee_id VARCHAR(36)",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS reminder_minutes INTEGER",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS source_message TEXT",
     "ALTER TABLE members DROP COLUMN IF EXISTS email",
     "DELETE FROM reminder_log WHERE channel = 'email'",
     # Databases first created by `create_all` (dev) made events.assignee_id a
@@ -220,6 +222,7 @@ app.add_middleware(
 # ── Routers ──
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(calendar.router, prefix="/api/v1", tags=["calendar"])
+app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(holidays.router, prefix="/api/v1", tags=["holidays"])
 app.include_router(settings_router, prefix="/api/v1/household", tags=["settings"])

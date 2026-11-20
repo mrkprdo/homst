@@ -5,6 +5,7 @@ export interface CreateEventPayload {
   calendar_id: string
   title: string
   description?: string
+  source_message?: string | null
   start_at: string
   end_at?: string
   all_day?: boolean
@@ -16,6 +17,7 @@ export interface CreateEventPayload {
 export interface UpdateEventPayload {
   title?: string
   description?: string
+  source_message?: string | null
   start_at?: string
   /** Explicit null clears the end (used to shrink multi-day all-day events back to single-day) */
   end_at?: string | null
@@ -33,6 +35,7 @@ interface ApiCalendar {
 
 interface ApiEvent {
   id: string; calendar_id: string; title: string; description: string
+  source_message?: string | null
   start_at: string; end_at: string | null; all_day: boolean; recurrence: object | null
   reminder_minutes?: number | null
   source: string; external_uid: string | null; created_by: string | null
@@ -46,6 +49,7 @@ function mapCalendar(c: ApiCalendar): Calendar {
 export function mapEvent(e: ApiEvent): Event {
   return {
     id: e.id, calendarId: e.calendar_id, title: e.title, description: e.description,
+    sourceMessage: e.source_message ?? null,
     startAt: e.start_at, endAt: e.end_at ?? e.start_at, allDay: e.all_day,
     recurrence: e.recurrence, source: e.source as Event["source"],
     externalUid: e.external_uid, createdBy: e.created_by ?? "",

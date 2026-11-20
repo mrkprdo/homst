@@ -39,6 +39,31 @@ globalThis.fetch = vi.fn((url: string | URL, options?: RequestInit) => {
   const path = String(url)
   const method = (options?.method as string) || "GET"
   const postData = options?.body ? JSON.parse(options.body as string) : {}
+
+  if (path.includes("/ai")) {
+    if (path.includes("/ai/parse")) {
+      return Promise.resolve(buildResponse({ events: [], skipped: 0, model: "deepseek-v4.1-flash" }))
+    }
+    if (path.includes("/ai/test")) {
+      return Promise.resolve(buildResponse({
+        configured: true, provider: "console", model: "deepseek-v4.1-flash",
+        key_hint: "…1234", ok: true, message: "Connected",
+      }))
+    }
+    if (method === "DELETE") {
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }
+    if (method === "PUT") {
+      return Promise.resolve(buildResponse({
+        configured: true, provider: postData.provider ?? "console",
+        model: "deepseek-v4.1-flash", key_hint: "…1234",
+      }))
+    }
+    return Promise.resolve(buildResponse({
+      configured: false, provider: "console", model: "deepseek-v4.1-flash", key_hint: null,
+    }))
+  }
+
   const isList = path.includes("/calendars") || path.includes("/events") || path.includes("/tasks") || path.includes("/task-lists") || path.includes("/members") || path.includes("/holidays") || path.includes("/announcements")
 
   if (isList && method === "GET") {

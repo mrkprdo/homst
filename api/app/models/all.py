@@ -83,6 +83,9 @@ class Event(Base):
     calendar_id = Column(Uuid(as_uuid=False), ForeignKey("calendars.id"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, default="")
+    # Raw email/screenshot text that produced an AI-imported event. Kept
+    # separate from ``description`` so the parsed notes stay readable.
+    source_message = Column(Text, nullable=True)
     start_at = Column(DateTime(timezone=True), nullable=False)
     end_at = Column(DateTime(timezone=True), nullable=True)
     all_day = Column(Boolean, default=False)

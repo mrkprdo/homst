@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     # paste its own in the widget.
     spotify_client_id: str = ""
 
+    # ── Smart import (AI) ──
+    # Optional server-wide OpenCode API key. Households normally paste their
+    # key in Settings → Smart import, where it is stored server-side and never
+    # returned to clients. Setting this env var is a convenient alternative
+    # for an appliance-style install; the UI value wins when both exist.
+    opencode_api_key: str = ""
+    # "console" (pay-as-you-go) or "go". Only these two fixed gateways are
+    # ever used, so a household key cannot be redirected to another host.
+    opencode_provider: str = "console"
+    opencode_model: str = "deepseek-v4.1-flash"
+
     # ── Web Push (VAPID) ──
     # Leave the key pair blank to have HOMST generate one on first use and
     # persist it in the database. Set both to pin your own keys instead.

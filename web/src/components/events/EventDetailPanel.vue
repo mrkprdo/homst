@@ -252,6 +252,11 @@ const isExternal = computed(() => event.value?.source !== "internal")
 
       <p v-if="event.description" class="edp-desc">{{ event.description }}</p>
 
+      <details v-if="event.sourceMessage" class="edp-source">
+        <summary class="edp-source-summary">Imported message</summary>
+        <p class="edp-source-text">{{ event.sourceMessage }}</p>
+      </details>
+
       <!-- Delete confirm inline -->
       <div v-if="deleting" class="edp-delete-confirm">
         <PhWarning :size="16" class="edp-warn-icon" />
@@ -439,6 +444,32 @@ const isExternal = computed(() => event.value?.source !== "internal")
   border-radius: var(--radius-sm);
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+/* ── Imported source message ── */
+.edp-source {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bgSubtle);
+  padding: var(--space-2) var(--space-3);
+}
+
+.edp-source-summary {
+  cursor: pointer;
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-textMuted);
+}
+
+.edp-source-text {
+  margin: var(--space-2) 0 0;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+  color: var(--color-textSecondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* ── Actions ── */

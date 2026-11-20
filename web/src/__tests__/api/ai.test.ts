@@ -1,0 +1,277 @@
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { aiApi, parseStream } from "@/api/ai"
+
+const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  })
+}
+
+const STATUS = {
+  configured: true,
+  provider: "go",
+  model: "deepseek-v4.1-flash",
+  key_hint: "…abcd",
+}
+
+beforeEach(() => {
+  fetchMock.mockReset()
+})
+
+describe("aiApi", () => {
+  it("reads and maps the status without a key", async () => {
+    fetchMock.mockResolvedValueOnce(json(STATUS))
+    const status = await aiApi.status()
+    expect(status).toEqual({
+      configured: true,
+      provider: "go",
+      model: "deepseek-v4.1-flash",
+      keyHint: "…abcd",
+    })
+  })
+
+  it("maps an unknown provider back to console", async () => {
+    fetchMock.mockResolvedValueOnce(json({ ...STATUS, provider: "other" }))
+    expect((await aiApi.status()).provider).toBe("console")
+  })
+
+  it("saves a key with PUT and returns the masked status", async () => {
+    fetchMock.mockResolvedValueOnce(json(STATUS))
+    const status = await aiApi.save("oc_sk_x", "go", "glm-5.3-flash")
+    expect(status.keyHint).toBe("…abcd")
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(String(url)).toContain("/ai")
+    expect((init as RequestInit).method).toBe("PUT")
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      api_key: "oc_sk_x",
+      provider: "go",
+      model: "glm-5.3-flash",
+    })
+  })
+
+  it("lists models for the picker", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({
+        provider: "go",
+        selected: "deepseek-v4.1-flash",
+        models: [
+          { id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", supports_images: true },
+          { id: "text-only", name: "", supports_images: false },
+        ],
+      }),
+    )
+    const result = await aiApi.models()
+    expect(result.provider).toBe("go")
+    expect(result.selected).toBe("deepseek-v4.1-flash")
+    expect(result.models).toEqual([
+      { id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", supportsImages: true },
+      { id: "text-only", name: "text-only", supportsImages: false },
+    ])
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/ai/models")
+
+    fetchMock.mockResolvedValueOnce(json({ provider: "go", selected: "m", models: [] }))
+    await aiApi.models("go")
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("/ai/models?provider=go")
+
+    fetchMock.mockResolvedValueOnce(json({ provider: "other", selected: "m" }))
+    const empty = await aiApi.models()
+    expect(empty.models).toEqual([])
+    expect(empty.provider).toBe("console")
+  })
+
+  it("removes the key", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(aiApi.remove()).resolves.toBeUndefined()
+    expect((fetchMock.mock.calls[0]![1] as RequestInit).method).toBe("DELETE")
+  })
+
+  it("tests a connection", async () => {
+    fetchMock.mockResolvedValueOnce(json({ ...STATUS, ok: true, message: "Connected" }))
+    const result = await aiApi.test()
+    expect(result.ok).toBe(true)
+    expect(result.message).toBe("Connected")
+    expect(result.provider).toBe("go")
+  })
+
+  it("maps parse drafts and tolerates a missing events array", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({
+        events: [
+          {
+            title: "Standup",
+            description: "Zoom",
+            start_at: "2026-05-04T09:30:00-04:00",
+            end_at: "2026-05-04T10:00:00-04:00",
+            all_day: false,
+            recurrence: { freq: "weekly", count: 5 },
+            reminder_minutes: 10,
+            assignee_id: "m-1",
+            confidence: 0.9,
+          },
+        ],
+        skipped: 2,
+        model: "deepseek-v4.1-flash",
+        response: '{"events": []}',
+        reasoning: "Read the email.",
+      }),
+    )
+    const result = await aiApi.parse({
+      text: "standup",
+      image: "data:image/png;base64,abc",
+      timezone: "America/Toronto",
+    })
+    expect(result.skipped).toBe(2)
+    expect(result.response).toBe('{"events": []}')
+    expect(result.reasoning).toBe("Read the email.")
+    expect(result.events[0]).toEqual({
+      title: "Standup",
+      description: "Zoom",
+      startAt: "2026-05-04T09:30:00-04:00",
+      endAt: "2026-05-04T10:00:00-04:00",
+      allDay: false,
+      recurrence: { freq: "weekly", count: 5 },
+      reminderMinutes: 10,
+      assigneeId: "m-1",
+      confidence: 0.9,
+    })
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)
+    expect(body).toEqual({
+      text: "standup",
+      image: "data:image/png;base64,abc",
+      timezone: "America/Toronto",
+    })
+
+    fetchMock.mockResolvedValueOnce(json({ model: "m" }))
+    const empty = await aiApi.parse({ text: "nothing" })
+    expect(empty.events).toEqual([])
+    expect(empty.skipped).toBe(0)
+    expect(empty.response).toBe("")
+    expect(empty.reasoning).toBeNull()
+  })
+})
+
+function sse(events: { event: string; data: unknown }[]): string {
+  return events.map(e => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join("")
+}
+
+function streamResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+      controller.close()
+    },
+  })
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  })
+}
+
+function resultFrame() {
+  return {
+    event: "result",
+    data: {
+      events: [],
+      skipped: 0,
+      model: "deepseek-v4.1-flash",
+      response: '{"events": []}',
+      reasoning: "Read the email.",
+    },
+  }
+}
+
+describe("parseStream", () => {
+  it("relays reasoning/content and resolves the result", async () => {
+    const frames = sse([
+      { event: "reasoning", data: { type: "reasoning", text: "Read " } },
+      { event: "content", data: { type: "content", text: '{"events": [' } },
+      { event: "content", data: { type: "content", text: "]}" } },
+      resultFrame(),
+    ])
+    fetchMock.mockResolvedValueOnce(streamResponse([frames]))
+    const reasoning: string[] = []
+    const content: string[] = []
+    const result = await parseStream(
+      { text: "standup", image: null },
+      { onReasoning: t => reasoning.push(t), onContent: t => content.push(t) },
+    )
+    expect(reasoning.join("")).toBe("Read ")
+    expect(content.join("")).toBe('{"events": []}')
+    expect(result.response).toBe('{"events": []}')
+    expect(result.reasoning).toBe("Read the email.")
+
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(String(url)).toContain("/api/v1/ai/parse/stream")
+    expect((init as RequestInit).method).toBe("POST")
+    expect((init as RequestInit).headers).toMatchObject({ Accept: "text/event-stream" })
+  })
+
+  it("handles CRLF, split chunks and a final unterminated frame", async () => {
+    const frame =
+      'event: result\r\ndata: {"events":[],"skipped":0,"model":"m"}\r\n\r\n'
+    fetchMock.mockResolvedValueOnce(streamResponse([frame.slice(0, 20), frame.slice(20)]))
+    const result = await parseStream({ text: "x" })
+    expect(result.events).toEqual([])
+
+    const unterminated = 'event: result\ndata: {"events":[],"skipped":1,"model":"m"}'
+    fetchMock.mockResolvedValueOnce(streamResponse([unterminated]))
+    const tail = await parseStream({ text: "x" })
+    expect(tail.skipped).toBe(1)
+  })
+
+  it("ignores noise frames", async () => {
+    const frames = [
+      "event: ping\ndata: not-json\n\n",
+      "event: reasoning\ndata: {}\n\n",
+      "event: unknown\ndata: {\"text\":\"ignored\"}\n\n",
+      sse([resultFrame()]),
+    ].join("")
+    fetchMock.mockResolvedValueOnce(streamResponse([frames]))
+    const reasoning: string[] = []
+    const result = await parseStream(
+      { text: "x" },
+      { onReasoning: text => reasoning.push(text) },
+    )
+    expect(reasoning).toEqual([])
+    expect(result.events).toEqual([])
+  })
+
+  it("raises the server's error event", async () => {
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([sse([{ event: "error", data: { detail: "OpenCode is down" } }])]),
+    )
+    await expect(parseStream({ text: "x" })).rejects.toThrow("OpenCode is down")
+
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([sse([{ event: "error", data: {} }])]),
+    )
+    await expect(parseStream({ text: "x" })).rejects.toThrow("Smart import failed")
+  })
+
+  it("reports HTTP and network failures", async () => {
+    fetchMock.mockResolvedValueOnce(json({ detail: "nope" }, 500))
+    await expect(parseStream({ text: "x" })).rejects.toThrow("nope")
+
+    fetchMock.mockResolvedValueOnce(json({}, 500))
+    await expect(parseStream({ text: "x" })).rejects.toThrow("Request failed: 500")
+
+    fetchMock.mockRejectedValueOnce(new TypeError("offline"))
+    await expect(parseStream({ text: "x" })).rejects.toThrow("Could not reach the HOMST server")
+
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }))
+    await expect(parseStream({ text: "x" })).rejects.toThrow("cannot read a response stream")
+  })
+
+  it("fails when the stream ends without a result", async () => {
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([sse([{ event: "content", data: { text: "partial" } }])]),
+    )
+    await expect(parseStream({ text: "x" })).rejects.toThrow(
+      "The model stopped before returning events",
+    )
+  })
+})

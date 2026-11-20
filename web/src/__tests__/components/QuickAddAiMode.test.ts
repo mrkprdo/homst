@@ -1,0 +1,56 @@
+import { describe, expect, it, vi } from "vitest"
+import { mount } from "@vue/test-utils"
+import QuickAddForm from "@/components/shared/QuickAddForm.vue"
+import { useUi } from "@/composables/useUi"
+import { useEvents } from "@/composables/useEvents"
+
+const AiImportPanelStub = {
+  name: "AiImportPanel",
+  emits: ["done"],
+  template: '<button class="ai-stub" @click="$emit(\'done\', 2)">AI stub</button>',
+}
+
+const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+
+function mountForm() {
+  useUi().activePanel.value = "calendar"
+  useEvents().upsertCalendar({
+    id: "cal-1", householdId: "h", name: "Family", color: "sage",
+    source: "internal", feedUrl: null, isVisible: true, createdBy: null,
+  })
+  return mount(QuickAddForm, {
+    global: { stubs: { AiImportPanel: AiImportPanelStub } },
+  })
+}
+
+describe("QuickAddForm AI mode", () => {
+  it("switches between manual fields and the AI importer", async () => {
+    const wrapper = mountForm()
+
+    await wrapper.findAll("button").find(button => button.text() === "AI import")!.trigger("click")
+    expect(wrapper.find(".ai-stub").exists()).toBe(true)
+    expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(false)
+
+    await wrapper.findAll("button").find(button => button.text() === "Manual")!.trigger("click")
+    expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(true)
+  })
+
+  it("closes the drawer when the importer finishes", async () => {
+    const ui = useUi()
+    const wrapper = mountForm()
+    await wrapper.findAll("button").find(button => button.text() === "AI import")!.trigger("click")
+
+    await wrapper.find(".ai-stub").trigger("click")
+    expect(ui.drawer.value.type).toBeNull()
+  })
+
+  it("does not submit the manual form from AI mode", async () => {
+    const wrapper = mountForm()
+    await wrapper.findAll("button").find(button => button.text() === "AI import")!.trigger("click")
+    fetchMock.mockClear()
+
+    await wrapper.find(".quick-add-form").trigger("keydown", { key: "Enter" })
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes("/events"))).toBe(false)
+    vi.restoreAllMocks()
+  })
+})

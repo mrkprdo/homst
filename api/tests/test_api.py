@@ -250,6 +250,50 @@ async def test_create_event_with_end(client):
 
 
 @pytest.mark.asyncio
+async def test_create_event_with_source_message(client):
+    cal_id = await _make_calendar(client)
+    r = await client.post("/api/v1/events", json={
+        "calendar_id": cal_id, "title": "Dinner",
+        "start_at": "2026-05-03T18:00:00Z",
+        "source_message": "From: Sam\nDinner Friday at 6pm",
+    })
+    assert r.status_code == 201
+    assert r.json()["source_message"] == "From: Sam\nDinner Friday at 6pm"
+
+    listed = await client.get("/api/v1/events")
+    assert listed.json()[0]["source_message"] == "From: Sam\nDinner Friday at 6pm"
+
+
+@pytest.mark.asyncio
+async def test_create_event_without_source_message(client):
+    cal_id = await _make_calendar(client)
+    r = await client.post("/api/v1/events", json={
+        "calendar_id": cal_id, "title": "Manual", "start_at": "2026-05-03T18:00:00Z",
+    })
+    assert r.status_code == 201
+    assert r.json()["source_message"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_event_source_message(client):
+    cal_id = await _make_calendar(client)
+    r = await client.post("/api/v1/events", json={
+        "calendar_id": cal_id, "title": "Old", "start_at": "2026-05-03T10:00:00Z",
+    })
+    ev_id = r.json()["id"]
+
+    r = await client.patch(
+        f"/api/v1/events/{ev_id}", json={"source_message": "Original email"}
+    )
+    assert r.status_code == 200
+    assert r.json()["source_message"] == "Original email"
+
+    r = await client.patch(f"/api/v1/events/{ev_id}", json={"source_message": None})
+    assert r.status_code == 200
+    assert r.json()["source_message"] is None
+
+
+@pytest.mark.asyncio
 async def test_create_event_unknown_calendar(client):
     r = await client.post("/api/v1/events", json={
         "calendar_id": "00000000-0000-0000-0000-000000000099",

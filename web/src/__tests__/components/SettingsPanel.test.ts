@@ -299,15 +299,16 @@ describe("SettingsPanel", () => {
 
   it("Send test to all clients fires a hud+push test and shows the results", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({}), {
-      status: 200, headers: { "content-type": "application/json" },
-    }))
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({}), {
-      status: 200, headers: { "content-type": "application/json" },
-    }))
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-      results: { hud: "sent to the display", push: "sent to 1 device(s)" },
-    }), { status: 200, headers: { "content-type": "application/json" } }))
+    fetchMock.mockImplementation(async (url) => {
+      if (String(url).includes("/notifications/test")) {
+        return new Response(JSON.stringify({
+          results: { hud: "sent to the display", push: "sent to 1 device(s)" },
+        }), { status: 200, headers: { "content-type": "application/json" } })
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200, headers: { "content-type": "application/json" },
+      })
+    })
 
     const wrapper = mount(SettingsPanel)
     await flushPromises()
@@ -464,7 +465,7 @@ describe("SettingsPanel", () => {
     await wrapper.find(".settings-search__input").setValue("no-such-setting")
     await nextTick()
 
-    expect(wrapper.findAll(".is-filtered-out")).toHaveLength(13)
+    expect(wrapper.findAll(".is-filtered-out")).toHaveLength(14)
     expect(wrapper.find(".settings-search-empty").text()).toContain("No settings match")
     expect(wrapper.find(".settings-search__count").text()).toBe("0 cards")
 

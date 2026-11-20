@@ -47,9 +47,12 @@ describe("SettingsPanel (notifications & motion)", () => {
 
   it("Send test to all clients posts a hud+push test and lists each result", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
-    fetchMock.mockResolvedValueOnce(json({}))
-    fetchMock.mockResolvedValueOnce(json({}))
-    fetchMock.mockResolvedValueOnce(json({ results: { hud: "sent to the display", push: "sent to 1 device(s)" } }))
+    fetchMock.mockImplementation(async (url) => {
+      if (String(url).includes("/notifications/test")) {
+        return json({ results: { hud: "sent to the display", push: "sent to 1 device(s)" } })
+      }
+      return json({})
+    })
 
     const wrapper = mount(SettingsPanel)
     await flushPromises()
@@ -74,9 +77,12 @@ describe("SettingsPanel (notifications & motion)", () => {
 
   it("the test button fires even when this device has no push subscription", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
-    fetchMock.mockResolvedValueOnce(json({}))
-    fetchMock.mockResolvedValueOnce(json({}))
-    fetchMock.mockResolvedValueOnce(json({ results: { hud: "sent to the display", push: "skipped: no devices have push turned on" } }))
+    fetchMock.mockImplementation(async (url) => {
+      if (String(url).includes("/notifications/test")) {
+        return json({ results: { hud: "sent to the display", push: "skipped: no devices have push turned on" } })
+      }
+      return json({})
+    })
 
     const wrapper = mount(SettingsPanel)
     await flushPromises()
@@ -91,9 +97,10 @@ describe("SettingsPanel (notifications & motion)", () => {
 
   it("explains that the local server is unreachable instead of showing a failure", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
-    fetchMock.mockResolvedValueOnce(json({}))
-    fetchMock.mockResolvedValueOnce(json({}))
-    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+    fetchMock.mockImplementation(async (url) => {
+      if (String(url).includes("/notifications/test")) throw new TypeError("Failed to fetch")
+      return json({})
+    })
 
     const wrapper = mount(SettingsPanel)
     await flushPromises()

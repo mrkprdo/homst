@@ -6,8 +6,9 @@ import { useMembers } from "@/composables/useMembers"
 import { useSettings } from "@/composables/useSettings"
 import { calendarApi } from "@/api/calendar"
 import { tasksApi } from "@/api/tasks"
-import { PhCheck, PhX, PhCalendarBlank } from "@phosphor-icons/vue"
+import { PhCheck, PhX, PhCalendarBlank, PhSparkle } from "@phosphor-icons/vue"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
+import AiImportPanel from "@/components/shared/AiImportPanel.vue"
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -21,7 +22,7 @@ function defaultReminderValue(): string {
   return defaultReminderMinutes.value != null ? String(defaultReminderMinutes.value) : ""
 }
 
-const tab = ref<"event" | "task">("event")
+const tab = ref<"event" | "task" | "ai">("event")
 
 onMounted(async () => {
   await Promise.all([loadMembers(), ensureTasksLoaded()])
@@ -239,7 +240,12 @@ async function createTask() {
 
 function handleSubmit() {
   if (tab.value === "event") createEvent()
-  else createTask()
+  else if (tab.value === "task") createTask()
+}
+
+function onAiDone() {
+  toast.value = true
+  setTimeout(() => { toast.value = false; emit("close") }, 800)
 }
 
 const canSubmit = computed(() => {
@@ -261,6 +267,10 @@ const priorities = [
       <div class="mqa-header">
         <button class="mqa-tab" type="button" :class="{ active: tab === 'event' }" @click="tab = 'event'">Event</button>
         <button class="mqa-tab" type="button" :class="{ active: tab === 'task' }" @click="tab = 'task'">Task</button>
+        <button class="mqa-tab" type="button" :class="{ active: tab === 'ai' }" @click="tab = 'ai'">
+          <PhSparkle :size="14" weight="fill" />
+          AI
+        </button>
         <button class="mqa-close" type="button" @click="emit('close')" aria-label="Close"><PhX :size="20" /></button>
       </div>
 
@@ -405,9 +415,13 @@ const priorities = [
             <textarea v-model="taskDescription" class="mqa-textarea" placeholder="Add notes..." rows="3" />
           </div>
         </template>
+        <!-- AI import -->
+        <template v-if="tab === 'ai'">
+          <AiImportPanel @done="onAiDone" />
+        </template>
       </div>
 
-      <div class="mqa-footer">
+      <div v-if="tab !== 'ai'" class="mqa-footer">
         <button class="mqa-cancel" type="button" @click="emit('close')">Cancel</button>
         <button class="mqa-submit" type="button" :disabled="!canSubmit" @click="handleSubmit">
           <PhCheck :size="16" weight="bold" />
@@ -467,6 +481,10 @@ const priorities = [
 
 .mqa-tab {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
   min-height: 48px;
   padding: var(--space-2);
   border: none;

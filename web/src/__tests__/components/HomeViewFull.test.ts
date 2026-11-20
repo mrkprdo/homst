@@ -161,6 +161,16 @@ describe("HomeView — layout engine & edit mode", () => {
     await wrapper.findAll(".widget")[3].find(".calendar-open-btn").trigger("click")
     expect(ui.activePanel.value).toBe("calendar")
     ui.setPanel("home")
+
+    const addEventButton = wrapper.findAll(".widget")[3].find(".calendar-add-btn")
+    expect(addEventButton.exists()).toBe(true)
+    await addEventButton.trigger("click")
+    expect(ui.drawer.value.type).toBe("quick-add")
+    const now = new Date()
+    const todayValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    expect(ui.drawer.value.date).toBe(todayValue)
+    ui.closeDrawer()
+
     await wrapper.findAll(".widget")[4].find("button").trigger("click")
     expect(ui.activePanel.value).toBe("tasks")
 

@@ -7,13 +7,14 @@ import { useMembers } from "@/composables/useMembers"
 import { useSettings } from "@/composables/useSettings"
 import { calendarApi } from "@/api/calendar"
 import { tasksApi } from "@/api/tasks"
-import { PhCheckSquare, PhCalendarBlank } from "@phosphor-icons/vue"
+import { PhCheckSquare, PhCalendarBlank, PhSparkle } from "@phosphor-icons/vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiToggle from "@/components/ui/UiToggle.vue"
 import UiInput from "@/components/ui/UiInput.vue"
 import UiSelect from "@/components/ui/UiSelect.vue"
 import UiTextarea from "@/components/ui/UiTextarea.vue"
 import UiField from "@/components/ui/UiField.vue"
+import AiImportPanel from "@/components/shared/AiImportPanel.vue"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
 
 const ui = useUi()
@@ -21,6 +22,13 @@ const { ensureDefaultCalendar, upsertEvent } = useEvents()
 const { lists, tasks: allTasks, upsertTask, upsertList, ensureLoaded: ensureTasksLoaded } = useTasks()
 const { members, ensureLoaded: loadMembers } = useMembers()
 const { defaultReminderMinutes } = useSettings()
+
+/** Manual fields and the AI importer share the drawer. */
+const mode = ref<"manual" | "ai">("manual")
+
+function onAiDone() {
+  ui.closeDrawer()
+}
 
 onMounted(async () => {
   await Promise.all([loadMembers(), ensureTasksLoaded()])
@@ -282,6 +290,7 @@ function resetForm() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (mode.value !== "manual") return
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit() }
 }
 
@@ -294,7 +303,29 @@ const canSubmit = computed(() => {
 
 <template>
   <div class="quick-add-form" @keydown="handleKeydown">
+    <div class="mode-switch" role="tablist" aria-label="Add mode">
+      <button
+        type="button"
+        role="tab"
+        class="mode-switch__btn"
+        :class="{ active: mode === 'manual' }"
+        :aria-selected="mode === 'manual'"
+        @click="mode = 'manual'"
+      >Manual</button>
+      <button
+        type="button"
+        role="tab"
+        class="mode-switch__btn"
+        :class="{ active: mode === 'ai' }"
+        :aria-selected="mode === 'ai'"
+        @click="mode = 'ai'"
+      >
+        <PhSparkle :size="14" weight="fill" class="mode-switch__icon" />
+        AI import
+      </button>
+    </div>
 
+    <template v-if="mode === 'manual'">
     <!-- ── Event form ── -->
     <template v-if="isEvent">
       <UiField label="Title">
@@ -452,6 +483,9 @@ const canSubmit = computed(() => {
         {{ isEvent ? 'Create Event' : 'Create Task' }}
       </UiButton>
     </div>
+    </template>
+
+    <AiImportPanel v-else @done="onAiDone" />
   </div>
 </template>
 
@@ -466,6 +500,45 @@ const canSubmit = computed(() => {
   display: flex;
   gap: var(--space-4);
   align-items: flex-start;
+}
+
+/* ── Manual / AI import switch ── */
+.mode-switch {
+  display: flex;
+  gap: var(--space-1);
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+}
+
+.mode-switch__btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 36px;
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-textSecondary);
+  font-family: var(--font-family);
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.mode-switch__btn.active {
+  background: var(--color-bgSurface);
+  color: var(--color-textPrimary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.mode-switch__btn:focus-visible {
+  outline: 2px solid var(--color-accent-darker);
+  outline-offset: 1px;
 }
 
 .field-row--dates {

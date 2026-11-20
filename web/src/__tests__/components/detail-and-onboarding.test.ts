@@ -36,6 +36,7 @@ describe("EventDetailPanel", () => {
     // Timed event with recurrence until + reminder + assignee + description
     ev.upsertEvent({
       id: "e1", calendarId: "c1", title: "Dentist", description: "Bring card",
+      sourceMessage: "Original email body",
       startAt: "2026-05-15T10:00:00Z", endAt: "2026-05-16T11:00:00Z",
       allDay: false, recurrence: { freq: "weekly", until: "2026-06-01T00:00:00Z" },
       reminderMinutes: 30, assigneeId: "m1",
@@ -52,6 +53,8 @@ describe("EventDetailPanel", () => {
     expect(w.text()).toContain("Reminder 30 minutes before")
     expect(w.text()).toContain("Alice")
     expect(w.text()).toContain("Bring card")
+    expect(w.text()).toContain("Imported message")
+    expect(w.text()).toContain("Original email body")
 
     // Start edit → recurrence until branch populated
     const editBtn = w.findAll("button").find(b => b.text().includes("Edit"))!

@@ -15,7 +15,7 @@ import type { Task } from "@/composables/useTasks"
 import { memberColorHex, type MemberColor } from "@/types/household"
 import { wifiQrPayload } from "@/lib/wifiQr"
 import { householdApi } from "@/api/household"
-import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage, PhHouse, PhListChecks, PhX } from "@phosphor-icons/vue"
+import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage, PhHouse, PhListChecks, PhPlus, PhX } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiEmptyState from "@/components/ui/UiEmptyState.vue"
@@ -441,6 +441,13 @@ const scheduleDateLabel = computed(() => {
 const scheduleDateLong = computed(() =>
   scheduleDate.value.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
 )
+
+/** Add an event on the schedule day currently in view. */
+function addEventFromMiniCalendar() {
+  const date = scheduleDate.value
+  const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+  ui.openDrawer("quick-add", undefined, value)
+}
 
 const scheduleTitle = computed(() => `${scheduleRelativeLabel.value}'s Schedule`)
 
@@ -1204,10 +1211,18 @@ function onCanvasDoubleClick(e: MouseEvent) {
                 <PhCaretRight :size="14" weight="bold" />
               </button>
             </div>
-            <UiButton variant="link" size="sm" class="calendar-open-btn" @click="ui.setPanel('calendar')">
-              Open
-              <PhArrowRight :size="13" />
-            </UiButton>
+            <div class="calendar-header-actions">
+              <button type="button" class="calendar-add-btn compact-control"
+                :title="`Add event on ${scheduleDateLong}`"
+                :aria-label="`Add event on ${scheduleDateLong}`"
+                @click="addEventFromMiniCalendar">
+                <PhPlus :size="14" weight="bold" />
+              </button>
+              <UiButton variant="link" size="sm" class="calendar-open-btn" @click="ui.setPanel('calendar')">
+                Open
+                <PhArrowRight :size="13" />
+              </UiButton>
+            </div>
           </div>
           <div class="mini-cal" :key="monthName">
             <div class="mini-cal-weekdays">
@@ -2781,6 +2796,54 @@ function onCanvasDoubleClick(e: MouseEvent) {
 }
 
 /* ── Mini calendar ───────────────────────────────────────────────────────────── */
+.calendar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.calendar-add-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+  color: var(--color-textSecondary);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast),
+    color var(--duration-fast),
+    transform var(--duration-fast);
+}
+
+/* Fingertip-sized hit area without growing the header. */
+.calendar-add-btn::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+
+.calendar-add-btn:hover {
+  background: var(--color-accent-lighter);
+  border-color: var(--color-accent-darker);
+  color: var(--color-accent-darker);
+}
+
+.calendar-add-btn:active {
+  transform: scale(0.92);
+}
+
+.calendar-add-btn:focus-visible {
+  outline: 2px solid var(--color-accent-darker);
+  outline-offset: 2px;
+}
+
 .calendar-month-nav {
   display: flex;
   align-items: center;
@@ -3087,7 +3150,8 @@ function onCanvasDoubleClick(e: MouseEvent) {
 
 /* Keep the month controls legible on single-column tiles. */
 @container w (max-width: 20em) {
-  .calendar-header :deep(.ui-btn--sm) {
+  .calendar-header :deep(.ui-btn--sm),
+  .calendar-add-btn {
     display: none;
   }
 }

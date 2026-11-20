@@ -134,6 +134,7 @@ def _event_to_response(ev: Event) -> EventResponse:
         calendar_id=UUID(ev.calendar_id),
         title=ev.title,
         description=ev.description or "",
+        source_message=ev.source_message,
         start_at=ev.start_at,
         end_at=ev.end_at,
         all_day=ev.all_day or False,
@@ -205,6 +206,7 @@ async def create_event(req: EventCreate, db: AsyncSession = Depends(get_db)):
         calendar_id=str(cal.id),
         title=req.title,
         description=req.description or "",
+        source_message=req.source_message,
         start_at=req.start_at,
         end_at=req.end_at,
         all_day=req.all_day,
@@ -250,6 +252,8 @@ async def update_event(event_id: UUID, req: EventUpdate, db: AsyncSession = Depe
         ev.title = req.title
     if req.description is not None:
         ev.description = req.description
+    if "source_message" in req.model_fields_set:
+        ev.source_message = req.source_message
     if req.start_at is not None:
         ev.start_at = req.start_at
     if "end_at" in req.model_fields_set:

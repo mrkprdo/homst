@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 # DB-backed text limits (see app/models/all.py).
 NAME_MAX = 255
@@ -112,6 +112,7 @@ class EventCreate(BaseModel):
     calendar_id: UUID
     title: str = Field(max_length=NAME_MAX)
     description: str = Field("", max_length=DESCRIPTION_MAX)
+    source_message: Optional[str] = Field(None, max_length=DESCRIPTION_MAX)
     start_at: datetime
     end_at: Optional[datetime] = None
     all_day: bool = False
@@ -123,6 +124,7 @@ class EventCreate(BaseModel):
 class EventUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=NAME_MAX)
     description: Optional[str] = Field(None, max_length=DESCRIPTION_MAX)
+    source_message: Optional[str] = Field(None, max_length=DESCRIPTION_MAX)
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     all_day: Optional[bool] = None
@@ -136,6 +138,7 @@ class EventResponse(BaseModel):
     calendar_id: UUID
     title: str
     description: str = ""
+    source_message: Optional[str] = None
     start_at: datetime
     end_at: Optional[datetime] = None
     all_day: bool = False
@@ -300,3 +303,65 @@ class PushUnsubscribeRequest(BaseModel):
 
 class VapidKeyResponse(BaseModel):
     key: str
+
+
+# ── Smart import (AI) ──
+class AiConfigUpdate(BaseModel):
+    """Write-only key update. The key is never returned by any endpoint."""
+
+    api_key: Optional[SecretStr] = Field(None, max_length=500)
+    provider: Optional[Literal["console", "go"]] = None
+    model: Optional[str] = Field(None, max_length=120)
+
+
+class AiStatusResponse(BaseModel):
+    configured: bool
+    provider: str
+    model: str
+    key_hint: Optional[str] = None
+
+
+class AiModelInfo(BaseModel):
+    id: str
+    name: str
+    supports_images: bool = False
+
+
+class AiModelsResponse(BaseModel):
+    models: list[AiModelInfo]
+    provider: str
+    selected: str
+
+
+class AiTestResponse(AiStatusResponse):
+    ok: bool
+    message: str
+
+
+class AiParseRequest(BaseModel):
+    text: str = Field("", max_length=100_000)
+    # A data URL. The router re-encodes the image before it is forwarded.
+    image: Optional[str] = Field(None, max_length=16_000_000)
+    timezone: Optional[str] = Field(None, max_length=64)
+
+
+class AiEventDraft(BaseModel):
+    title: str
+    description: str = ""
+    start_at: datetime
+    end_at: Optional[datetime] = None
+    all_day: bool = False
+    recurrence: Optional[dict] = None
+    reminder_minutes: Optional[int] = None
+    assignee_id: Optional[UUID] = None
+    confidence: float = 0.0
+
+
+class AiParseResponse(BaseModel):
+    events: list[AiEventDraft]
+    skipped: int = 0
+    model: str
+    # Raw assistant output (the JSON answer) and any reasoning the model
+    # streamed alongside it. Shown in a collapsed panel for transparency.
+    response: str = ""
+    reasoning: Optional[str] = None

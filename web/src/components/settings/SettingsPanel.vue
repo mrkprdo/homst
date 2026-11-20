@@ -13,6 +13,7 @@ import {
 import { getAnimationEnabled, setAnimationEnabled } from "@/lib/motion"
 import { householdApi } from "@/api/household"
 import type { WifiEncryption } from "@/api/household"
+import { aiApi, type AiProvider, type AiModel, type AiStatus } from "@/api/ai"
 import { wifiQrPayload } from "@/lib/wifiQr"
 import { DEFAULT_LAYOUT, writeCachedHomeLayout } from "@/lib/homeLayout"
 import { notificationsApi } from "@/api/notifications"
@@ -281,6 +282,7 @@ onMounted(async () => {
   defaultReminder.value = settings.defaultReminderMinutes.value != null
     ? String(settings.defaultReminderMinutes.value)
     : ""
+  void loadAi()
 })
 
 /** Mirror reminder preferences changed on another client (SSE broadcast). */
@@ -418,6 +420,123 @@ function removeCamera() {
   cameraPassword.value = ""
   cameraRotation.value = "0"
   void saveCamera()
+}
+
+// ── Smart import (AI) ──
+const aiStatus = ref<AiStatus | null>(null)
+const aiKey = ref("")
+const aiProvider = ref<AiProvider>("console")
+const aiModel = ref("")
+const aiModels = ref<AiModel[]>([])
+const aiModelsLoading = ref(false)
+const aiModelsError = ref("")
+const aiSaving = ref(false)
+const aiTesting = ref(false)
+const aiRemoving = ref(false)
+const aiMessage = ref("")
+const aiError = ref("")
+
+const selectedAiModel = computed(
+  () => aiModels.value.find(model => model.id === aiModel.value) ?? null,
+)
+
+async function loadAi() {
+  try {
+    const status = await aiApi.status()
+    aiStatus.value = status
+    aiProvider.value = status.provider
+    aiModel.value = status.model
+    if (!aiModels.value.some(model => model.id === status.model)) {
+      aiModels.value = [
+        { id: status.model, name: status.model, supportsImages: true },
+        ...aiModels.value,
+      ]
+    }
+    if (status.configured) void loadAiModels()
+  } catch {
+    // Settings still work offline; the card just shows its defaults.
+  }
+}
+
+async function loadAiModels() {
+  if (!aiStatus.value?.configured || aiModelsLoading.value) return
+  aiModelsLoading.value = true
+  aiModelsError.value = ""
+  try {
+    const result = await aiApi.models(aiProvider.value)
+    if (result.models.length > 0) {
+      const models = [...result.models]
+      if (result.selected && !models.some(model => model.id === result.selected)) {
+        models.unshift({
+          id: result.selected,
+          name: result.selected,
+          supportsImages: false,
+        })
+      }
+      aiModels.value = models
+    }
+    if (result.selected && !aiModels.value.some(model => model.id === aiModel.value)) {
+      aiModel.value = result.selected
+    }
+  } catch (err) {
+    aiModelsError.value = err instanceof Error ? err.message : "Could not load models."
+  } finally {
+    aiModelsLoading.value = false
+  }
+}
+
+async function saveAi() {
+  aiSaving.value = true
+  aiMessage.value = ""
+  aiError.value = ""
+  try {
+    aiStatus.value = await aiApi.save(aiKey.value.trim(), aiProvider.value, aiModel.value)
+    aiKey.value = ""
+    aiProvider.value = aiStatus.value.provider
+    aiModel.value = aiStatus.value.model
+    aiMessage.value = "Saved. Smart import is ready."
+    void loadAiModels()
+  } catch (err) {
+    aiError.value = err instanceof Error ? err.message : "Could not save the key."
+  } finally {
+    aiSaving.value = false
+  }
+}
+
+async function testAi() {
+  aiTesting.value = true
+  aiMessage.value = ""
+  aiError.value = ""
+  try {
+    const result = await aiApi.test()
+    aiStatus.value = result
+    aiProvider.value = result.provider
+    if (result.ok) aiMessage.value = result.message
+    else aiError.value = result.message
+  } catch (err) {
+    aiError.value = err instanceof Error ? err.message : "Could not reach OpenCode."
+  } finally {
+    aiTesting.value = false
+  }
+}
+
+async function removeAi() {
+  aiRemoving.value = true
+  aiMessage.value = ""
+  aiError.value = ""
+  try {
+    await aiApi.remove()
+    aiStatus.value = null
+    aiKey.value = ""
+    aiModel.value = ""
+    aiModels.value = []
+    aiModelsError.value = ""
+    aiMessage.value = "Key removed."
+  } catch (err) {
+    aiError.value = err instanceof Error ? err.message : "Could not remove the key."
+  } finally {
+    aiRemoving.value = false
+  }
 }
 
 // ── Guest Wi-Fi ──
@@ -1339,6 +1458,114 @@ watch(searchTokens, applySearch, { flush: "post" })
         </p>
       </section>
 
+      <!-- ── Smart import ── -->
+      <section class="settings-card settings-card--ai">
+        <header class="card-header">
+          <div class="card-heading">
+            <h3 class="card-title">Smart import</h3>
+            <p class="card-desc">Turn emails and screenshots into calendar events</p>
+          </div>
+        </header>
+
+        <div class="card-body">
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">OpenCode API key</p>
+              <p class="row-desc">
+                <template v-if="aiStatus?.configured">
+                  A key is saved ({{ aiStatus.keyHint ?? "hidden" }}). Leave blank to keep it.
+                </template>
+                <template v-else>
+                  Paste a key from opencode.ai/console. It stays on this server.
+                </template>
+              </p>
+            </div>
+            <UiInput
+              v-model="aiKey"
+              type="password"
+              class="ai-key-input"
+              placeholder="oc_sk_…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">OpenCode plan</p>
+              <p class="row-desc">Use the gateway that matches your key</p>
+            </div>
+            <UiSelect v-model="aiProvider" class="ai-provider-select">
+              <option value="console">Console (pay-as-you-go)</option>
+              <option value="go">Go (subscription)</option>
+            </UiSelect>
+          </div>
+
+          <div class="setting-row setting-row--stack">
+            <div class="row-copy">
+              <p class="row-title">Model</p>
+              <p class="row-desc">
+                {{ aiModelsLoading ? "Loading models…" : "Used for every Smart import request" }}
+              </p>
+            </div>
+            <div class="ai-model-row">
+              <UiSelect v-model="aiModel" class="ai-model-select">
+                <option v-if="aiModels.length === 0 && aiStatus?.model" :value="aiStatus.model">
+                  {{ aiStatus.model }}
+                </option>
+                <option v-for="model in aiModels" :key="model.id" :value="model.id">
+                  {{ model.name }}{{ model.supportsImages ? "" : " (text only)" }}
+                </option>
+              </UiSelect>
+              <UiButton
+                size="sm"
+                variant="ghost"
+                :disabled="aiModelsLoading || !aiStatus?.configured"
+                @click="loadAiModels"
+              >
+                {{ aiModelsLoading ? "Refreshing…" : "Refresh" }}
+              </UiButton>
+            </div>
+            <p v-if="aiModelsError" class="card-foot reset-error" role="alert">{{ aiModelsError }}</p>
+            <p v-else-if="selectedAiModel && !selectedAiModel.supportsImages" class="card-foot">
+              This model accepts text only; screenshots will not work.
+            </p>
+          </div>
+
+          <div class="ai-settings-actions">
+            <UiButton size="sm" :disabled="aiSaving || aiRemoving" @click="saveAi">
+              {{ aiSaving ? "Saving…" : "Save key" }}
+            </UiButton>
+            <UiButton
+              v-if="aiStatus?.configured"
+              size="sm"
+              variant="ghost"
+              :disabled="aiTesting || aiRemoving"
+              @click="testAi"
+            >
+              {{ aiTesting ? "Testing…" : "Test" }}
+            </UiButton>
+            <UiButton
+              v-if="aiStatus?.configured"
+              size="sm"
+              variant="ghost"
+              :disabled="aiRemoving"
+              @click="removeAi"
+            >
+              Remove
+            </UiButton>
+          </div>
+
+          <p v-if="aiMessage" class="card-foot reset-message" role="status">{{ aiMessage }}</p>
+          <p v-if="aiError" class="card-foot reset-error" role="alert">{{ aiError }}</p>
+        </div>
+
+        <p class="card-foot">
+          Requests go only to OpenCode. The key is never sent back to a browser,
+          and screenshots are re-encoded before they are uploaded.
+        </p>
+      </section>
+
       <!-- ── Software update ── -->
       <SoftwareUpdateCard class="settings-card--software" />
     </div>
@@ -2038,6 +2265,40 @@ watch(searchTokens, applySearch, { flush: "post" })
 }
 
 .camera-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+/* ── Smart import ── */
+.settings-card--ai .setting-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.ai-key-input {
+  flex: 1;
+}
+
+.ai-provider-select {
+  max-width: 20rem;
+}
+
+.ai-model-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ai-model-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-settings-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);

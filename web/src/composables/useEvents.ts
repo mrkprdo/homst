@@ -7,6 +7,7 @@ export interface Event {
   calendarId: string
   title: string
   description: string
+  sourceMessage?: string | null
   startAt: string
   endAt: string | null
   allDay: boolean
