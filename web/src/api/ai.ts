@@ -33,6 +33,7 @@ export interface AiParseResult {
   model: string
   response: string
   reasoning: string | null
+  warnings: string[]
 }
 
 export interface AiStreamHandlers {
@@ -82,6 +83,7 @@ interface ApiParseResult {
   model: string
   response?: string
   reasoning?: string | null
+  warnings?: string[]
 }
 
 interface ApiTestResult extends ApiStatus {
@@ -131,6 +133,9 @@ function mapParseResult(r: ApiParseResult): AiParseResult {
     model: r.model,
     response: typeof r.response === "string" ? r.response : "",
     reasoning: typeof r.reasoning === "string" ? r.reasoning : null,
+    warnings: Array.isArray(r.warnings)
+      ? r.warnings.filter((warning): warning is string => typeof warning === "string")
+      : [],
   }
 }
 

@@ -563,6 +563,7 @@ async def test_parse_text_returns_validated_drafts(client, monkeypatch):
                         "until": "2026-06-01T00:00:00",
                         "count": 5,
                     },
+                    "recurrence_reason": "every Monday",
                     "reminder_minutes": "10",
                     "assignee": "alice",
                     "confidence": 2,
@@ -1084,11 +1085,11 @@ def test_recurrence_validation():
 
 def test_validate_event_edges():
     tz = timezone.utc
-    assert ai._validate_event("x", tz, []) is None
-    assert ai._validate_event({"title": None, "start_at": "2026-01-01"}, tz, []) is None
-    assert ai._validate_event({"title": "x", "start_at": "bad"}, tz, []) is None
+    assert ai._validate_event("x", tz, [])[0] is None
+    assert ai._validate_event({"title": None, "start_at": "2026-01-01"}, tz, [])[0] is None
+    assert ai._validate_event({"title": "x", "start_at": "bad"}, tz, [])[0] is None
 
-    event = ai._validate_event(
+    event, stripped, issues = ai._validate_event(
         {
             "title": "All day",
             "start_at": "2026-01-01T00:00:00Z",
@@ -1100,17 +1101,74 @@ def test_validate_event_edges():
         tz,
         [],
     )
+    assert stripped is False
+    assert issues == []
     assert event["end_at"] is None
     assert event["description"] == ""
     assert event["reminder_minutes"] is None
 
-    event = ai._validate_event(
+    event, _, _ = ai._validate_event(
         {"title": "T", "start_at": "2026-01-01T09:00:00Z", "reminder_minutes": 30},
         tz,
         [],
     )
     assert event["end_at"] == "2026-01-01T10:00:00+00:00"
     assert event["reminder_minutes"] == 30
+
+
+def test_unjustified_recurrence_is_stripped():
+    tz = timezone.utc
+    base = {
+        "title": "Pizza",
+        "start_at": "2027-01-05T00:00:00Z",
+        "all_day": True,
+        "recurrence": {"freq": "weekly", "until": "2027-03-31T00:00:00Z"},
+    }
+    event, stripped, issues = ai._validate_event(base, tz, [])
+    assert stripped is True
+    assert event["recurrence"] is None
+    assert issues == []
+
+    kept, stripped, _ = ai._validate_event(
+        {**base, "recurrence_reason": "every Tuesday"}, tz, []
+    )
+    assert stripped is False
+    assert kept["recurrence"]["freq"] == "weekly"
+
+    drafts, skipped, warnings = ai.validate_payload({"events": [base]}, tz, [])
+    assert skipped == 0
+    assert len(drafts) == 1
+    assert warnings == [
+        "Repeating dates were ignored because the source did not state a repeat rule."
+    ]
+
+
+def test_validation_checks_weekdays_duplicates_completeness_and_uncertainty():
+    tz = timezone.utc
+    event = {
+        "title": "Pizza",
+        "start_at": "2027-01-05T00:00:00Z",
+        "source_weekday": "Monday",
+        "confidence": 0.95,
+    }
+    draft, _, issues = ai._validate_event(event, tz, [])
+    assert issues and "does not match Tuesday" in issues[0]
+    assert draft["confidence"] == 0.4
+
+    payload = {
+        "document": {"dated_rows": 30},
+        "events": [event, event, "not an event"],
+        "uncertain": ["Jan 21 may be unreadable", 42],
+    }
+    drafts, skipped, warnings = ai.validate_payload(payload, tz, [])
+    assert len(drafts) == 1
+    assert skipped == 2
+    assert "1 duplicate row(s) were skipped." in warnings
+    assert "1 event(s) have a printed weekday that does not match their date." in warnings
+    assert (
+        "The source listed 30 dated rows but only 3 event(s) were returned." in warnings
+    )
+    assert "Uncertain: Jan 21 may be unreadable" in warnings
 
 
 def test_resolve_timezone_falls_back():

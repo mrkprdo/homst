@@ -365,3 +365,4 @@ class AiParseResponse(BaseModel):
     # streamed alongside it. Shown in a collapsed panel for transparency.
     response: str = ""
     reasoning: Optional[str] = None
+    warnings: list[str] = []

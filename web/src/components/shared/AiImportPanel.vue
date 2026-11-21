@@ -32,6 +32,7 @@ const streamReasoning = ref("")
 const rawResponse = ref("")
 const modelReasoning = ref("")
 const streamBox = ref<HTMLElement | null>(null)
+const warnings = ref<string[]>([])
 
 const hasInput = computed(() => text.value.trim().length > 0 || !!imageDataUrl.value)
 const selectedCount = computed(() => selected.value.filter(Boolean).length)
@@ -105,6 +106,7 @@ function resetResults() {
   streamReasoning.value = ""
   rawResponse.value = ""
   modelReasoning.value = ""
+  warnings.value = []
 }
 
 watch([streamReasoning, streamContent], async () => {
@@ -188,6 +190,7 @@ async function parse() {
     skipped.value = result.skipped
     rawResponse.value = result.response || streamContent.value
     modelReasoning.value = result.reasoning ?? streamReasoning.value
+    warnings.value = result.warnings
     parsed.value = true
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Could not read that message."
@@ -375,6 +378,10 @@ function startOver() {
         </div>
       </details>
 
+      <ul v-if="warnings.length" class="ai-warnings" role="status">
+        <li v-for="warning in warnings" :key="warning">{{ warning }}</li>
+      </ul>
+
       <div
         v-if="outcome"
         class="ai-outcome"
@@ -528,6 +535,18 @@ function startOver() {
   color: var(--color-textSecondary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* ── Extraction warnings ── */
+.ai-warnings {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-6);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+  font-size: var(--text-label-size);
+  line-height: 1.5;
 }
 
 /* ── Apply outcome + recently added ── */

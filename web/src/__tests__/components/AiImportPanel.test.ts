@@ -69,14 +69,19 @@ const DRAFTS = [
   },
 ]
 
-function streamed(drafts: unknown[] = DRAFTS, skipped = 0, reasoning = "Reading the message") {
+function streamed(
+  drafts: unknown[] = DRAFTS,
+  skipped = 0,
+  reasoning = "Reading the message",
+  warnings: string[] = [],
+) {
   const response = JSON.stringify({ events: drafts })
   const body = [
     `event: reasoning\ndata: ${JSON.stringify({ type: "reasoning", text: reasoning })}\n\n`,
     `event: content\ndata: ${JSON.stringify({ type: "content", text: response })}\n\n`,
     `event: result\ndata: ${JSON.stringify({
       type: "result", events: drafts, skipped, model: "deepseek-v4.1-flash",
-      response, reasoning,
+      response, reasoning, warnings,
     })}\n\n`,
   ].join("")
   return new Response(body, {
@@ -325,6 +330,23 @@ describe("AiImportPanel", () => {
     expect(wrapper.findAll(".ai-added-item")).toHaveLength(1)
     expect(findButton(wrapper, "Add 1 event")).toBeTruthy()
     expect(findButton(wrapper, "Done")).toBeTruthy()
+  })
+
+  it("shows extraction warnings", async () => {
+    install((url) => {
+      if (url.includes("/ai/parse/stream")) {
+        return streamed(DRAFTS, 0, "Reading", [
+          "The source listed 30 dated rows but only 2 event(s) were returned.",
+        ])
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await wrapper.find("#ai-context").setValue("Lunch schedule")
+    await findButton(wrapper, "Find events")!.trigger("click")
+    await flushPromises()
+    expect(wrapper.find(".ai-warnings").text()).toContain("only 2 event(s) were returned")
   })
 
   it("attaches images from the file picker, drag-and-drop and paste", async () => {

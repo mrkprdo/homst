@@ -46,7 +46,7 @@ PROVIDERS: dict[str, dict[str, str]] = {
 
 MAX_TEXT_CHARS = 100_000
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
-MAX_IMAGE_EDGE = 1600
+MAX_IMAGE_EDGE = 2048
 MAX_EVENTS = 60
 MAX_TITLE_CHARS = 255
 MAX_DESCRIPTION_CHARS = 20_000
@@ -390,54 +390,95 @@ def _parse_json_answer(answer: str) -> dict:
 
 # ── Prompt ─────────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """You extract calendar events for HOMST, a household dashboard.
+_SYSTEM_PROMPT = """You are HOMST's document-understanding assistant. You extract
+calendar events from schedule images and pasted messages with evidence-backed accuracy.
 
-Return ONLY a JSON object with this shape:
-{"events": [{
-  "title": "short event title",
-  "description": "optional notes, address, links or confirmation numbers",
-  "start_at": "ISO 8601 date-time with an offset",
-  "end_at": "ISO 8601 date-time with an offset, or null",
-  "all_day": false,
-  "recurrence": null,
-  "reminder_minutes": null,
-  "assignee": "member name or null",
-  "confidence": 0.9
-}]}
+Work in this order:
+1. Read the document as a whole: title, month/year, table headers, legends and
+   colour keys, notes and summary totals.
+2. Build the legend map, but NEVER create events from legend entries. A legend
+   only expands an item that appears on a dated row or marked calendar cell.
+3. Transcribe every dated row or marked cell using spatial position, not colour
+   alone. Record the date, the weekday printed on that row, and the item.
+4. Validate before answering: date parses, weekday matches, month/year is
+   consistent, no duplicate rows. Never shift a date by a day.
+5. Only then emit events.
+
+Return ONLY this JSON object:
+{"document": {
+   "kind": "table | calendar_grid | email | poster | other",
+   "dated_rows": 0,
+   "notes": ""
+ },
+ "events": [{
+   "title": "short event title",
+   "description": "optional notes, address, links or confirmation numbers",
+   "start_at": "ISO 8601 date-time with an offset",
+   "end_at": "ISO 8601 date-time with an offset, or null",
+   "all_day": false,
+   "recurrence": null,
+   "recurrence_reason": "exact words that say it repeats, or null",
+   "reminder_minutes": null,
+   "assignee": "member name or null",
+   "source_weekday": "weekday printed on the source row, or null",
+   "evidence": "the dated row this came from, e.g. Jan 5 / Tuesday / Pizza",
+   "confidence": 0.95,
+   "issues": []
+ }],
+ "uncertain": []
+}
 
 The household is in __TZ__. Use this offset for every date-time.
 Now: __NOW__ (__WEEKDAY__).
 Members: __MEMBERS__.
 
 Rules:
-- One object per distinct event. If one message contains several dates or
-  separate items, return several objects.
+- ONE event per dated row or marked day. A 30-row table means 30 events. Never
+  merge rows with the same meal, category or colour into one event.
+- A table, calendar grid, or list of dated rows is NOT a recurrence. Set
+  recurrence to null on every row and ignore category and summary totals.
+- Never create one event per category or legend entry. The title comes from the
+  dated row, not from a key such as "Purple = Pizza".
+- Never infer unlisted dates and never fill gaps by repeating. Do not convert a
+  date list into a weekly, daily or monthly series.
 - recurrence is null or {"freq": "daily" | "weekly" | "biweekly" |
   "monthly" | "yearly", "until": ISO 8601 or null, "count": integer or null}.
-  Only use frequencies in that list. "Every Tuesday and Thursday" becomes two
-  weekly events. For an irregular repeat that fits no frequency ("first Monday
-  of the month", "every weekday"), list the explicitly mentioned dates; when it
-  is open-ended, list the next 12 occurrences and describe the pattern.
-- start_at is the first occurrence for a recurring event.
+  Use recurrence only when the source literally states a repeat rule ("every
+  Tuesday", "weekly", "each month") and quote those words in recurrence_reason.
+  If you cannot quote a repeat rule, recurrence MUST be null.
 - If no year is given, choose the next occurrence on or after today.
 - Date-only items are all-day: all_day true, start_at at 00:00 local time,
-  end_at null.
-- If a timed event has no end, end_at is one hour after start_at.
+  end_at null. If a timed event has no end, end_at is one hour after start_at.
 - reminder_minutes is the number of minutes before start_at, only when the
   message explicitly asks for a reminder; otherwise null.
-- Never invent dates, times, people or details. Skip items that have no date.
-- Ignore greetings, marketing, unsubscribe text and unrelated content.
-- Return {"events": []} when there is nothing scheduled.
-"""
+- Use source_weekday for every dated row. If the printed weekday does not match
+  the date, keep the printed date, add a note to issues, and lower confidence.
+  Never silently correct a date.
+- If a date or item is unreadable, omit that row and list it in uncertain.
+  Never guess or fabricate. Prefer an incomplete answer over a wrong one.
+- Never invent dates, times, people or details. Skip undated items, greetings,
+  marketing, unsubscribe text and unrelated content.
+- Return {"document": {...}, "events": [], "uncertain": []} when nothing is scheduled.
+__IMAGE_RULES__"""
+
+_IMAGE_RULES = """
+- This request includes a screenshot. Read it row by row at full resolution.
+  If it is a table or calendar, transcribe every dated row exactly: copy the
+  date, the weekday printed on the row and the item. Cross-check the legend
+  against the item text, but do not turn the legend or summary into events.
+  Ignore colours except as a hint for reading the item."""
 
 
-def _system_prompt(now: datetime, tz_label: str, members: list[str]) -> str:
+def _system_prompt(
+    now: datetime, tz_label: str, members: list[str], has_image: bool
+) -> str:
     member_line = ", ".join(members) if members else "none"
     return (
         _SYSTEM_PROMPT.replace("__TZ__", tz_label)
         .replace("__NOW__", now.isoformat())
         .replace("__WEEKDAY__", now.strftime("%A"))
         .replace("__MEMBERS__", member_line)
+        .replace("__IMAGE_RULES__", _IMAGE_RULES if has_image else "")
     )
 
 
@@ -570,15 +611,16 @@ def _resolve_assignee(value: Any, members: list[tuple[str, str]]) -> str | None:
 
 def _validate_event(
     raw: Any, tz: Any, members: list[tuple[str, str]]
-) -> dict | None:
+) -> tuple[dict | None, bool, list[str]]:
+    """Return ``(draft, recurrence_was_stripped, issues)`` for one model event."""
     if not isinstance(raw, dict):
-        return None
+        return None, False, []
     title = raw.get("title")
     if not isinstance(title, str) or not title.strip():
-        return None
+        return None, False, []
     start = _coerce_datetime(raw.get("start_at"), tz)
     if start is None:
-        return None
+        return None, False, []
 
     all_day = raw.get("all_day") is True
     end = _coerce_datetime(raw.get("end_at"), tz)
@@ -595,32 +637,98 @@ def _validate_event(
     if reminder is not None and not (0 <= reminder <= MAX_REMINDER_MINUTES):
         reminder = None
 
+    issues: list[str] = []
+    source_weekday = raw.get("source_weekday")
+    if isinstance(source_weekday, str) and source_weekday.strip():
+        expected = start.strftime("%A")
+        if source_weekday.strip().casefold()[:3] != expected.casefold()[:3]:
+            issues.append(
+                f"Printed weekday '{source_weekday.strip()}' does not match "
+                f"{expected} on {start.date().isoformat()}."
+            )
+
+    recurrence = _coerce_recurrence(raw.get("recurrence"), start, tz)
+    stripped = False
+    if recurrence is not None:
+        reason = raw.get("recurrence_reason")
+        if not isinstance(reason, str) or len(reason.strip()) < 3:
+            # A repeat rule without a quoted source phrase is almost always the
+            # model turning a date table into a series. Never let that through.
+            recurrence = None
+            stripped = True
+
+    confidence = _coerce_confidence(raw.get("confidence"))
+    if issues:
+        confidence = min(confidence, 0.4)
+
     return {
         "title": title.strip()[:MAX_TITLE_CHARS],
         "description": description.strip()[:MAX_DESCRIPTION_CHARS],
         "start_at": start.isoformat(),
         "end_at": end.isoformat() if end is not None else None,
         "all_day": all_day,
-        "recurrence": _coerce_recurrence(raw.get("recurrence"), start, tz),
+        "recurrence": recurrence,
         "reminder_minutes": reminder,
         "assignee_id": _resolve_assignee(raw.get("assignee"), members),
-        "confidence": _coerce_confidence(raw.get("confidence")),
-    }
+        "confidence": confidence,
+    }, stripped, issues
 
 
 def validate_payload(
     payload: dict, tz: Any, members: list[tuple[str, str]]
-) -> tuple[list[dict], int]:
+) -> tuple[list[dict], int, list[str]]:
     """Turn the model's answer into safe drafts. Invalid entries are skipped."""
     events = payload.get("events")
     if not isinstance(events, list):
         raise AiUpstreamError("OpenCode returned no events list")
     drafts: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    stripped = 0
+    duplicates = 0
+    issue_count = 0
     for raw in events[:MAX_EVENTS]:
-        draft = _validate_event(raw, tz, members)
-        if draft is not None:
-            drafts.append(draft)
-    return drafts, max(0, len(events) - len(drafts))
+        draft, was_stripped, issues = _validate_event(raw, tz, members)
+        if draft is None:
+            continue
+        key = (draft["title"].casefold(), draft["start_at"])
+        if key in seen:
+            duplicates += 1
+            continue
+        seen.add(key)
+        drafts.append(draft)
+        stripped += int(was_stripped)
+        issue_count += len(issues)
+
+    warnings: list[str] = []
+    if stripped:
+        warnings.append(
+            "Repeating dates were ignored because the source did not state a repeat rule."
+        )
+    if duplicates:
+        warnings.append(f"{duplicates} duplicate row(s) were skipped.")
+    if issue_count:
+        warnings.append(
+            f"{issue_count} event(s) have a printed weekday that does not match their date."
+        )
+
+    document = payload.get("document")
+    if isinstance(document, dict):
+        declared_rows = _coerce_int(document.get("dated_rows"))
+        # A one- or two-row miscount is common (headers/totals); only flag a
+        # material gap such as a 30-row table collapsed into 5 categories.
+        if declared_rows is not None and declared_rows - len(events) >= 3:
+            warnings.append(
+                f"The source listed {declared_rows} dated rows but only "
+                f"{len(events)} event(s) were returned."
+            )
+
+    uncertain = payload.get("uncertain")
+    if isinstance(uncertain, list):
+        for item in uncertain[:3]:
+            if isinstance(item, str) and item.strip():
+                warnings.append(f"Uncertain: {item.strip()}")
+
+    return drafts, max(0, len(events) - len(drafts)), warnings
 
 
 # ── Public entry points ────────────────────────────────────────────────────
@@ -656,7 +764,10 @@ def _prepare_schedule(
             {
                 "role": "system",
                 "content": _system_prompt(
-                    local_now, tz_label, [name for _, name in members]
+                    local_now,
+                    tz_label,
+                    [name for _, name in members],
+                    has_image=image_data_url is not None,
                 ),
             },
             {"role": "user", "content": _user_content(text, image_data_url)},
@@ -677,13 +788,16 @@ def _result_payload(
     tz: Any,
     members: list[tuple[str, str]],
 ) -> dict:
-    drafts, skipped = validate_payload(_parse_json_answer(answer), tz, members)
+    drafts, skipped, warnings = validate_payload(
+        _parse_json_answer(answer), tz, members
+    )
     return {
         "events": drafts,
         "skipped": skipped,
         "model": config["model"],
         "response": answer[:MAX_RAW_CHARS],
         "reasoning": reasoning[:MAX_RAW_CHARS] or None,
+        "warnings": warnings,
     }
 
 

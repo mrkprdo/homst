@@ -116,6 +116,7 @@ describe("aiApi", () => {
         model: "deepseek-v4.1-flash",
         response: '{"events": []}',
         reasoning: "Read the email.",
+        warnings: ["Repeating dates were ignored."],
       }),
     )
     const result = await aiApi.parse({
@@ -126,6 +127,7 @@ describe("aiApi", () => {
     expect(result.skipped).toBe(2)
     expect(result.response).toBe('{"events": []}')
     expect(result.reasoning).toBe("Read the email.")
+    expect(result.warnings).toEqual(["Repeating dates were ignored."])
     expect(result.events[0]).toEqual({
       title: "Standup",
       description: "Zoom",
@@ -150,6 +152,7 @@ describe("aiApi", () => {
     expect(empty.skipped).toBe(0)
     expect(empty.response).toBe("")
     expect(empty.reasoning).toBeNull()
+    expect(empty.warnings).toEqual([])
   })
 })
 
@@ -180,6 +183,7 @@ function resultFrame() {
       model: "deepseek-v4.1-flash",
       response: '{"events": []}',
       reasoning: "Read the email.",
+      warnings: [],
     },
   }
 }
