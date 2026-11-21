@@ -702,14 +702,22 @@ def validate_payload(
     warnings: list[str] = []
     if stripped:
         warnings.append(
-            "Repeating dates were ignored because the source did not state a repeat rule."
+            "Repeat rules were ignored: the message didn't state one."
         )
     if duplicates:
-        warnings.append(f"{duplicates} duplicate row(s) were skipped.")
+        row = "row" if duplicates == 1 else "rows"
+        warnings.append(f"Skipped {duplicates} duplicate {row}.")
     if issue_count:
-        warnings.append(
-            f"{issue_count} event(s) have a printed weekday that does not match their date."
-        )
+        if issue_count == 1:
+            warnings.append(
+                "1 date doesn't match the weekday printed in the message. "
+                "Check that event."
+            )
+        else:
+            warnings.append(
+                f"{issue_count} dates don't match the weekday printed in the "
+                "message. Check those events."
+            )
 
     document = payload.get("document")
     if isinstance(document, dict):
@@ -717,16 +725,18 @@ def validate_payload(
         # A one- or two-row miscount is common (headers/totals); only flag a
         # material gap such as a 30-row table collapsed into 5 categories.
         if declared_rows is not None and declared_rows - len(events) >= 3:
+            found = len(events)
+            verb = "was" if found == 1 else "were"
             warnings.append(
-                f"The source listed {declared_rows} dated rows but only "
-                f"{len(events)} event(s) were returned."
+                f"The message may list {declared_rows} dated items, but only "
+                f"{found} {verb} found. Check for missing events."
             )
 
     uncertain = payload.get("uncertain")
     if isinstance(uncertain, list):
         for item in uncertain[:3]:
             if isinstance(item, str) and item.strip():
-                warnings.append(f"Uncertain: {item.strip()}")
+                warnings.append(f"Check the source: {item.strip()}")
 
     return drafts, max(0, len(events) - len(drafts)), warnings
 

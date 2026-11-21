@@ -19,12 +19,12 @@ describe("MobileQuickAdd AI tab", () => {
       global: { stubs: { AiImportPanel: AiImportPanelStub } },
     })
 
-    await wrapper.findAll("button").find(button => button.text() === "AI")!.trigger("click")
+    await wrapper.findAll("button").find(button => button.text() === "Import")!.trigger("click")
     expect(wrapper.find(".ai-stub").exists()).toBe(true)
     expect(wrapper.find(".mqa-footer").exists()).toBe(false)
 
     await wrapper.find(".ai-stub").trigger("click")
-    expect(wrapper.find(".mqa-toast").exists()).toBe(true)
+    expect(wrapper.find(".mqa-toast").text()).toContain("Event added")
 
     vi.advanceTimersByTime(800)
     expect(wrapper.emitted("close")).toHaveLength(1)
@@ -35,7 +35,7 @@ describe("MobileQuickAdd AI tab", () => {
       global: { stubs: { AiImportPanel: AiImportPanelStub } },
     })
     expect(wrapper.find(".mqa-footer").exists()).toBe(true)
-    await wrapper.findAll("button").find(button => button.text() === "AI")!.trigger("click")
+    await wrapper.findAll("button").find(button => button.text() === "Import")!.trigger("click")
     await wrapper.findAll("button").find(button => button.text() === "Event")!.trigger("click")
     expect(wrapper.find(".mqa-footer").exists()).toBe(true)
   })

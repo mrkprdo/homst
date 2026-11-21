@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { setupApiMocks } from "./mocks"
+import { setupApiMocks, openManualEventQuickAdd } from "./mocks"
 
 test.describe("Profile & Events", () => {
   test.describe.configure({ mode: "serial" })
@@ -288,8 +288,7 @@ test.describe("Profile & Events", () => {
 
   test("member select shows in quick-add", async ({ page }) => {
     await goToCalendar(page)
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
     await expect(page.locator(".quick-add-form select").first()).toBeVisible()
   })
 
@@ -297,8 +296,7 @@ test.describe("Profile & Events", () => {
     await goToCalendar(page)
 
     for (let i = 1; i <= 3; i++) {
-      await page.getByRole("button", { name: "Add" }).click()
-      await page.waitForTimeout(400)
+      await openManualEventQuickAdd(page)
       await page.locator(".quick-add-form input").first().fill(`Event ${i}`)
       await page.locator(".quick-add-form select").nth(1).selectOption({ index: i })
       await page.getByRole("button", { name: "Create Event" }).click()
@@ -312,8 +310,7 @@ test.describe("Profile & Events", () => {
   test("can view events in day view after creation", async ({ page }) => {
     await goToCalendar(page)
 
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
     await page.locator(".quick-add-form input").first().fill("Lunch")
     await page.getByRole("button", { name: "Create Event" }).click()
     await page.waitForTimeout(500)

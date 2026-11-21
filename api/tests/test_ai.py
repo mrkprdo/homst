@@ -1139,7 +1139,7 @@ def test_unjustified_recurrence_is_stripped():
     assert skipped == 0
     assert len(drafts) == 1
     assert warnings == [
-        "Repeating dates were ignored because the source did not state a repeat rule."
+        "Repeat rules were ignored: the message didn't state one."
     ]
 
 
@@ -1163,12 +1163,16 @@ def test_validation_checks_weekdays_duplicates_completeness_and_uncertainty():
     drafts, skipped, warnings = ai.validate_payload(payload, tz, [])
     assert len(drafts) == 1
     assert skipped == 2
-    assert "1 duplicate row(s) were skipped." in warnings
-    assert "1 event(s) have a printed weekday that does not match their date." in warnings
+    assert "Skipped 1 duplicate row." in warnings
     assert (
-        "The source listed 30 dated rows but only 3 event(s) were returned." in warnings
+        "1 date doesn't match the weekday printed in the message. Check that event."
+        in warnings
     )
-    assert "Uncertain: Jan 21 may be unreadable" in warnings
+    assert (
+        "The message may list 30 dated items, but only 3 were found. "
+        "Check for missing events." in warnings
+    )
+    assert "Check the source: Jan 21 may be unreadable" in warnings
 
 
 def test_resolve_timezone_falls_back():

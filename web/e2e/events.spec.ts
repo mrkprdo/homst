@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { setupApiMocks, addMockEvent, completeOnboarding, setMockNotifications } from "./mocks"
+import { setupApiMocks, addMockEvent, completeOnboarding, setMockNotifications, openManualEventQuickAdd } from "./mocks"
 
 test.describe("Events", () => {
   test.describe.configure({ mode: "serial" })
@@ -21,8 +21,7 @@ test.describe("Events", () => {
   }
 
   async function createEvent(page: any, title: string, extra?: () => Promise<void>) {
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
     await page.locator(".quick-add-form input").first().fill(title)
     if (extra) await extra()
     await page.getByRole("button", { name: "Create Event" }).click()
@@ -59,8 +58,7 @@ test.describe("Events", () => {
 
   test("create all-day event", async ({ page }) => {
     await goToCalendar(page)
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
     await page.locator(".quick-add-form input").first().fill("All Day Event")
     await page.locator(".field-row").filter({ hasText: "All day" }).locator("button").first().click()
     await page.waitForTimeout(200)
@@ -71,8 +69,7 @@ test.describe("Events", () => {
 
   test("create event with description", async ({ page }) => {
     await goToCalendar(page)
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
     await page.locator(".quick-add-form input").first().fill("Described Event")
     const textareas = page.locator(".quick-add-form textarea")
     if (await textareas.count() > 0) {
@@ -225,8 +222,7 @@ test.describe("Reminder defaults", () => {
 
     await page.locator(".app-nav button").nth(1).click()
     await page.waitForTimeout(600)
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
 
     const select = page.locator(".ui-field").filter({ hasText: "Remind me" }).locator("select")
     await expect(select).toHaveValue("30")

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { setupApiMocks, createEventE2E } from "./mocks"
+import { setupApiMocks, openManualEventQuickAdd } from "./mocks"
 
 test.describe.configure({ mode: "serial" })
 test("full user journey: onboarding → events → views → edit", async ({ page }) => {
@@ -53,8 +53,7 @@ test("full user journey: onboarding → events → views → edit", async ({ pag
   await expect(page.locator(".month-view")).toBeVisible()
 
   // Create event for Alice
-  await page.getByRole("button", { name: "Add" }).click()
-  await page.waitForTimeout(400)
+  await openManualEventQuickAdd(page)
   await page.locator(".quick-add-form input").first().fill("Team Standup")
   await page.locator(".quick-add-form select").nth(1).selectOption({ index: 1 }) // Alice
   await page.getByRole("button", { name: "Create Event" }).click()
@@ -62,16 +61,14 @@ test("full user journey: onboarding → events → views → edit", async ({ pag
   await expect(page.locator(".drawer")).not.toBeVisible()
 
   // Create event for Bob
-  await page.getByRole("button", { name: "Add" }).click()
-  await page.waitForTimeout(400)
+  await openManualEventQuickAdd(page)
   await page.locator(".quick-add-form input").first().fill("Sprint Planning")
   await page.locator(".quick-add-form select").nth(1).selectOption({ index: 2 }) // Bob
   await page.getByRole("button", { name: "Create Event" }).click()
   await page.waitForTimeout(400)
 
   // Create event for Carol
-  await page.getByRole("button", { name: "Add" }).click()
-  await page.waitForTimeout(400)
+  await openManualEventQuickAdd(page)
   await page.locator(".quick-add-form input").first().fill("Design Review")
   await page.locator(".quick-add-form select").nth(1).selectOption({ index: 3 }) // Carol
   await page.getByRole("button", { name: "Create Event" }).click()

@@ -25,21 +25,25 @@ function mountForm() {
 }
 
 describe("QuickAddForm AI mode", () => {
-  it("switches between manual fields and the AI importer", async () => {
+  it("starts in Smart import and switches to manual fields", async () => {
     const wrapper = mountForm()
 
-    await wrapper.findAll("button").find(button => button.text() === "AI import")!.trigger("click")
+    const modes = wrapper.findAll(".mode-switch__btn").map(button => button.text())
+    expect(modes).toEqual(["Smart import", "Manual"])
     expect(wrapper.find(".ai-stub").exists()).toBe(true)
     expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(false)
 
     await wrapper.findAll("button").find(button => button.text() === "Manual")!.trigger("click")
     expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(true)
+    expect(wrapper.find(".ai-stub").exists()).toBe(false)
+
+    await wrapper.findAll("button").find(button => button.text() === "Smart import")!.trigger("click")
+    expect(wrapper.find(".ai-stub").exists()).toBe(true)
   })
 
   it("closes the drawer when the importer finishes", async () => {
     const ui = useUi()
     const wrapper = mountForm()
-    await wrapper.findAll("button").find(button => button.text() === "AI import")!.trigger("click")
 
     await wrapper.find(".ai-stub").trigger("click")
     expect(ui.drawer.value.type).toBeNull()
@@ -47,7 +51,6 @@ describe("QuickAddForm AI mode", () => {
 
   it("does not submit the manual form from AI mode", async () => {
     const wrapper = mountForm()
-    await wrapper.findAll("button").find(button => button.text() === "AI import")!.trigger("click")
     fetchMock.mockClear()
 
     await wrapper.find(".quick-add-form").trigger("keydown", { key: "Enter" })
@@ -55,9 +58,8 @@ describe("QuickAddForm AI mode", () => {
     vi.restoreAllMocks()
   })
 
-  it("only offers AI import in the calendar quick-add", async () => {
+  it("only offers Smart import in the calendar quick-add", async () => {
     const wrapper = mountForm()
-    await wrapper.findAll("button").find(button => button.text() === "AI import")!.trigger("click")
     expect(wrapper.find(".ai-stub").exists()).toBe(true)
 
     useUi().activePanel.value = "tasks"
@@ -68,7 +70,7 @@ describe("QuickAddForm AI mode", () => {
     expect(wrapper.find("input[placeholder='Task title']").exists()).toBe(true)
   })
 
-  it("opens the event form from a shortcut outside the calendar", () => {
+  it("opens Smart import by default from an event shortcut outside the calendar", async () => {
     const ui = useUi()
     ui.activePanel.value = "home"
     ui.openDrawer("quick-add", undefined, "2026-11-20", undefined, "event")
@@ -77,8 +79,11 @@ describe("QuickAddForm AI mode", () => {
       global: { stubs: { AiImportPanel: AiImportPanelStub } },
     })
 
-    expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(true)
-    expect(wrapper.find("input[placeholder='Task title']").exists()).toBe(false)
     expect(wrapper.find(".mode-switch").exists()).toBe(true)
+    expect(wrapper.find(".ai-stub").exists()).toBe(true)
+    expect(wrapper.find("input[placeholder='Task title']").exists()).toBe(false)
+
+    await wrapper.findAll("button").find(button => button.text() === "Manual")!.trigger("click")
+    expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(true)
   })
 })

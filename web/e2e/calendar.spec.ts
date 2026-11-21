@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { setupApiMocks, completeOnboarding, createEventE2E } from "./mocks"
+import { setupApiMocks, completeOnboarding, createEventE2E, openManualEventQuickAdd } from "./mocks"
 
 test.describe("Calendar", () => {
   test.beforeEach(async ({ page }) => {
@@ -247,8 +247,7 @@ test.describe("Calendar", () => {
 
   test("creating event requires title", async ({ page }) => {
     await goToCalendar(page)
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
     // Create Event button should be disabled without title
     const createBtn = page.getByRole("button", { name: "Create Event" })
     await expect(createBtn).toBeDisabled()
@@ -262,16 +261,14 @@ test.describe("Calendar", () => {
 
   test("member dropdown opens with quick-add", async ({ page }) => {
     await goToCalendar(page)
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
     await expect(page.locator(".quick-add-form select").first()).toBeVisible()
   })
 
   // ── View Persistence ──
   test("events persist across view switches", async ({ page }) => {
     await goToCalendar(page)
-    await page.getByRole("button", { name: "Add" }).click()
-    await page.waitForTimeout(400)
+    await openManualEventQuickAdd(page)
     await page.locator(".quick-add-form input").first().fill("Test Event")
     await page.getByRole("button", { name: "Create Event" }).click()
     await page.waitForTimeout(500)

@@ -42,7 +42,7 @@ async function submit(w: ReturnType<typeof mount>) {
 
 describe("QuickAddForm — recurrence payloads and time guards", () => {
   it("stores an until date for a recurring event", async () => {
-    const w = mount(QuickAddForm)
+    const w = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await w.find("input[placeholder='Event title']").setValue("Weekly standup")
     await field(w, "Assigned to")!.find("select").setValue("m1")
     await w.findComponent({ name: "UiTextarea" }).vm.$emit("update:modelValue", "bring coffee")
@@ -59,7 +59,7 @@ describe("QuickAddForm — recurrence payloads and time guards", () => {
   })
 
   it("stores an occurrence count for a recurring event", async () => {
-    const w = mount(QuickAddForm)
+    const w = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await w.find("input[placeholder='Event title']").setValue("Daily reset")
     await field(w, "Repeat")!.find("select").setValue("daily")
     await field(w, "End repeat")!.find("select").setValue("count")
@@ -72,7 +72,7 @@ describe("QuickAddForm — recurrence payloads and time guards", () => {
   })
 
   it("omits the recurrence end when it repeats forever", async () => {
-    const w = mount(QuickAddForm)
+    const w = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await w.find("input[placeholder='Event title']").setValue("Forever")
     await field(w, "Repeat")!.find("select").setValue("monthly")
     await submit(w)
@@ -80,7 +80,7 @@ describe("QuickAddForm — recurrence payloads and time guards", () => {
   })
 
   it("survives an unparsable start time and an empty one", async () => {
-    const w = mount(QuickAddForm)
+    const w = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await w.find("input[placeholder='Event title']").setValue("Odd time")
 
     let times = w.findAll("input[type='time']")

@@ -39,9 +39,16 @@ export async function createTaskE2E(page: Page, title: string, extra?: () => Pro
   await page.waitForTimeout(600)
 }
 
-export async function createEventE2E(page: Page, title: string, extra?: () => Promise<void>) {
+/** Open the event quick-add in manual mode; Smart import is the default. */
+export async function openManualEventQuickAdd(page: Page) {
   await page.getByRole("button", { name: "Add" }).click()
   await page.waitForTimeout(400)
+  await page.getByRole("button", { name: "Manual" }).click()
+  await page.waitForTimeout(150)
+}
+
+export async function createEventE2E(page: Page, title: string, extra?: () => Promise<void>) {
+  await openManualEventQuickAdd(page)
   await page.locator(".quick-add-form input").first().fill(title)
   if (extra) await extra()
   await page.getByRole("button", { name: "Create Event" }).click()

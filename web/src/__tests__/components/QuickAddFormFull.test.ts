@@ -34,14 +34,14 @@ describe("QuickAddForm (event details)", () => {
   })
 
   it("offers an assignee select once members exist", () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     const assigned = field(wrapper, "Assigned to")!
     expect(assigned).toBeTruthy()
     expect(assigned.findAll("option").map(o => o.text())).toContain("Alice")
   })
 
   it("reveals the repeat-end controls when a recurrence is chosen", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     expect(field(wrapper, "End repeat")).toBeUndefined()
 
     await field(wrapper, "Repeat")!.find("select").setValue("weekly")
@@ -56,7 +56,7 @@ describe("QuickAddForm (event details)", () => {
   })
 
   it("summarises a multi-day all-day event", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await wrapper.find("input[placeholder='Event title']").setValue("Trip")
     let dates = wrapper.findAll("input[type='date']")
     await dates[0]!.setValue("2026-07-01")
@@ -71,7 +71,7 @@ describe("QuickAddForm (event details)", () => {
   })
 
   it("summarises a cross-day timed event", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await wrapper.find("input[placeholder='Event title']").setValue("Overnight")
     let dates = wrapper.findAll("input[type='date']")
     await dates[0]!.setValue("2026-08-01")
@@ -89,14 +89,14 @@ describe("QuickAddForm (event details)", () => {
   })
 
   it("includes the chosen reminder in the summary", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await wrapper.find("input[placeholder='Event title']").setValue("Call")
     await field(wrapper, "Remind me")!.find("select").setValue("30")
     expect(wrapper.find(".summary-preview").text()).toContain("30 minutes before")
   })
 
   it("warns and blocks submit when the end time precedes the start time", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await wrapper.find("input[placeholder='Event title']").setValue("Bad range")
     let times = wrapper.findAll("input[type='time']")
     await times[0]!.setValue("10:00")
@@ -108,7 +108,7 @@ describe("QuickAddForm (event details)", () => {
   })
 
   it("warns when the end date precedes the start date", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await wrapper.find("input[placeholder='Event title']").setValue("Bad dates")
     let dates = wrapper.findAll("input[type='date']")
     await dates[0]!.setValue("2026-09-10")
@@ -119,7 +119,7 @@ describe("QuickAddForm (event details)", () => {
   })
 
   it("clamps the end date when the start date moves past it", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     let dates = wrapper.findAll("input[type='date']")
     await dates[0]!.setValue("2026-09-10")
     dates = wrapper.findAll("input[type='date']")
@@ -133,7 +133,7 @@ describe("QuickAddForm (event details)", () => {
   })
 
   it("fills the end time automatically when the start time is set", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     let times = wrapper.findAll("input[type='time']")
     await times[0]!.setValue("10:00")
     times = wrapper.findAll("input[type='time']")
@@ -141,7 +141,7 @@ describe("QuickAddForm (event details)", () => {
   })
 
   it("applies a quick-duration preset", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     const chips = wrapper.findAll(".duration-chip")
     expect(chips.map(c => c.text())).toEqual(["15m", "30m", "1h", "2h"])
 
@@ -159,7 +159,7 @@ describe("QuickAddForm (event details)", () => {
     ui.isDrawerOpen.value = true
     const { events } = useEvents()
 
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await wrapper.find("input[placeholder='Event title']").setValue("Trip")
     let dates = wrapper.findAll("input[type='date']")
     await dates[0]!.setValue("2026-07-01")
@@ -179,7 +179,7 @@ describe("QuickAddForm (event details)", () => {
   it("prefills the date and time when opened from the calendar", async () => {
     const ui = useUi()
     ui.drawer.value = { type: "quick-add", id: null, date: "2026-11-11", time: "14:30" }
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
 
     const dates = wrapper.findAll("input[type='date']")
     expect((dates[0]!.element as HTMLInputElement).value).toBe("2026-11-11")
@@ -196,7 +196,7 @@ describe("QuickAddForm (task details)", () => {
   })
 
   it("shows the assignee colour dot for the selected member", async () => {
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     const assigned = field(wrapper, "Assigned to")!
     await assigned.find("select").setValue("m1")
     expect(wrapper.find(".assignee-dot").attributes("style")).toContain("rgb(0, 255, 0)")
@@ -207,7 +207,7 @@ describe("QuickAddForm (task details)", () => {
     ui.isDrawerOpen.value = true
     const { lists, tasks } = useTasks()
 
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await settle()
 
     vi.mocked(fetch).mockImplementationOnce(async () =>
@@ -227,7 +227,7 @@ describe("QuickAddForm (task details)", () => {
 
   it("does not submit a blank task", async () => {
     const { tasks } = useTasks()
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     await wrapper.find(".quick-add-form").trigger("keydown", { key: "Enter", shiftKey: false })
     expect(tasks.value).toHaveLength(0)
   })
@@ -236,7 +236,7 @@ describe("QuickAddForm (task details)", () => {
 describe("QuickAddForm (no active panel)", () => {
   it("renders nothing submittable outside the calendar and task panels", () => {
     useUi().activePanel.value = "settings"
-    const wrapper = mount(QuickAddForm)
+    const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
     expect(wrapper.find(".quick-add-form").exists()).toBe(true)
     expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(false)
     expect(wrapper.find("input[placeholder='Task title']").exists()).toBe(false)

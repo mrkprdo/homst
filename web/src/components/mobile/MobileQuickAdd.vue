@@ -50,10 +50,17 @@ const taskDescription = ref("")
 
 const submitting = ref(false)
 const toast = ref(false)
+const toastText = ref("Created!")
 
 const memberColorMap = computed(() => {
   const map: Record<string, string> = {}
   members.value.forEach(m => { map[m.id] = m.color })
+  return map
+})
+
+const memberNameMap = computed(() => {
+  const map: Record<string, string> = {}
+  members.value.forEach(m => { map[m.id] = m.name || "Unnamed" })
   return map
 })
 
@@ -204,8 +211,7 @@ async function createEvent() {
     // silent
   } finally {
     submitting.value = false
-    toast.value = true
-    setTimeout(() => { toast.value = false; emit("close") }, 800)
+    showToast("Created!")
   }
 }
 
@@ -233,9 +239,14 @@ async function createTask() {
     // silent
   } finally {
     submitting.value = false
-    toast.value = true
-    setTimeout(() => { toast.value = false; emit("close") }, 800)
+    showToast("Created!")
   }
+}
+
+function showToast(message: string) {
+  toastText.value = message
+  toast.value = true
+  setTimeout(() => { toast.value = false; emit("close") }, 800)
 }
 
 function handleSubmit() {
@@ -243,9 +254,8 @@ function handleSubmit() {
   else if (tab.value === "task") createTask()
 }
 
-function onAiDone() {
-  toast.value = true
-  setTimeout(() => { toast.value = false; emit("close") }, 800)
+function onAiDone(count: number) {
+  showToast(count === 0 ? "Done" : count === 1 ? "Event added" : `${count} events added`)
 }
 
 const canSubmit = computed(() => {
@@ -262,14 +272,32 @@ const priorities = [
 
 <template>
   <div class="mobile-quick-add" @click.self="emit('close')">
-    <div class="mqa-sheet" role="dialog" aria-modal="true" aria-label="Add event or task" @click.stop>
+    <div class="mqa-sheet" role="dialog" aria-modal="true" aria-label="Add an event, task or import" @click.stop>
       <div class="mqa-handle" />
-      <div class="mqa-header">
-        <button class="mqa-tab" type="button" :class="{ active: tab === 'event' }" @click="tab = 'event'">Event</button>
-        <button class="mqa-tab" type="button" :class="{ active: tab === 'task' }" @click="tab = 'task'">Task</button>
-        <button class="mqa-tab" type="button" :class="{ active: tab === 'ai' }" @click="tab = 'ai'">
-          <PhSparkle :size="14" weight="fill" />
-          AI
+      <div class="mqa-header" role="group" aria-label="Add type">
+        <button
+          class="mqa-tab"
+          type="button"
+          :class="{ active: tab === 'event' }"
+          :aria-pressed="tab === 'event'"
+          @click="tab = 'event'"
+        >Event</button>
+        <button
+          class="mqa-tab"
+          type="button"
+          :class="{ active: tab === 'task' }"
+          :aria-pressed="tab === 'task'"
+          @click="tab = 'task'"
+        >Task</button>
+        <button
+          class="mqa-tab"
+          type="button"
+          :class="{ active: tab === 'ai' }"
+          :aria-pressed="tab === 'ai'"
+          @click="tab = 'ai'"
+        >
+          <PhSparkle :size="14" weight="fill" aria-hidden="true" />
+          Import
         </button>
         <button class="mqa-close" type="button" @click="emit('close')" aria-label="Close"><PhX :size="20" /></button>
       </div>
@@ -415,9 +443,9 @@ const priorities = [
             <textarea v-model="taskDescription" class="mqa-textarea" placeholder="Add notes..." rows="3" />
           </div>
         </template>
-        <!-- AI import -->
+        <!-- Smart import -->
         <template v-if="tab === 'ai'">
-          <AiImportPanel @done="onAiDone" />
+          <AiImportPanel :member-names="memberNameMap" @done="onAiDone" @manual="tab = 'event'" />
         </template>
       </div>
 
@@ -430,7 +458,7 @@ const priorities = [
       </div>
 
       <Transition name="toast-fade">
-        <div v-if="toast" class="mqa-toast">Created!</div>
+        <div v-if="toast" class="mqa-toast" role="status">{{ toastText }}</div>
       </Transition>
     </div>
   </div>

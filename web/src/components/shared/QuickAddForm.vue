@@ -17,14 +17,16 @@ import UiField from "@/components/ui/UiField.vue"
 import AiImportPanel from "@/components/shared/AiImportPanel.vue"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
 
+const props = defineProps<{ defaultMode?: "manual" | "ai" }>()
+
 const ui = useUi()
 const { ensureDefaultCalendar, upsertEvent } = useEvents()
 const { lists, tasks: allTasks, upsertTask, upsertList, ensureLoaded: ensureTasksLoaded } = useTasks()
 const { members, ensureLoaded: loadMembers } = useMembers()
 const { defaultReminderMinutes } = useSettings()
 
-/** Manual fields and the AI importer share the drawer. */
-const mode = ref<"manual" | "ai">("manual")
+/** Manual fields and Smart import share the drawer; events start with Smart. */
+const mode = ref<"manual" | "ai">(props.defaultMode ?? "ai")
 
 function onAiDone() {
   ui.closeDrawer()
@@ -42,7 +44,7 @@ const isTask  = computed(() =>
   !isEvent.value && (ui.activePanel.value === "tasks" || ui.activePanel.value === "home")
 )
 
-// AI import creates calendar events, so it only belongs in the calendar
+// Smart import creates calendar events, so it only belongs in the calendar
 // quick-add. Switching to a task panel drops back to the manual form.
 watch(isEvent, (event) => {
   if (!event) mode.value = "manual"
@@ -76,6 +78,12 @@ const taskDescription = ref("")
 const memberColorMap = computed(() => {
   const map: Record<string, string> = {}
   members.value.forEach((m) => { map[m.id] = m.color })
+  return map
+})
+
+const memberNameMap = computed(() => {
+  const map: Record<string, string> = {}
+  members.value.forEach((m) => { map[m.id] = m.name || "Unnamed" })
   return map
 })
 
@@ -314,26 +322,24 @@ const canSubmit = computed(() => {
 
 <template>
   <div class="quick-add-form" @keydown="handleKeydown">
-    <div v-if="isEvent" class="mode-switch" role="tablist" aria-label="Add mode">
+    <div v-if="isEvent" class="mode-switch" role="group" aria-label="Add mode">
       <button
         type="button"
-        role="tab"
-        class="mode-switch__btn"
-        :class="{ active: mode === 'manual' }"
-        :aria-selected="mode === 'manual'"
-        @click="mode = 'manual'"
-      >Manual</button>
-      <button
-        type="button"
-        role="tab"
         class="mode-switch__btn"
         :class="{ active: mode === 'ai' }"
-        :aria-selected="mode === 'ai'"
+        :aria-pressed="mode === 'ai'"
         @click="mode = 'ai'"
       >
-        <PhSparkle :size="14" weight="fill" class="mode-switch__icon" />
-        AI import
+        <PhSparkle :size="14" weight="fill" class="mode-switch__icon" aria-hidden="true" />
+        Smart import
       </button>
+      <button
+        type="button"
+        class="mode-switch__btn"
+        :class="{ active: mode === 'manual' }"
+        :aria-pressed="mode === 'manual'"
+        @click="mode = 'manual'"
+      >Manual</button>
     </div>
 
     <template v-if="mode === 'manual' || !isEvent">
@@ -496,7 +502,12 @@ const canSubmit = computed(() => {
     </div>
     </template>
 
-    <AiImportPanel v-else @done="onAiDone" />
+    <AiImportPanel
+      v-else
+      :member-names="memberNameMap"
+      @done="onAiDone"
+      @manual="mode = 'manual'"
+    />
   </div>
 </template>
 
@@ -513,7 +524,7 @@ const canSubmit = computed(() => {
   align-items: flex-start;
 }
 
-/* ── Manual / AI import switch ── */
+/* ── Manual / Smart import switch ── */
 .mode-switch {
   display: flex;
   gap: var(--space-1);
@@ -528,7 +539,7 @@ const canSubmit = computed(() => {
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  min-height: 36px;
+  min-height: 48px;
   padding: var(--space-1) var(--space-3);
   border: none;
   border-radius: var(--radius-full);
@@ -544,7 +555,7 @@ const canSubmit = computed(() => {
 .mode-switch__btn.active {
   background: var(--color-bgSurface);
   color: var(--color-textPrimary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 0 0 var(--shadow-lip), 0 2px 8px -2px var(--shadow-drop);
 }
 
 .mode-switch__btn:focus-visible {
@@ -616,7 +627,7 @@ const canSubmit = computed(() => {
 
 /* ── Validation error ── */
 .form-error {
-  margin: -var(--space-2) 0 0;
+  margin: calc(-1 * var(--space-2)) 0 0;
   font-size: var(--text-label-size);
   color: var(--color-danger);
   display: flex;
