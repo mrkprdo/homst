@@ -1,25 +1,58 @@
 <script setup lang="ts">
-import { computed } from "vue"
-import { PhVideoCamera, PhWarningCircle } from "@phosphor-icons/vue"
+import { computed, ref } from "vue"
+import { PhVideoCamera } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
-import UiButton from "@/components/ui/UiButton.vue"
+import UiLoader from "@/components/ui/UiLoader.vue"
 import { useSettings } from "@/composables/useSettings"
 import { useCameraStream } from "@/composables/useCameraStream"
 import { BACKDROP_INTERVAL_MS, useVideoBackdrop } from "@/composables/useVideoBackdrop"
 
+/** Big enough to stay sharp in the card without a full 4K canvas copy. */
+const STILL_MAX_DIMENSION = 1280
+
 const settings = useSettings()
 const streamPath = computed(() => settings.cameraStreamPath.value)
-const { video, status, error, retry } = useCameraStream(streamPath)
+const still = ref<HTMLCanvasElement | null>(null)
+const hasStill = ref(false)
+
+/**
+ * Copy the last readable frame before the pipeline is torn down. A dropped
+ * stream otherwise clears the <video> and leaves the card blank while the
+ * automatic reconnect runs; this keeps the last thing the camera saw on screen.
+ */
+function freezeFrame(el: HTMLVideoElement) {
+  const canvas = still.value
+  if (!canvas || !el.videoWidth || !el.videoHeight || el.readyState < 2) return
+
+  const scale = Math.min(1, STILL_MAX_DIMENSION / Math.max(el.videoWidth, el.videoHeight))
+  const width = Math.max(1, Math.round(el.videoWidth * scale))
+  const height = Math.max(1, Math.round(el.videoHeight * scale))
+  if (canvas.width !== width) canvas.width = width
+  if (canvas.height !== height) canvas.height = height
+
+  const context = canvas.getContext("2d")
+  if (!context) return
+  context.drawImage(el, 0, 0, width, height)
+  hasStill.value = true
+}
+
+const { video, status, error } = useCameraStream(streamPath, { onFreeze: freezeFrame })
 const configured = computed(() => !!settings.cameraUrl.value)
 const rotation = computed(() => settings.cameraRotation.value)
-// A slow client re-buffers for a few seconds at a time; that is not a stale
-// frame and must not trigger the expensive per-frame blur (it competes with
-// the decode that is already behind). Only a hard failure freezes the frame.
-const stalled = computed(() => status.value === "failed")
 const backdropActive = computed(
-  () => configured.value && (status.value === "playing" || status.value === "retrieving" || stalled.value),
+  () => configured.value && status.value !== "idle" && status.value !== "loading",
 )
 const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_INTERVAL_MS, rotation)
+const reconnecting = computed(() => status.value !== "playing" && status.value !== "idle")
+const showStill = computed(
+  () => hasStill.value && status.value !== "playing" && status.value !== "idle",
+)
+const statusText = computed(() => {
+  if (status.value === "loading") return "Connecting to camera"
+  if (status.value === "retrieving" || status.value === "failed") return "Reconnecting to camera"
+  if (status.value === "error") return error.value || "Reconnecting to camera"
+  return ""
+})
 </script>
 
 <template>
@@ -35,13 +68,18 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
       <video
         ref="video"
         class="camera-video"
-        :class="[
-          `camera-video--rotate-${rotation}`,
-          { 'camera-video--stalled': stalled },
-        ]"
+        :class="`camera-video--rotate-${rotation}`"
         autoplay
         muted
         playsinline
+      />
+      <!-- Shown only while reconnecting, above the (now empty) video element,
+           so a dropped stream never turns the card into a blank rectangle. -->
+      <canvas
+        v-show="showStill"
+        ref="still"
+        class="camera-still"
+        :class="`camera-video--rotate-${rotation}`"
       />
     </div>
 
@@ -60,21 +98,15 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
     </div>
 
     <div v-else class="camera-body">
-      <div v-if="status === 'loading'" class="camera-overlay">
-        <span class="camera-loading">Connecting…</span>
-      </div>
-      <div v-else-if="status === 'retrieving'" class="camera-overlay">
-        <span class="camera-loading">retrieving stream...</span>
-      </div>
-      <div v-else-if="status === 'failed'" class="camera-overlay camera-overlay--error">
-        <PhWarningCircle :size="22" />
-        <p class="camera-error">failed retrieving stream</p>
-        <UiButton size="sm" @click="retry">Try again</UiButton>
-      </div>
-      <div v-else-if="status === 'error'" class="camera-overlay camera-overlay--error">
-        <PhWarningCircle :size="22" />
-        <p class="camera-error">{{ error }}</p>
-        <UiButton size="sm" @click="retry">Try again</UiButton>
+      <div
+        v-show="reconnecting"
+        class="camera-overlay"
+        :class="{ 'camera-overlay--frozen': showStill }"
+        role="status"
+        aria-live="polite"
+      >
+        <UiLoader size="lg" />
+        <span class="camera-status">{{ statusText }}</span>
       </div>
     </div>
   </UiCard>
@@ -200,15 +232,21 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
   object-fit: cover;
 }
 
-.camera-video--rotate-180 {
-  transform: rotate(180deg);
+/* The frozen frame sits above the video element: after a fatal error the
+   pipeline clears the <video> (and its picture) before the next reconnect. */
+.camera-still {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
 }
 
-/* Only a hard failure freezes the frame. Re-buffering (an 8–20s segment
-   download on a weak link) keeps the picture sharp: a per-frame blur here
-   competes with the decode that is already behind. */
-.camera-video--stalled {
-  filter: blur(10px) brightness(0.65);
+.camera-video--rotate-180 {
+  transform: rotate(180deg);
 }
 
 /* Rotating swaps the displayed axes. Size the video from the container's
@@ -235,31 +273,28 @@ const { canvas: backdrop } = useVideoBackdrop(video, backdropActive, BACKDROP_IN
 .camera-overlay {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
+  display: grid;
+  place-items: center;
   padding: var(--space-4);
-  text-align: center;
-  background: color-mix(in srgb, var(--color-bgSubtle) 88%, transparent);
-  color: var(--color-textPrimary);
+  pointer-events: none;
 }
 
-.camera-overlay--error {
-  background: color-mix(in srgb, var(--color-bgSubtle) 94%, transparent);
+/* The last frame stays readable behind the loader instead of being hidden. */
+.camera-overlay--frozen {
+  background: color-mix(in srgb, var(--color-bgBase) 16%, transparent);
 }
 
-.camera-loading {
-  font-size: var(--text-label-size);
-  font-weight: var(--font-weight-medium);
-}
-
-.camera-error {
-  max-width: 34ch;
-  margin: 0;
-  font-size: var(--text-label-size);
-  line-height: 1.35;
+/* Screen-reader status only: the visible UI is the icon, not a text label. */
+.camera-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .camera-setup {

@@ -51,11 +51,15 @@ const hls = vi.hoisted(() => {
 
 vi.mock("hls.js", () => ({ default: hls.FakeHls }))
 
-function mountStream(path: Ref<string | null>, withVideo = true) {
+function mountStream(
+  path: Ref<string | null>,
+  withVideo = true,
+  options?: Parameters<typeof useCameraStream>[1],
+) {
   let api!: ReturnType<typeof useCameraStream>
   const Comp = defineComponent({
     setup() {
-      api = useCameraStream(path)
+      api = useCameraStream(path, options)
       return () => (withVideo ? h("video", { ref: api.video }) : h("div"))
     },
   })
@@ -170,6 +174,24 @@ describe("useCameraStream", () => {
     expect(api.error.value).toBe("Could not reach the camera stream. Check the URL and credentials in Settings.")
     expect(instance.destroyed).toBe(true)
 
+    wrapper.unmount()
+  })
+
+  it("freezes the last frame before a failure clears the video", async () => {
+    const path = ref("/live.m3u8")
+    const onFreeze = vi.fn()
+    const { wrapper, api } = mountStream(path, true, { onFreeze })
+    await nextTick()
+
+    const instance = playingInstance(api)
+    instance.handlers["error"]!("error", {
+      fatal: true,
+      type: "network",
+      response: { code: 502, text: "" },
+    })
+
+    expect(onFreeze).toHaveBeenCalledWith(wrapper.find("video").element)
+    expect(instance.destroyed).toBe(true)
     wrapper.unmount()
   })
 

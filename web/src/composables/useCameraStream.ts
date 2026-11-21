@@ -9,6 +9,15 @@ export type CameraStatus =
   | "failed"
   | "error"
 
+export interface CameraStreamOptions {
+  /**
+   * Called while the last frame is still readable, just before a failure,
+   * nudge, or reconnect clears the video element. Callers use it to keep the
+   * picture on screen while the automatic retry runs.
+   */
+  onFreeze?: (video: HTMLVideoElement) => void
+}
+
 const STREAM_ERROR = "The camera stream stopped. Check the URL and credentials in Settings."
 const NETWORK_ERROR = "Could not reach the camera stream. Check the URL and credentials in Settings."
 const UNAVAILABLE_ERROR = "Camera streaming is unavailable. Check that ffmpeg is installed on the server."
@@ -56,7 +65,10 @@ const MAX_MEDIA_RETRIES = 2
  * stuck — a frozen picture that `timeupdate` alone would never notice. That
  * case rebuilds the whole pipeline instead of nudging the loader.
  */
-export function useCameraStream(streamPath: Ref<string | null>) {
+export function useCameraStream(
+  streamPath: Ref<string | null>,
+  options: CameraStreamOptions = {},
+) {
   const video = ref<HTMLVideoElement | null>(null)
   const status = ref<CameraStatus>("idle")
   const error = ref("")
@@ -102,6 +114,12 @@ export function useCameraStream(streamPath: Ref<string | null>) {
     clearStartTimer()
     stopWatchdog()
     clearRetryTimer()
+  }
+
+  /** Hand the visible frame to the caller before the pipeline wipes it. */
+  function freezeFrame() {
+    const el = video.value
+    if (el) options.onFreeze?.(el)
   }
 
   function play(el: HTMLVideoElement) {
@@ -154,6 +172,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
   }
 
   function fail(message: string) {
+    freezeFrame()
     status.value = "error"
     error.value = message
     destroy()
@@ -214,6 +233,10 @@ export function useCameraStream(streamPath: Ref<string | null>) {
 
   /** Nudge the current pipeline so it fetches fresh segments. */
   function recoverStream() {
+    // Native HLS is nudged with load(), which blanks the element; keep the
+    // frame first. hls.js keeps its last frame, but freezing here also means
+    // the card shows it during the reconnect that may follow.
+    freezeFrame()
     if (hls) {
       hls.startLoad()
     } else {
@@ -251,6 +274,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
       // loader cannot fix that. Rebuild the whole pipeline (fresh MediaSource
       // and decoder) while keeping the recovery budget, so a decoder that
       // stays dead still escalates to the slow reconnect cadence.
+      freezeFrame()
       destroy()
       beginPlayback()
       return
@@ -362,6 +386,7 @@ export function useCameraStream(streamPath: Ref<string | null>) {
 
   /** (Re)connect from scratch, resetting the recovery budget. */
   function start() {
+    freezeFrame()
     destroy()
     error.value = ""
     networkRetries = 0

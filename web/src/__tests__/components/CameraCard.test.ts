@@ -77,7 +77,7 @@ describe("CameraCard", () => {
     wrapper.unmount()
   })
 
-  it("shows a playback error and retries the configured stream", async () => {
+  it("shows the loader instead of an error when playback is unavailable", async () => {
     hls.FakeHls.supported = false
     configureCamera()
 
@@ -88,11 +88,10 @@ describe("CameraCard", () => {
     expect(wrapper.find(".camera-video").exists()).toBe(true)
     expect(wrapper.find(".camera-backdrop").exists()).toBe(true)
     expect(wrapper.find(".camera-video").classes()).toContain("camera-video--rotate-90")
-    expect(wrapper.find(".camera-error").text()).toBe("This browser cannot play HLS video.")
-
-    await wrapper.find(".camera-overlay .ui-btn").trigger("click")
-    await flushPromises()
-    expect(wrapper.find(".camera-error").exists()).toBe(true)
+    expect(wrapper.find(".camera-overlay").exists()).toBe(true)
+    expect(wrapper.find(".camera-overlay .ui-loader").exists()).toBe(true)
+    expect(wrapper.find(".camera-status").text()).toBe("This browser cannot play HLS video.")
+    expect(wrapper.find(".ui-btn").exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -106,14 +105,65 @@ describe("CameraCard", () => {
 
     hls.instances.at(-1)!.handlers["manifest"]!("manifest", {})
     await nextTick()
-    expect(wrapper.find(".camera-overlay").exists()).toBe(false)
+    expect(wrapper.find(".camera-overlay").attributes("style")).toContain("display: none")
 
     await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS)
     await nextTick()
-    expect(wrapper.text()).toContain("retrieving stream...")
-    // The per-frame blur is expensive enough to deepen the stall on a weak
-    // client, so re-buffering only shows the overlay.
+    expect(wrapper.find(".camera-overlay").attributes("style")).not.toContain("display: none")
+    expect(wrapper.find(".camera-overlay .ui-loader").exists()).toBe(true)
+    expect(wrapper.find(".camera-status").text()).toBe("Reconnecting to camera")
+    // Re-buffering does not blur the picture; only the loader signals it.
     expect(wrapper.find(".camera-video").classes()).not.toContain("camera-video--stalled")
+
+    wrapper.unmount()
+  })
+
+  it("keeps the last frame while a failed stream reconnects", async () => {
+    vi.useFakeTimers()
+    configureCamera()
+
+    const drawImage = vi.fn()
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage,
+      save: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      restore: vi.fn(),
+    } as unknown as CanvasRenderingContext2D)
+
+    const wrapper = mount(CameraCard)
+    await flushPromises()
+    await nextTick()
+
+    const video = wrapper.find(".camera-video").element as HTMLVideoElement
+    Object.defineProperty(video, "videoWidth", { value: 1280, configurable: true })
+    Object.defineProperty(video, "videoHeight", { value: 720, configurable: true })
+    Object.defineProperty(video, "readyState", { value: 4, configurable: true })
+
+    hls.instances.at(-1)!.handlers["manifest"]!("manifest", {})
+    await nextTick()
+
+    hls.instances.at(-1)!.handlers["error"]!("error", {
+      fatal: true,
+      type: "network",
+      response: { code: 502, text: "" },
+    })
+    await nextTick()
+
+    expect(drawImage).toHaveBeenCalled()
+    expect(wrapper.find(".camera-still").exists()).toBe(true)
+    expect(wrapper.find(".camera-still").attributes("style")).not.toContain("display: none")
+    expect(wrapper.find(".camera-overlay .ui-loader").exists()).toBe(true)
+    expect(wrapper.text()).not.toContain("Try again")
+
+    // The frozen frame survives the reconnect and only gives way to live video.
+    await vi.advanceTimersByTimeAsync(60_000)
+    await nextTick()
+    expect(wrapper.find(".camera-still").attributes("style")).not.toContain("display: none")
+
+    hls.instances.at(-1)!.handlers["manifest"]!("manifest", {})
+    await nextTick()
+    expect(wrapper.find(".camera-still").attributes("style")).toContain("display: none")
 
     wrapper.unmount()
   })
@@ -134,13 +184,13 @@ describe("CameraCard", () => {
     }
     await nextTick()
 
-    expect(wrapper.text()).toContain("failed retrieving stream")
-    expect(wrapper.find(".camera-video").classes()).toContain("camera-video--stalled")
+    expect(wrapper.find(".camera-status").text()).toBe("Reconnecting to camera")
+    expect(wrapper.find(".camera-overlay .ui-loader").exists()).toBe(true)
 
     const instancesBefore = hls.instances.length
     await vi.advanceTimersByTimeAsync(60_000)
     expect(hls.instances.length).toBe(instancesBefore + 1)
-    expect(wrapper.text()).toContain("Connecting…")
+    expect(wrapper.find(".camera-status").text()).toBe("Connecting to camera")
 
     wrapper.unmount()
   })
