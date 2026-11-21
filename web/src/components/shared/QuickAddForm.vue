@@ -34,8 +34,13 @@ onMounted(async () => {
   await Promise.all([loadMembers(), ensureTasksLoaded()])
 })
 
-const isEvent = computed(() => ui.activePanel.value === "calendar")
-const isTask  = computed(() => ui.activePanel.value === "tasks" || ui.activePanel.value === "home")
+const isEvent = computed(() =>
+  ui.drawer.value.intent === "event" ||
+  (ui.drawer.value.intent !== "task" && ui.activePanel.value === "calendar")
+)
+const isTask  = computed(() =>
+  !isEvent.value && (ui.activePanel.value === "tasks" || ui.activePanel.value === "home")
+)
 
 // AI import creates calendar events, so it only belongs in the calendar
 // quick-add. Switching to a task panel drops back to the manual form.

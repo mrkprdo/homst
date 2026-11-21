@@ -16,6 +16,12 @@ export interface DrawerState {
   date: string | null
   /** Optional start time (HH:MM) prefill — used by quick-add when opened from a timeline click */
   time: string | null
+  /**
+   * Which quick-add form to show. Nil keeps the existing behaviour based on
+   * the active panel; "event" lets a shortcut outside the calendar open the
+   * event form without navigating away.
+   */
+  intent?: "event" | "task" | null
 }
 
 const activePanel = ref<PanelView>("home")
@@ -47,8 +53,20 @@ function consumeCalendarTarget(): CalendarTarget | null {
   return target
 }
 
-function openDrawer(type: NonNullable<DrawerType>, id?: string, date?: string, time?: string) {
-  drawer.value = { type, id: id ?? null, date: date ?? null, time: time ?? null }
+function openDrawer(
+  type: NonNullable<DrawerType>,
+  id?: string,
+  date?: string,
+  time?: string,
+  intent?: "event" | "task",
+) {
+  drawer.value = {
+    type,
+    id: id ?? null,
+    date: date ?? null,
+    time: time ?? null,
+    ...(intent ? { intent } : {}),
+  }
   nextTick(() => { isDrawerOpen.value = true })
 }
 
@@ -98,7 +116,7 @@ export function useUi() {
 
 export function _resetUi() {
   activePanel.value = "home"
-  drawer.value = { type: null, id: null, date: null, time: null }
+  drawer.value = { type: null, id: null, date: null, time: null, intent: null }
   isDrawerOpen.value = false
   announcementsOpen.value = false
   closeGuard.value = null

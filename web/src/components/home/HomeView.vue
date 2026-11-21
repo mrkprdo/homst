@@ -446,7 +446,7 @@ const scheduleDateLong = computed(() =>
 function addEventFromMiniCalendar() {
   const date = scheduleDate.value
   const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
-  ui.openDrawer("quick-add", undefined, value)
+  ui.openDrawer("quick-add", undefined, value, undefined, "event")
 }
 
 const scheduleTitle = computed(() => `${scheduleRelativeLabel.value}'s Schedule`)

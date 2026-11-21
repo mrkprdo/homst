@@ -67,4 +67,18 @@ describe("QuickAddForm AI mode", () => {
     expect(wrapper.find(".ai-stub").exists()).toBe(false)
     expect(wrapper.find("input[placeholder='Task title']").exists()).toBe(true)
   })
+
+  it("opens the event form from a shortcut outside the calendar", () => {
+    const ui = useUi()
+    ui.activePanel.value = "home"
+    ui.openDrawer("quick-add", undefined, "2026-11-20", undefined, "event")
+
+    const wrapper = mount(QuickAddForm, {
+      global: { stubs: { AiImportPanel: AiImportPanelStub } },
+    })
+
+    expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(true)
+    expect(wrapper.find("input[placeholder='Task title']").exists()).toBe(false)
+    expect(wrapper.find(".mode-switch").exists()).toBe(true)
+  })
 })

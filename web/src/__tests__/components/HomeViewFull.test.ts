@@ -166,6 +166,7 @@ describe("HomeView — layout engine & edit mode", () => {
     expect(addEventButton.exists()).toBe(true)
     await addEventButton.trigger("click")
     expect(ui.drawer.value.type).toBe("quick-add")
+    expect(ui.drawer.value.intent).toBe("event")
     const now = new Date()
     const todayValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
     expect(ui.drawer.value.date).toBe(todayValue)
