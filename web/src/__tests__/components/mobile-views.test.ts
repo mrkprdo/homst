@@ -147,11 +147,162 @@ describe("MobileCalendarView", () => {
     expect(w.emitted("selectEvent")).toHaveLength(2)
 
     const navBtns = w.findAll(".mc-nav-btn")
-    await navBtns[0]!.trigger("click") // prevWeek
-    await navBtns[1]!.trigger("click") // nextWeek
+    await navBtns[0]!.trigger("click") // prevMonth
+    await navBtns[1]!.trigger("click") // nextMonth
     await w.find(".mc-today-chip").trigger("click") // goToToday
+
+    // Fold the month down to the selected week before using the week strip.
+    await w.find(".mc-month-label").trigger("click")
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
+    expect(w.findAll(".mc-week-strip .mc-day-btn")).toHaveLength(7)
     const dayBtns = w.findAll(".mc-day-btn")
     await dayBtns[0]!.trigger("click")
+  })
+
+  it("shows the full month and folds/unfolds from scroll gestures", async () => {
+    const w = mount(MobileCalendarView)
+    await flushPromises()
+
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+    expect(w.findAll(".mc-month-day").length % 7).toBe(0)
+    expect(w.findAll(".mc-month-day").length).toBeGreaterThanOrEqual(28)
+    // The folded layer stays mounted for the animation but is inert.
+    expect(w.find(".mc-week-strip").attributes("inert")).toBeDefined()
+    expect(w.find(".mc-week-strip").attributes("aria-hidden")).toBe("true")
+
+    // Tapping a month cell moves the agenda to that day.
+    await w.findAll(".mc-month-day")[10]!.trigger("click")
+    expect(w.findAll(".mc-month-day.active")).toHaveLength(1)
+
+    // Horizontal wheel gestures are not a fold.
+    await w.find(".mobile-calendar").trigger("wheel", { deltaY: 0, deltaX: 120 })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+
+    // Multi-touch gestures are not a fold either.
+    await w.find(".mobile-calendar").trigger("touchstart", {
+      touches: [{ clientY: 200 }, { clientY: 180 }],
+    })
+    await w.find(".mobile-calendar").trigger("touchmove", {
+      touches: [{ clientY: 160 }, { clientY: 140 }],
+    })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+    await w.find(".mobile-calendar").trigger("touchend")
+
+    // Scroll forward (swipe up / wheel down) folds to the selected week.
+    await w.find(".mobile-calendar").trigger("wheel", { deltaY: 120, deltaX: 0 })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
+    expect(w.findAll(".mc-week-strip .mc-day-btn")).toHaveLength(7)
+    expect(w.find(".mc-month-panel").attributes("inert")).toBeDefined()
+    expect(w.find(".mc-week-strip").attributes("inert")).toBeUndefined()
+
+    // Scroll back the other way unfolds the full month again.
+    await w.find(".mobile-calendar").trigger("wheel", { deltaY: -120, deltaX: 0 })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+
+    // Touch swipes use the same gesture model.
+    await w.find(".mobile-calendar").trigger("touchstart", { touches: [{ clientY: 200 }] })
+    await w.find(".mobile-calendar").trigger("touchmove", {
+      touches: [{ clientY: 160 }, { clientY: 140 }],
+    })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+
+    await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 140 }] })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
+
+    // Another upward swipe while folded keeps it folded.
+    await w.find(".mobile-calendar").trigger("touchstart", { touches: [{ clientY: 200 }] })
+    await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 140 }] })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
+    await w.find(".mobile-calendar").trigger("touchend")
+
+    // A move without a start is ignored.
+    await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 200 }] })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
+
+    // Swiping back down unfolds it; another downward swipe while unfolded is a no-op.
+    await w.find(".mobile-calendar").trigger("touchstart", { touches: [{ clientY: 140 }] })
+    await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 200 }] })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+    await w.find(".mobile-calendar").trigger("touchstart", { touches: [{ clientY: 140 }] })
+    await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 210 }] })
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+    await w.find(".mobile-calendar").trigger("touchend")
+
+    // Plain scrolling also folds forward and unfolds on the way back to the top.
+    const agenda = w.find(".mc-agenda")
+    agenda.element.scrollTop = 80
+    await agenda.trigger("scroll")
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
+
+    // While folded the arrows move by week instead of by month.
+    const navBtns = w.findAll(".mc-nav-btn")
+    await navBtns[0]!.trigger("click")
+    await navBtns[1]!.trigger("click")
+    expect(w.findAll(".mc-week-strip .mc-day-btn")).toHaveLength(7)
+
+    agenda.element.scrollTop = 0
+    await agenda.trigger("scroll")
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+
+    // Already at the top: no phantom unfold on a 0 → 0 scroll event.
+    await agenda.trigger("scroll")
+    expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+  })
+
+  it("labels weeks across the year boundary and tolerates broken event dates", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 11, 31, 9, 0, 0))
+    try {
+      const ev = useEvents()
+      const dec31 = new Date(2026, 11, 31, 12, 0, 0)
+      const oct1 = new Date(2026, 9, 1, 12, 0, 0)
+      const base = {
+        calendarId: "c1", description: "", recurrence: null, source: "internal" as const,
+        externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+      }
+
+      ev.upsertEvent({
+        ...base, id: "e-bad-start", title: "Bad start", startAt: "not-a-date",
+        endAt: null, allDay: false,
+      })
+      ev.upsertEvent({
+        ...base, id: "e-bad-end", title: "Bad end", startAt: dec31.toISOString(),
+        endAt: "not-a-date", allDay: false,
+      })
+      ev.upsertEvent({
+        ...base, id: "e-backwards", title: "Backwards", startAt: dec31.toISOString(),
+        endAt: new Date(2026, 11, 1).toISOString(), allDay: false,
+      })
+      ev.upsertEvent({
+        ...base, id: "e-long", title: "Long running", startAt: oct1.toISOString(),
+        endAt: dec31.toISOString(), allDay: false,
+      })
+
+      const w = mount(MobileCalendarView)
+      await flushPromises()
+      expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
+
+      // Dec 31 2026 is a Thursday, so the collapsed week spans into 2027.
+      await w.find(".mc-month-label").trigger("click")
+      expect(w.find(".mc-month-label").text()).toContain("2026")
+      expect(w.find(".mc-month-label").text()).toContain("2027")
+
+      // Expand and pick Jan 1 from the adjacent-month cell.
+      await w.find(".mc-month-label").trigger("click")
+      const jan1 = w.findAll(".mc-month-day").find(d =>
+        d.attributes("aria-label")?.includes("January 1, 2027"),
+      )
+      expect(jan1).toBeTruthy()
+      await jan1!.trigger("click")
+      expect(w.find(".mc-agenda-date").text()).toContain("Tomorrow")
+
+      // The minute tick keeps "today" honest.
+      vi.advanceTimersByTime(60_000)
+      await nextTick()
+      w.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

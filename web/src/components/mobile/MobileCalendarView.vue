@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue"
+import { ref, computed, onMounted, onUnmounted, watch } from "vue"
 import { useEvents, type Event } from "@/composables/useEvents"
 import { useMembers } from "@/composables/useMembers"
 import { expandEvents } from "@/utils/recurrence"
 import { memberColorHex, type MemberColor } from "@/types/household"
-import { PhCalendarBlank, PhCaretLeft, PhCaretRight } from "@phosphor-icons/vue"
+import {
+  PhCalendarBlank,
+  PhCaretDown,
+  PhCaretLeft,
+  PhCaretRight,
+  PhCaretUp,
+} from "@phosphor-icons/vue"
 
 const emit = defineEmits<{ selectEvent: [id: string] }>()
 
@@ -13,15 +19,36 @@ const { members, ensureLoaded: loadMembers } = useMembers()
 
 const now = ref(new Date())
 const selectedDate = ref(new Date())
-const weekStart = ref(getMonday(selectedDate.value))
+/** Month grid at full height, or folded down to the selected day's week. */
+const monthExpanded = ref(true)
 
-function getMonday(d: Date) {
+let nowInterval: ReturnType<typeof setInterval> | null = null
+
+function startOfDay(d: Date): Date {
   const date = new Date(d)
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+function getMonday(d: Date): Date {
+  const date = startOfDay(d)
   const day = date.getDay()
   const diff = date.getDate() - day + (day === 0 ? -6 : 1)
   date.setDate(diff)
-  date.setHours(0, 0, 0, 0)
   return date
+}
+
+function addDays(d: Date, amount: number): Date {
+  const date = new Date(d)
+  date.setDate(date.getDate() + amount)
+  return date
+}
+
+function addMonthsClamped(d: Date, amount: number): Date {
+  const target = new Date(d.getFullYear(), d.getMonth() + amount, 1)
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()
+  target.setDate(Math.min(d.getDate(), lastDay))
+  return target
 }
 
 function isSameDate(a: Date, b: Date) {
@@ -32,12 +59,26 @@ function isSameDate(a: Date, b: Date) {
   )
 }
 
-onMounted(async () => {
-  await Promise.all([
-    loadMembers(),
-    prefetchAround(now.value.getFullYear(), now.value.getMonth()),
-  ])
-  weekStart.value = getMonday(selectedDate.value)
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+/** The visible month follows the selected day, so navigating never strands it. */
+const monthStart = computed(
+  () => new Date(selectedDate.value.getFullYear(), selectedDate.value.getMonth(), 1),
+)
+
+const monthGridStart = computed(() => getMonday(monthStart.value))
+
+const monthRowCount = computed(() => {
+  const daysInMonth = new Date(
+    monthStart.value.getFullYear(),
+    monthStart.value.getMonth() + 1,
+    0,
+  ).getDate()
+  // Monday = 0 … Sunday = 6
+  const leadingDays = (monthStart.value.getDay() + 6) % 7
+  return Math.ceil((leadingDays + daysInMonth) / 7)
 })
 
 const UNASSIGNED_COLOR = "var(--color-borderStrong)"
@@ -60,11 +101,131 @@ function formatEventTime(iso: string) {
 
 const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+// ── Events for the visible month ──
+// Expand once over the whole grid window, then bucket occurrences by day. Every
+// cell and the agenda read from the same index, so a scroll or a tap never
+// re-scans the recurrence list.
+const EXPAND_LEAD_DAYS = 31
+const MAX_EVENT_DAYS = 366
+
+const visibleRange = computed(() => ({
+  from: addDays(monthGridStart.value, -1),
+  to: addDays(monthGridStart.value, monthRowCount.value * 7 + 1),
+}))
+
+const expandedEvents = computed<Event[]>(() => {
+  const { from, to } = visibleRange.value
+  return expandEvents(events.value, addDays(from, -EXPAND_LEAD_DAYS), to)
+})
+
+const eventsByDay = computed(() => {
+  const index = new Map<string, Event[]>()
+  const { from, to } = visibleRange.value
+  const min = from.getTime()
+  const max = to.getTime()
+
+  for (const ev of expandedEvents.value) {
+    const start = new Date(ev.startAt)
+    if (Number.isNaN(start.getTime())) continue
+
+    let end = ev.endAt ? new Date(ev.endAt) : new Date(start)
+    if (Number.isNaN(end.getTime()) || end.getTime() < start.getTime()) end = new Date(start)
+    // Legacy all-day events store end_at === start_at; treat them as covering
+    // exactly their start day.
+    if (ev.allDay && end.getTime() <= start.getTime()) {
+      end = new Date(start.getTime() + 1)
+    }
+
+    const cursor = startOfDay(start)
+    const lastDay = startOfDay(end)
+    // Start at the window edge when the event began before it.
+    if (cursor.getTime() < min) cursor.setTime(min)
+
+    for (let i = 0; cursor.getTime() <= lastDay.getTime() && i < MAX_EVENT_DAYS; i++) {
+      const t = cursor.getTime()
+      if (t >= min && t <= max) {
+        const key = dayKey(cursor)
+        const list = index.get(key)
+        if (list) list.push(ev)
+        else index.set(key, [ev])
+      }
+      cursor.setDate(cursor.getDate() + 1)
+    }
+  }
+
+  return index
+})
+
+function eventsForDate(date: Date): Event[] {
+  return eventsByDay.value.get(dayKey(date)) ?? []
+}
+
+// ── Month grid ──
+interface MonthCell {
+  date: Date
+  key: string
+  day: number
+  inMonth: boolean
+  isToday: boolean
+  isSelected: boolean
+  dots: string[]
+  eventCount: number
+}
+
+const monthCells = computed<MonthCell[]>(() => {
+  const start = monthGridStart.value
+  const total = monthRowCount.value * 7
+  const cells: MonthCell[] = []
+
+  for (let i = 0; i < total; i++) {
+    const date = addDays(start, i)
+    const dayEvents = eventsForDate(date)
+    cells.push({
+      date,
+      key: dayKey(date),
+      day: date.getDate(),
+      inMonth:
+        date.getMonth() === monthStart.value.getMonth() &&
+        date.getFullYear() === monthStart.value.getFullYear(),
+      isToday: isSameDate(date, now.value),
+      isSelected: isSameDate(date, selectedDate.value),
+      dots: dayEvents.slice(0, 3).map(eventChipColor),
+      eventCount: dayEvents.length,
+    })
+  }
+
+  return cells
+})
+
+function monthCellLabel(cell: MonthCell): string {
+  const label = cell.date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+  const count =
+    cell.eventCount === 0
+      ? "no events"
+      : `${cell.eventCount} ${cell.eventCount === 1 ? "event" : "events"}`
+  return `${label}, ${count}${cell.isSelected ? ", selected" : ""}`
+}
+
+// ── Selected week strip (collapsed state) ──
+const selectedWeekStart = computed(() => getMonday(selectedDate.value))
+
 const weekDays = computed(() => {
-  const days: { date: Date; label: string; dayName: string; isToday: boolean; fullLabel: string }[] = []
+  const days: {
+    date: Date
+    label: string
+    dayName: string
+    isToday: boolean
+    fullLabel: string
+    dots: string[]
+  }[] = []
+
   for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart.value)
-    d.setDate(d.getDate() + i)
+    const d = addDays(selectedWeekStart.value, i)
     days.push({
       date: d,
       label: String(d.getDate()),
@@ -75,20 +236,37 @@ const weekDays = computed(() => {
         month: "long",
         day: "numeric",
       }),
+      dots: eventsForDate(d).slice(0, 3).map(eventChipColor),
     })
   }
+
   return days
 })
 
-function monthLabel() {
-  return selectedDate.value.toLocaleDateString("en-US", { month: "long", year: "numeric" })
-}
+// ── Labels + navigation ──
+const navLabel = computed(() => {
+  if (monthExpanded.value) {
+    return selectedDate.value.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+  }
+
+  const start = selectedWeekStart.value
+  const end = addDays(start, 6)
+  const startLabel = start.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const endLabel = end.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  if (start.getFullYear() !== end.getFullYear()) {
+    const full = (d: Date) =>
+      d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    return `${full(start)} – ${full(end)}`
+  }
+  return start.getMonth() === end.getMonth()
+    ? `${startLabel} – ${end.getDate()}`
+    : `${startLabel} – ${endLabel}`
+})
 
 const selectedDateLabel = computed(() => {
   const d = selectedDate.value
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
+  const today = startOfDay(new Date())
+  const tomorrow = addDays(today, 1)
 
   let lead = d.toLocaleDateString("en-US", { weekday: "long" })
   if (isSameDate(d, today)) lead = "Today"
@@ -99,53 +277,134 @@ const selectedDateLabel = computed(() => {
 })
 
 function shiftWeek(delta: number) {
-  const nextWeek = new Date(weekStart.value)
-  nextWeek.setDate(nextWeek.getDate() + delta * 7)
-  weekStart.value = nextWeek
+  selectedDate.value = addDays(selectedDate.value, delta * 7)
+}
 
-  const nextSelected = new Date(selectedDate.value)
-  nextSelected.setDate(nextSelected.getDate() + delta * 7)
-  selectedDate.value = nextSelected
+function shiftMonth(delta: number) {
+  selectedDate.value = addMonthsClamped(selectedDate.value, delta)
+}
 
-  prefetchAround(nextWeek.getFullYear(), nextWeek.getMonth())
+function navPrev() {
+  if (monthExpanded.value) shiftMonth(-1)
+  else shiftWeek(-1)
+}
+
+function navNext() {
+  if (monthExpanded.value) shiftMonth(1)
+  else shiftWeek(1)
 }
 
 function goToToday() {
   const n = new Date()
   now.value = n
   selectedDate.value = n
-  weekStart.value = getMonday(n)
-  prefetchAround(n.getFullYear(), n.getMonth())
 }
 
 function selectDay(date: Date) {
-  selectedDate.value = date
+  selectedDate.value = new Date(date)
 }
 
-function eventCoversDate(ev: Event, date: Date): boolean {
-  const start = new Date(ev.startAt)
-  const dayStart = new Date(date)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart)
-  dayEnd.setDate(dayEnd.getDate() + 1)
-  if (start >= dayEnd) return false
-  let end = ev.endAt ? new Date(ev.endAt) : start
-  // Legacy all-day events store end_at === start_at; treat them as covering exactly their start day
-  if (ev.allDay && end.getTime() <= start.getTime()) end = new Date(start.getTime() + 1)
-  return end >= dayStart
+function toggleMonth() {
+  monthExpanded.value = !monthExpanded.value
 }
 
-const displayEvents = computed(() => {
-  const from = new Date(weekStart.value)
-  from.setDate(from.getDate() - 1)
-  const to = new Date(weekStart.value)
-  to.setDate(to.getDate() + 8)
-  return expandEvents(events.value, from, to)
+// ── Scroll to fold / unfold ──
+// Swipe (or wheel) forward through the agenda → fold the month down to the
+// selected week. Swipe back the other way → unfold the full month. Tracking the
+// gesture itself means this works even when the agenda is too short to scroll.
+const agendaEl = ref<HTMLElement | null>(null)
+const GESTURE_THRESHOLD = 24
+const WHEEL_THRESHOLD = 8
+let touchStartY: number | null = null
+let lastAgendaScrollTop = 0
+
+function collapseMonth() {
+  monthExpanded.value = false
+}
+
+function expandMonth() {
+  monthExpanded.value = true
+}
+
+function onAgendaScroll() {
+  const top = agendaEl.value?.scrollTop ?? 0
+  if (monthExpanded.value) {
+    if (top > GESTURE_THRESHOLD) collapseMonth()
+  } else if (top === 0 && top < lastAgendaScrollTop) {
+    // Reaching the top while scrolling back unfolds the month again.
+    expandMonth()
+  }
+  lastAgendaScrollTop = top
+}
+
+function onWheel(e: WheelEvent) {
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+  if (e.deltaY > WHEEL_THRESHOLD) collapseMonth()
+  else if (e.deltaY < -WHEEL_THRESHOLD) expandMonth()
+}
+
+function onTouchStart(e: TouchEvent) {
+  if (e.touches.length !== 1) {
+    touchStartY = null
+    return
+  }
+  touchStartY = e.touches[0]!.clientY
+}
+
+function onTouchMove(e: TouchEvent) {
+  if (touchStartY === null || e.touches.length !== 1) return
+  const y = e.touches[0]!.clientY
+  const delta = touchStartY - y // positive = swipe up / forward
+  if (delta > GESTURE_THRESHOLD) {
+    if (monthExpanded.value) {
+      collapseMonth()
+      touchStartY = y
+    }
+  } else if (delta < -GESTURE_THRESHOLD) {
+    if (!monthExpanded.value) {
+      expandMonth()
+      touchStartY = y
+    }
+  }
+}
+
+function onTouchEnd() {
+  touchStartY = null
+}
+
+// ── Data loading ──
+const prefetched = { year: -1, month: -1 }
+
+function prefetchMonthOf(date: Date) {
+  const year = date.getFullYear()
+  const month = date.getMonth()
+  if (prefetched.year === year && prefetched.month === month) return
+  prefetched.year = year
+  prefetched.month = month
+  prefetchAround(year, month)
+}
+
+watch(selectedDate, date => prefetchMonthOf(date))
+
+onMounted(async () => {
+  await Promise.all([
+    loadMembers(),
+    prefetchAround(now.value.getFullYear(), now.value.getMonth()),
+  ])
+  prefetched.year = now.value.getFullYear()
+  prefetched.month = now.value.getMonth()
+  nowInterval = setInterval(() => {
+    now.value = new Date()
+  }, 60_000)
+})
+
+onUnmounted(() => {
+  if (nowInterval !== null) clearInterval(nowInterval)
 })
 
 const dayEvents = computed(() => {
-  return displayEvents.value
-    .filter(e => eventCoversDate(e, selectedDate.value))
+  return eventsForDate(selectedDate.value)
+    .slice()
     .sort((a, b) => {
       if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
       return new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
@@ -159,23 +418,43 @@ const eventCountLabel = computed(() => {
 </script>
 
 <template>
-  <section class="mobile-calendar" aria-label="Calendar">
+  <section
+    class="mobile-calendar"
+    :data-expanded="monthExpanded"
+    aria-label="Calendar"
+    @touchstart.passive="onTouchStart"
+    @touchmove.passive="onTouchMove"
+    @touchend="onTouchEnd"
+    @touchcancel="onTouchEnd"
+    @wheel.passive="onWheel"
+  >
     <div class="mc-toolbar">
       <div class="mc-month-nav">
         <button
           class="mc-nav-btn"
           type="button"
-          aria-label="Previous week"
-          @click="shiftWeek(-1)"
+          :aria-label="monthExpanded ? 'Previous month' : 'Previous week'"
+          @click="navPrev"
         >
           <PhCaretLeft :size="18" />
         </button>
-        <span class="mc-month-label">{{ monthLabel() }}</span>
+        <button
+          class="mc-month-label"
+          type="button"
+          aria-controls="mc-calendar-body"
+          :aria-expanded="monthExpanded"
+          :aria-label="monthExpanded ? 'Collapse calendar to the selected week' : 'Expand calendar to the full month'"
+          @click="toggleMonth"
+        >
+          <span>{{ navLabel }}</span>
+          <PhCaretUp v-if="monthExpanded" :size="14" />
+          <PhCaretDown v-else :size="14" />
+        </button>
         <button
           class="mc-nav-btn"
           type="button"
-          aria-label="Next week"
-          @click="shiftWeek(1)"
+          :aria-label="monthExpanded ? 'Next month' : 'Next week'"
+          @click="navNext"
         >
           <PhCaretRight :size="18" />
         </button>
@@ -183,27 +462,86 @@ const eventCountLabel = computed(() => {
       <button class="mc-today-chip" type="button" @click="goToToday">Today</button>
     </div>
 
-    <div class="mc-week-strip" role="group" aria-label="Days of the week">
-      <button
-        v-for="d in weekDays"
-        :key="d.date.toISOString()"
-        class="mc-day-btn"
-        :class="{
-          active: isSameDate(d.date, selectedDate),
-          today: d.isToday,
-        }"
-        type="button"
-        :aria-label="d.fullLabel"
-        :aria-pressed="isSameDate(d.date, selectedDate)"
-        @click="selectDay(d.date)"
+    <div
+      id="mc-calendar-body"
+      class="mc-calendar-body"
+      :class="{ 'is-collapsed': !monthExpanded }"
+      :style="{ '--mc-month-rows': monthRowCount }"
+    >
+      <!-- Full month -->
+      <div
+        class="mc-month-panel"
+        :aria-hidden="monthExpanded ? undefined : 'true'"
+        :inert="monthExpanded ? undefined : true"
       >
-        <span class="mc-day-name">{{ d.dayName }}</span>
-        <span class="mc-day-num">{{ d.label }}</span>
-        <span class="mc-day-marker" aria-hidden="true" />
-      </button>
+        <div class="mc-month-dow" aria-hidden="true">
+          <span v-for="d in dayNames" :key="d">{{ d }}</span>
+        </div>
+        <div class="mc-month-grid" role="group" aria-label="Days of the month">
+          <button
+            v-for="cell in monthCells"
+            :key="cell.key"
+            class="mc-month-day"
+            :class="{
+              'not-month': !cell.inMonth,
+              today: cell.isToday,
+              active: cell.isSelected,
+            }"
+            type="button"
+            :aria-label="monthCellLabel(cell)"
+            :aria-pressed="cell.isSelected"
+            :aria-current="cell.isToday ? 'date' : undefined"
+            @click="selectDay(cell.date)"
+          >
+            <span class="mc-month-day-num">{{ cell.day }}</span>
+            <span class="mc-month-dots" aria-hidden="true">
+              <span
+                v-for="(color, i) in cell.dots"
+                :key="i"
+                class="mc-month-dot"
+                :style="{ background: color }"
+              />
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Selected week -->
+      <div
+        class="mc-week-strip"
+        role="group"
+        aria-label="Days of the week"
+        :aria-hidden="monthExpanded ? 'true' : undefined"
+        :inert="monthExpanded ? true : undefined"
+      >
+        <button
+          v-for="d in weekDays"
+          :key="d.date.toISOString()"
+          class="mc-day-btn"
+          :class="{
+            active: isSameDate(d.date, selectedDate),
+            today: d.isToday,
+          }"
+          type="button"
+          :aria-label="d.fullLabel"
+          :aria-pressed="isSameDate(d.date, selectedDate)"
+          @click="selectDay(d.date)"
+        >
+          <span class="mc-day-name">{{ d.dayName }}</span>
+          <span class="mc-day-num">{{ d.label }}</span>
+          <span class="mc-day-dots" aria-hidden="true">
+            <span
+              v-for="(color, i) in d.dots"
+              :key="i"
+              class="mc-day-dot"
+              :style="{ background: color }"
+            />
+          </span>
+        </button>
+      </div>
     </div>
 
-    <div class="mc-agenda">
+    <div ref="agendaEl" class="mc-agenda" @scroll.passive="onAgendaScroll">
       <div class="mc-agenda-head">
         <h2 class="mc-agenda-date">{{ selectedDateLabel }}</h2>
         <span class="mc-agenda-count">{{ eventCountLabel }}</span>
@@ -271,10 +609,33 @@ const eventCountLabel = computed(() => {
 }
 
 .mc-month-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--space-1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-textPrimary);
+  font-family: var(--font-family);
   font-size: var(--text-body-size);
   font-weight: var(--font-weight-medium);
-  color: var(--color-textPrimary);
   white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.mc-month-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-month-label:active {
+  background: var(--color-bgSubtle);
+  transform: scale(0.98);
 }
 
 .mc-nav-btn {
@@ -318,12 +679,177 @@ const eventCountLabel = computed(() => {
   background: var(--color-accent-light);
 }
 
+/* ── Calendar body: month grid ↔ selected week ── */
+/* Both poses stay mounted in the same grid cell; the body height animates and
+   the two layers cross-fade, so folding the month also glides the agenda up. */
+.mc-calendar-body {
+  --mc-month-row-h: 44px;
+  --mc-month-dow-h: 20px;
+  --mc-week-row-h: 58px;
+  display: grid;
+  grid-template-areas: "calendar";
+  grid-template-rows: 1fr;
+  flex-shrink: 0;
+  min-height: 0;
+  height: calc(
+    var(--mc-month-dow-h) +
+    var(--mc-month-rows, 6) * var(--mc-month-row-h) +
+    (var(--mc-month-rows, 6) - 1) * var(--space-1) +
+    var(--space-2)
+  );
+  overflow: hidden;
+  transition: height var(--duration-slow) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mc-calendar-body.is-collapsed {
+  height: calc(var(--mc-week-row-h) + 2 * var(--space-2));
+}
+
+.mc-month-panel {
+  grid-area: calendar;
+  align-self: start;
+  padding: 0 var(--space-4) var(--space-2);
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: top center;
+  transition:
+    opacity var(--duration-slow) cubic-bezier(0.2, 0.7, 0.3, 1),
+    transform var(--duration-slow) cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
+}
+
+.mc-calendar-body.is-collapsed .mc-month-panel {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.985);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--duration-slow) cubic-bezier(0.2, 0.7, 0.3, 1),
+    transform var(--duration-slow) cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear var(--duration-slow);
+}
+
+.mc-month-dow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+  align-items: center;
+  height: var(--mc-month-dow-h);
+  padding: 0;
+}
+
+.mc-month-dow span {
+  overflow: hidden;
+  text-align: center;
+  font-size: var(--text-micro-size);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-textSecondary);
+}
+
+.mc-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.mc-month-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 2px 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-textPrimary);
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color var(--duration-fast) cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    transform var(--duration-fast) cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.mc-month-day:active {
+  transform: scale(0.94);
+}
+
+.mc-month-day.not-month {
+  color: var(--color-textSecondary);
+  opacity: 0.45;
+}
+
+.mc-month-day.today:not(.active) {
+  background: var(--color-accent-lighter);
+  color: var(--color-accent-darker);
+}
+
+.mc-month-day.active {
+  background: var(--color-accent-darker);
+  color: var(--color-textInverse);
+  box-shadow:
+    0 3px 10px -4px var(--shadow-accent-drop),
+    inset 0 1px 2px var(--shadow-shine);
+}
+
+.mc-month-day-num {
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-month-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 4px;
+}
+
+.mc-month-dot {
+  width: 4px;
+  height: 4px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+}
+
+.mc-month-day.active .mc-month-dot {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-textInverse) 45%, transparent);
+}
+
 /* ── Week strip ── */
 .mc-week-strip {
   display: flex;
+  grid-area: calendar;
+  align-self: start;
   gap: var(--space-1);
   flex-shrink: 0;
   padding: var(--space-2) var(--space-4);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition:
+    opacity var(--duration-slow) cubic-bezier(0.2, 0.7, 0.3, 1),
+    transform var(--duration-slow) cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear var(--duration-slow);
+}
+
+.mc-calendar-body.is-collapsed .mc-week-strip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition:
+    opacity var(--duration-slow) cubic-bezier(0.2, 0.7, 0.3, 1),
+    transform var(--duration-slow) cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
 }
 
 .mc-day-btn {
@@ -379,16 +905,23 @@ const eventCountLabel = computed(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.mc-day-marker {
-  width: 4px;
+.mc-day-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   height: 4px;
-  border-radius: var(--radius-full);
-  background: currentColor;
-  opacity: 0;
 }
 
-.mc-day-btn.today:not(.active) .mc-day-marker {
-  opacity: 1;
+.mc-day-dot {
+  width: 4px;
+  height: 4px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+}
+
+.mc-day-btn.active .mc-day-dot {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-textInverse) 45%, transparent);
 }
 
 /* ── Day agenda ── */
@@ -526,7 +1059,9 @@ const eventCountLabel = computed(() => {
 
 /* ── Focus ── */
 .mc-nav-btn:focus-visible,
+.mc-month-label:focus-visible,
 .mc-today-chip:focus-visible,
+.mc-month-day:focus-visible,
 .mc-day-btn:focus-visible,
 .mc-event:focus-visible {
   outline: 2px solid var(--color-accent-darker);

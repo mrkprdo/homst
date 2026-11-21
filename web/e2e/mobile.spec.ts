@@ -54,7 +54,16 @@ test.describe("Mobile shell", () => {
     await expect(page.locator(".ms-tab", { hasText: "Events" })).toBeVisible()
     await expect(page.locator(".ms-tab", { hasText: "Tasks" })).toBeVisible()
     await expect(page.locator(".ms-fab")).toBeVisible()
+    await expect(page.locator(".mobile-calendar")).toHaveAttribute("data-expanded", "true")
+    await expect(page.locator(".mc-month-panel")).toBeVisible()
+    expect(await page.locator(".mc-month-day").count()).toBeGreaterThanOrEqual(28)
+
+    // Collapsing from the month label folds down to the selected week.
+    await page.locator(".mc-month-label").click()
+    await expect(page.locator(".mobile-calendar")).toHaveAttribute("data-expanded", "false")
+    await expect(page.locator(".mc-month-panel")).not.toBeVisible()
     await expect(page.locator(".mc-week-strip .mc-day-btn")).toHaveCount(7)
+    await expect(page.locator(".mc-week-strip")).toBeVisible()
   })
 
   test("events view shows an empty state with no events", async ({ page }) => {
@@ -107,6 +116,9 @@ test.describe("Mobile shell", () => {
   })
 
   test("week strip moves between days and back to today", async ({ page }) => {
+    await page.locator(".mc-month-label").click()
+    await expect(page.locator(".mc-week-strip .mc-day-btn")).toHaveCount(7)
+
     const day = page.locator(".mc-day-btn").nth(2)
     await day.click()
     await expect(day).toHaveAttribute("aria-pressed", "true")
