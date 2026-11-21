@@ -202,11 +202,7 @@ describe("MobileTasksView", () => {
 })
 
 describe("MobileProfile", () => {
-  it("renders empty state and populated member list with admin badge, and emits close", async () => {
-    const wEmpty = mount(MobileProfile)
-    await flushPromises()
-    expect(wEmpty.text()).toContain("No member info")
-
+  it("renders the household member list with admin badge, and emits close", async () => {
     const mb = useMembers()
     mb.upsertMember({
       id: "m1", householdId: "h", name: "Alice", avatarUrl: null,
@@ -214,9 +210,10 @@ describe("MobileProfile", () => {
     })
     const w = mount(MobileProfile)
     await flushPromises()
+    expect(w.text()).toContain("Household members")
     expect(w.text()).toContain("Alice")
     expect(w.text()).toContain("Admin")
-    expect(w.text()).toContain("Joined")
+    expect(w.text()).not.toContain("Joined")
 
     await w.find(".mp-close").trigger("click")
     expect(w.emitted("close")).toBeTruthy()

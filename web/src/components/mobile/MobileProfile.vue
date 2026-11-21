@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue"
+import { ref, onMounted, watch } from "vue"
 import { useMembers } from "@/composables/useMembers"
 import { usePush } from "@/composables/usePush"
 import { notificationsApi } from "@/api/notifications"
@@ -9,8 +9,7 @@ import {
   useServerReachability,
 } from "@/composables/useServerReachability"
 import { memberColorHex, type MemberColor } from "@/types/household"
-import { readableTextOn } from "@/utils/color"
-import { PhX, PhUser, PhBell, PhDownloadSimple } from "@phosphor-icons/vue"
+import { PhX, PhBell, PhDownloadSimple } from "@phosphor-icons/vue"
 import UiToggle from "@/components/ui/UiToggle.vue"
 
 const emit = defineEmits<{ close: [] }>()
@@ -70,19 +69,9 @@ async function sendTestPush() {
 
 const CHANNEL_LABELS: Record<string, string> = { hud: "Screens", push: "Phones" }
 
-const currentMember = computed(() => members.value[0])
-
-function memberHex(member: typeof currentMember.value) {
+function memberHex(member: { color?: string | null } | undefined) {
   if (!member) return "#b1b695"
   return member.color?.startsWith("#") ? member.color : memberColorHex((member.color || "sage-base") as MemberColor)
-}
-
-const avatarText = computed(() => readableTextOn(memberHex(currentMember.value)))
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "long", day: "numeric", year: "numeric",
-  })
 }
 </script>
 
@@ -98,22 +87,6 @@ function formatDate(iso: string) {
       </div>
 
       <div class="mp-body">
-        <div v-if="members.length > 0">
-          <div class="mp-avatar" :style="{ background: memberHex(currentMember) }">
-            <span class="mp-avatar-letter" :style="{ color: avatarText }">
-              {{ (currentMember?.name || "?")[0]?.toUpperCase() }}
-            </span>
-          </div>
-          <h2 class="mp-name">{{ currentMember?.name || "Unnamed" }}</h2>
-          <p class="mp-role">{{ currentMember?.role === "admin" ? "Admin" : "Member" }}</p>
-          <p v-if="currentMember?.joinedAt" class="mp-joined">Joined {{ formatDate(currentMember.joinedAt) }}</p>
-        </div>
-
-        <div v-else class="mp-empty">
-          <PhUser :size="32" />
-          <p>No member info</p>
-        </div>
-
         <div class="mp-section">
           <p class="mp-section-label">Household members</p>
           <div v-for="m in members" :key="m.id" class="mp-member-row">
@@ -256,48 +229,6 @@ function formatDate(iso: string) {
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
-}
-
-.mp-avatar {
-  width: 64px;
-  height: 64px;
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow:
-    0 2px 0 0 var(--color-borderStrong),
-    0 6px 16px -8px var(--shadow-accent-drop),
-    inset 0 1px 2px var(--shadow-shine);
-}
-
-.mp-avatar-letter {
-  font-size: var(--text-title-size);
-  font-weight: var(--font-weight-medium);
-}
-
-.mp-name {
-  font-size: var(--text-title-size);
-  font-weight: 400;
-  text-align: center;
-}
-
-.mp-role {
-  font-size: var(--text-label-size);
-  color: var(--color-textSecondary);
-}
-
-.mp-joined {
-  font-size: var(--text-micro-size);
-  color: var(--color-textSecondary);
-}
-
-.mp-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-textSecondary);
 }
 
 .mp-section {

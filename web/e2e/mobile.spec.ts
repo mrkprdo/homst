@@ -130,7 +130,7 @@ test.describe("Mobile shell", () => {
   test("profile button opens the mobile profile sheet", async ({ page }) => {
     await page.locator(".ms-profile-btn").click()
     await expect(page.locator(".mobile-profile")).toBeVisible()
-    await expect(page.locator(".mp-name")).toContainText("Alice")
+    await expect(page.locator(".mp-member-name").first()).toHaveText("Alice")
     await expect(page.locator(".mp-member-row")).toHaveCount(2)
     await expect(page.locator(".mp-member-name").nth(1)).toHaveText("Bob")
 

@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from "vue"
-import { useMembers } from "@/composables/useMembers"
+import { ref, computed, onUnmounted, watch } from "vue"
 import { useUi } from "@/composables/useUi"
-import { memberColorHex, type MemberColor } from "@/types/household"
-import { readableTextOn } from "@/utils/color"
 import {
   PhCalendar,
   PhCheckSquare,
@@ -29,7 +26,6 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const ui = useUi()
-const { members, ensureLoaded: loadMembers } = useMembers()
 
 const tab = ref<MobileTab>("events")
 const showQuickAdd = ref(false)
@@ -85,18 +81,6 @@ const todayLabel = new Date().toLocaleDateString("en-US", {
   weekday: "long",
   month: "short",
   day: "numeric",
-})
-
-const currentMember = computed(() => members.value[0] ?? null)
-const currentMemberColor = computed(() => {
-  const m = currentMember.value
-  if (!m) return "var(--color-bgSubtle)"
-  return m.color.startsWith("#") ? m.color : memberColorHex(m.color as MemberColor)
-})
-const currentMemberText = computed(() => readableTextOn(currentMemberColor.value))
-
-onMounted(() => {
-  loadMembers()
 })
 
 function onSelectEvent(id: string) {
@@ -161,15 +145,7 @@ watch(
           aria-label="Open profile"
           @click="showProfile = true"
         >
-          <span
-            v-if="currentMember"
-            class="ms-avatar"
-            :style="{ background: currentMemberColor, color: currentMemberText }"
-            aria-hidden="true"
-          >
-            {{ (currentMember.name || "?")[0]?.toUpperCase() }}
-          </span>
-          <PhUserCircle v-else :size="26" />
+          <PhUserCircle :size="26" aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -392,22 +368,6 @@ watch(
 .ms-detail-close:focus-visible {
   outline: 2px solid var(--color-accent-darker);
   outline-offset: 2px;
-}
-
-.ms-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-full);
-  color: var(--color-textInverse);
-  font-size: var(--text-heading-size);
-  font-weight: var(--font-weight-medium);
-  box-shadow:
-    0 2px 0 0 var(--color-borderStrong),
-    0 4px 12px -4px var(--shadow-accent-drop),
-    inset 0 1px 3px var(--shadow-shine);
 }
 
 /* ── Install banner ── */
