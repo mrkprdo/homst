@@ -2095,7 +2095,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   width: clamp(72px, min(72cqw, 56cqh), 280px);
   max-width: 100%;
   aspect-ratio: 1;
-  border-radius: 4px;
 }
 
 .house-wifi__label {

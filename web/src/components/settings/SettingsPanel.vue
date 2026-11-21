@@ -2343,7 +2343,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   width: clamp(104px, 18vw, 176px);
   height: auto;
   aspect-ratio: 1;
-  border-radius: var(--radius-xs);
 }
 
 .wifi-preview__label {

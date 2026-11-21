@@ -12,8 +12,16 @@ describe("WifiQr", () => {
     expect(svg.attributes("role")).toBe("img")
     expect(svg.attributes("aria-label")).toBe("Join Cedar Wi-Fi")
     expect(svg.attributes("viewBox")).toMatch(/^0 0 \d+ \d+$/)
-    expect(svg.find("rect").attributes("fill")).toBe("#ffffff")
-    expect(svg.find("path").attributes("d")!.length).toBeGreaterThan(100)
+
+    const paper = svg.find("rect.wifi-qr__paper")
+    expect(paper.exists()).toBe(true)
+    expect(Number(paper.attributes("rx"))).toBeGreaterThan(0)
+
+    const modules = svg.find("path.wifi-qr__modules")
+    expect(modules.attributes("d")!.length).toBeGreaterThan(100)
+    // Colours live in CSS so the code follows the theme accent.
+    expect(paper.attributes("fill")).toBeUndefined()
+    expect(modules.attributes("fill")).toBeUndefined()
 
     const fallback = mount(WifiQr, { props: { payload: "hello" } })
     expect(fallback.find("svg").attributes("aria-label")).toBe("Wi-Fi QR code")

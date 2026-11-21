@@ -404,6 +404,13 @@
   border-top-color: color-mix(in srgb, var(--color-ink) 18%, transparent) !important;
 }
 
+/* The Wi-Fi code keeps the flat cel look: crisp square paper, ink contour and
+   the same hard lip the other Futur surfaces sit on. */
+.futur .wifi-qr {
+  border-radius: var(--radius-xs) !important;
+  box-shadow: 0 0 0 2px var(--color-ink), 0 3px 0 0 var(--color-ink) !important;
+}
+
 /* ── Avatars, tasks, calendar ─────────────────────────────────────────────── */
 .futur .ui-avatar {
   box-shadow: 0 0 0 2px var(--color-ink), 0 2px 0 0 var(--color-ink) !important;
