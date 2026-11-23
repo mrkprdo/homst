@@ -495,10 +495,10 @@ const canSubmit = computed(() => {
     </div>
 
     <div class="form-actions">
-      <UiButton variant="ghost" @click="ui.closeDrawer()">Cancel</UiButton>
       <UiButton :disabled="!canSubmit" @click="handleSubmit">
         {{ isEvent ? 'Create Event' : 'Create Task' }}
       </UiButton>
+      <UiButton variant="ghost" @click="ui.closeDrawer()">Cancel</UiButton>
     </div>
     </template>
 
@@ -719,7 +719,7 @@ const canSubmit = computed(() => {
 
 .form-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);

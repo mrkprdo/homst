@@ -36,7 +36,7 @@ beforeEach(() => {
 })
 
 async function submit(w: ReturnType<typeof mount>) {
-  await w.findAllComponents({ name: "UiButton" })[1]!.trigger("click")
+  await w.findAllComponents({ name: "UiButton" })[0]!.trigger("click")
   await settle()
 }
 

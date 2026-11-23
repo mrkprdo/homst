@@ -81,18 +81,18 @@ describe("QuickAddForm", () => {
       expect(wrapper.find("textarea").exists()).toBe(true)
     })
 
-    it("renders Cancel and Create Event buttons", () => {
+    it("renders Create Event and Cancel buttons", () => {
       const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
       const btns = wrapper.findAllComponents({ name: "UiButton" })
       expect(btns.length).toBe(2)
-      expect(btns[0]!.text()).toContain("Cancel")
-      expect(btns[1]!.text()).toContain("Create Event")
+      expect(btns[0]!.text()).toContain("Create Event")
+      expect(btns[1]!.text()).toContain("Cancel")
     })
 
     it("Create Event is disabled when title is empty", () => {
       const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      expect(btns[1]!.props("disabled")).toBe(true)
+      expect(btns[0]!.props("disabled")).toBe(true)
     })
 
     it("Create Event is enabled when title is filled", async () => {
@@ -100,7 +100,7 @@ describe("QuickAddForm", () => {
       const input = wrapper.find("input[placeholder='Event title']")
       await input.setValue("Team Standup")
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      expect(btns[1]!.props("disabled")).toBe(false)
+      expect(btns[0]!.props("disabled")).toBe(false)
     })
 
     it("creating an event adds to events store and closes drawer", async () => {
@@ -113,7 +113,7 @@ describe("QuickAddForm", () => {
       await wrapper.find("input[type='date']").setValue("2026-05-15")
 
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      await btns[1]!.trigger("click")
+      await btns[0]!.trigger("click")
       await new Promise(r => setTimeout(r, 0))
 
       expect(events.value).toHaveLength(1)
@@ -129,7 +129,7 @@ describe("QuickAddForm", () => {
       const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
       await wrapper.find("input[placeholder='Event title']").setValue("Meeting")
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      await btns[1]!.trigger("click")
+      await btns[0]!.trigger("click")
       await new Promise(r => setTimeout(r, 0))
 
       const event = events.value[0]!
@@ -144,7 +144,7 @@ describe("QuickAddForm", () => {
 
       const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      await btns[0]!.trigger("click")
+      await btns[1]!.trigger("click")
 
       expect(ui.isDrawerOpen.value).toBe(false)
     })
@@ -237,16 +237,16 @@ describe("QuickAddForm", () => {
       expect(wrapper.find("textarea").exists()).toBe(true)
     })
 
-    it("renders Cancel and Create Task buttons", () => {
+    it("renders Create Task and Cancel buttons", () => {
       const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      expect(btns[1]!.text()).toContain("Create Task")
+      expect(btns[0]!.text()).toContain("Create Task")
     })
 
     it("Create Task is disabled when title is empty", () => {
       const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      expect(btns[1]!.props("disabled")).toBe(true)
+      expect(btns[0]!.props("disabled")).toBe(true)
     })
 
     it("creating a task adds to tasks store and closes drawer", async () => {
@@ -257,7 +257,7 @@ describe("QuickAddForm", () => {
       const wrapper = mount(QuickAddForm, { props: { defaultMode: "manual" } })
       await wrapper.find("input[placeholder='Task title']").setValue("Buy milk")
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      await btns[1]!.trigger("click")
+      await btns[0]!.trigger("click")
       await new Promise(r => setTimeout(r, 0))
 
       expect(tasks.value).toHaveLength(1)
@@ -276,7 +276,7 @@ describe("QuickAddForm", () => {
       await wrapper.find("input[placeholder='Task title']").setValue("Urgent fix")
       await wrapper.findAll(".priority-btn")[2]!.trigger("click")
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      await btns[1]!.trigger("click")
+      await btns[0]!.trigger("click")
       await new Promise(r => setTimeout(r, 0))
 
       expect(tasks.value[0]!.priority).toBe("high")
@@ -291,7 +291,7 @@ describe("QuickAddForm", () => {
       await wrapper.find("input[placeholder='Task title']").setValue("Deadline task")
       await wrapper.find("input[type='date']").setValue("2026-06-01")
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      await btns[1]!.trigger("click")
+      await btns[0]!.trigger("click")
       await new Promise(r => setTimeout(r, 0))
 
       expect(tasks.value[0]!.startAt).toBeTruthy()
@@ -345,7 +345,7 @@ describe("QuickAddForm", () => {
       const input = wrapper.find("input[placeholder='Event title']")
       await input.setValue("   ")
       const btns = wrapper.findAllComponents({ name: "UiButton" })
-      expect(btns[1]!.props("disabled")).toBe(true)
+      expect(btns[0]!.props("disabled")).toBe(true)
     })
 
     it("has description textarea with placeholder", () => {

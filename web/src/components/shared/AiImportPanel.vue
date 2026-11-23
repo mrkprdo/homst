@@ -633,16 +633,16 @@ function saveEdit() {
           </p>
 
           <div class="ai-actions">
+            <UiButton :disabled="parsing || applying || !hasMessage" @click="parse">
+              <PhSparkle :size="16" weight="fill" aria-hidden="true" />
+              Generate Event
+            </UiButton>
             <UiButton
               variant="ghost"
               :disabled="parsing || applying || !hasSource"
               @click="startOver"
             >
               Clear
-            </UiButton>
-            <UiButton :disabled="parsing || applying || !hasMessage" @click="parse">
-              <PhSparkle :size="16" weight="fill" aria-hidden="true" />
-              Generate Event
             </UiButton>
           </div>
         </template>
@@ -890,8 +890,8 @@ function saveEdit() {
             </ul>
 
             <div class="ai-actions">
-              <UiButton variant="ghost" @click="startOver">Add another</UiButton>
               <UiButton @click="finish">Done</UiButton>
+              <UiButton variant="ghost" @click="startOver">Add another</UiButton>
             </div>
           </div>
         </template>
@@ -1076,7 +1076,7 @@ html.low-power .ai-spinner {
 .ai-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: var(--space-3);
 }
 

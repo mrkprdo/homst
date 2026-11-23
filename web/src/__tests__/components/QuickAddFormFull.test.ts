@@ -104,7 +104,7 @@ describe("QuickAddForm (event details)", () => {
     await times[1]!.setValue("09:00")
 
     expect(wrapper.find(".form-error").text()).toContain("End time must be after the start time")
-    expect(wrapper.findAllComponents({ name: "UiButton" })[1]!.props("disabled")).toBe(true)
+    expect(wrapper.findAllComponents({ name: "UiButton" })[0]!.props("disabled")).toBe(true)
   })
 
   it("warns when the end date precedes the start date", async () => {
@@ -167,7 +167,7 @@ describe("QuickAddForm (event details)", () => {
     await dates[1]!.setValue("2026-07-03")
     await wrapper.findComponent({ name: "UiToggle" }).trigger("click")
 
-    await wrapper.findAllComponents({ name: "UiButton" })[1]!.trigger("click")
+    await wrapper.findAllComponents({ name: "UiButton" })[0]!.trigger("click")
     await settle()
 
     const ev = events.value[0]!
@@ -217,7 +217,7 @@ describe("QuickAddForm (task details)", () => {
     )
 
     await wrapper.find("input[placeholder='Task title']").setValue("Solo task")
-    await wrapper.findAllComponents({ name: "UiButton" })[1]!.trigger("click")
+    await wrapper.findAllComponents({ name: "UiButton" })[0]!.trigger("click")
     await settle()
 
     expect(lists.value.some(l => l.id === "tl-new")).toBe(true)
