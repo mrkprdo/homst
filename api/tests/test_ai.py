@@ -1175,6 +1175,31 @@ def test_validation_checks_weekdays_duplicates_completeness_and_uncertainty():
     assert "Check the source: Jan 21 may be unreadable" in warnings
 
 
+def test_validation_warns_about_multiple_weekday_mismatches():
+    tz = timezone.utc
+    payload = {
+        "events": [
+            {
+                "title": "Pizza",
+                "start_at": "2027-01-05T00:00:00Z",
+                "source_weekday": "Monday",
+            },
+            {
+                "title": "Pasta",
+                "start_at": "2027-01-06T00:00:00Z",
+                "source_weekday": "Monday",
+            },
+        ],
+    }
+    drafts, skipped, warnings = ai.validate_payload(payload, tz, [])
+    assert len(drafts) == 2
+    assert skipped == 0
+    assert (
+        "2 dates don't match the weekday printed in the message. Check those events."
+        in warnings
+    )
+
+
 def test_resolve_timezone_falls_back():
     tz, label = ai.resolve_timezone(None)
     assert label == "UTC"
