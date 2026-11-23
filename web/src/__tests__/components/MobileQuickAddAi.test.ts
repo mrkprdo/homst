@@ -4,8 +4,13 @@ import MobileQuickAdd from "@/components/mobile/MobileQuickAdd.vue"
 
 const AiImportPanelStub = {
   name: "AiImportPanel",
-  emits: ["done"],
-  template: '<button class="ai-stub" @click="$emit(\'done\', 1)">AI stub</button>',
+  emits: ["done", "manual"],
+  template: `
+    <div>
+      <button class="ai-stub" @click="$emit('done', 1)">AI stub</button>
+      <button class="ai-manual-stub" @click="$emit('manual')">Add manually</button>
+    </div>
+  `,
 }
 
 describe("MobileQuickAdd AI tab", () => {
@@ -38,5 +43,17 @@ describe("MobileQuickAdd AI tab", () => {
     await wrapper.findAll("button").find(button => button.text() === "Import")!.trigger("click")
     await wrapper.findAll("button").find(button => button.text() === "Event")!.trigger("click")
     expect(wrapper.find(".mqa-footer").exists()).toBe(true)
+  })
+
+  it("switches to the event form when the importer asks for manual entry", async () => {
+    const wrapper = mount(MobileQuickAdd, {
+      global: { stubs: { AiImportPanel: AiImportPanelStub } },
+    })
+
+    await wrapper.findAll("button").find(button => button.text() === "Import")!.trigger("click")
+    await wrapper.find(".ai-manual-stub").trigger("click")
+
+    expect(wrapper.find(".mqa-footer").exists()).toBe(true)
+    expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(true)
   })
 })

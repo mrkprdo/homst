@@ -7,8 +7,13 @@ import { useEvents } from "@/composables/useEvents"
 
 const AiImportPanelStub = {
   name: "AiImportPanel",
-  emits: ["done"],
-  template: '<button class="ai-stub" @click="$emit(\'done\', 2)">AI stub</button>',
+  emits: ["done", "manual"],
+  template: `
+    <div>
+      <button class="ai-stub" @click="$emit('done', 2)">AI stub</button>
+      <button class="ai-manual-stub" @click="$emit('manual')">Add manually</button>
+    </div>
+  `,
 }
 
 const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
@@ -47,6 +52,15 @@ describe("QuickAddForm AI mode", () => {
 
     await wrapper.find(".ai-stub").trigger("click")
     expect(ui.drawer.value.type).toBeNull()
+  })
+
+  it("switches to the manual form when the importer asks for it", async () => {
+    const wrapper = mountForm()
+
+    await wrapper.find(".ai-manual-stub").trigger("click")
+
+    expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(true)
+    expect(wrapper.find(".ai-stub").exists()).toBe(false)
   })
 
   it("does not submit the manual form from AI mode", async () => {
