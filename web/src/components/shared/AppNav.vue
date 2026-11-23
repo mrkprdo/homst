@@ -29,8 +29,11 @@ const HANDLE_PX = 4
 const HOT_ZONE_PX = 20
 /** Fingers are less precise than a cursor; widen the edge strip on touch. */
 const TOUCH_HOT_ZONE_PX = 40
-/** Beat before the rail slides away after the pointer leaves it. */
-const HIDE_DELAY_MS = 600
+/**
+ * Beat before the rail slides away after the pointer leaves it. Short enough
+ * to feel like a hover-out; long enough to survive a quick re-entry.
+ */
+const HIDE_DELAY_MS = 200
 /** Touch screens have no hover-out, so give the picker a moment. */
 const TOUCH_LINGER_MS = 5000
 /** Let the intro animation finish before the rail tucks itself away. */
@@ -82,11 +85,22 @@ function onPointerMove(e: PointerEvent) {
   }
   const target = e.target
   const overRail = target instanceof Node && navEl.value?.contains(target) === true
-  if (overRail || e.clientX <= railWidth() + HOT_ZONE_PX) {
-    // Close to (or on) the rail: keep it out, even if it has no hover target.
+  if (overRail || e.clientX <= railWidth()) {
+    // On the rail: keep it out.
     cancelHide()
     return
   }
+  // Anywhere past the rail starts the retreat immediately.
+  scheduleHide()
+}
+
+/**
+ * A pointer that leaves the rail should not have to jiggle again to trigger
+ * the hide (and if it stops just past the edge, no further move fires at all).
+ * Touch is skipped: its implicit pointerleave would cut the tap-to-pick window.
+ */
+function onPointerLeave(e: PointerEvent) {
+  if (e.pointerType === "touch" || !autoHide.value || hidden.value) return
   scheduleHide()
 }
 
@@ -185,6 +199,7 @@ watch(autoHide, (on) => {
     }"
     @focusin="onFocusIn"
     @focusout="onFocusOut"
+    @pointerleave="onPointerLeave"
   >
     <!-- Logo / Home button -->
     <button

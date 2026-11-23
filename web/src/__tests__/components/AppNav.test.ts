@@ -122,11 +122,52 @@ describe("AppNav auto-hide", () => {
     await nextTick()
 
     pointerMove(600)
-    vi.advanceTimersByTime(700)
+    vi.advanceTimersByTime(250)
     await nextTick()
     expect(wrapper.find("nav").classes()).toContain("app-nav--hidden")
 
     pointerMove(8)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).not.toContain("app-nav--hidden")
+  })
+
+  it("starts the retreat as soon as the pointer leaves the rail", async () => {
+    useSettings().updateNavAutoHide(true)
+    const wrapper = mount(AppNav)
+    await nextTick()
+
+    // Resting on the rail keeps it open with no pending timer.
+    pointerMove(30)
+    vi.advanceTimersByTime(700)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).not.toContain("app-nav--hidden")
+
+    await wrapper.find("nav").trigger("pointerleave")
+    vi.advanceTimersByTime(250)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).toContain("app-nav--hidden")
+  })
+
+  it("hides even when the pointer stops just past the rail edge", async () => {
+    useSettings().updateNavAutoHide(true)
+    const wrapper = mount(AppNav)
+    await nextTick()
+
+    pointerMove(80)
+    vi.advanceTimersByTime(250)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).toContain("app-nav--hidden")
+  })
+
+  it("ignores the implicit pointerleave from a touch tap", async () => {
+    useSettings().updateNavAutoHide(true)
+    const wrapper = mount(AppNav)
+    await nextTick()
+
+    const leave = new Event("pointerleave")
+    Object.defineProperty(leave, "pointerType", { value: "touch" })
+    wrapper.find("nav").element.dispatchEvent(leave)
+    vi.advanceTimersByTime(700)
     await nextTick()
     expect(wrapper.find("nav").classes()).not.toContain("app-nav--hidden")
   })
