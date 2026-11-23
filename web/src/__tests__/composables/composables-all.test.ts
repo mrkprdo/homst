@@ -230,7 +230,7 @@ describe("useSettings", () => {
       houseName: "Cedar",
       notifications: { hud: false, defaultReminderMinutes: 30 },
       music: { lyrics: false, lyricsOffsetMs: -350, background: false, backgroundSpin: false, cardSpin: false },
-      screens: { carousel: true, returnHome: false },
+      screens: { carousel: true, returnHome: false, autoHideNav: true },
     })
 
     expect(s.theme.value).toBe("dark")
@@ -250,6 +250,7 @@ describe("useSettings", () => {
     expect(s.musicCardSpin.value).toBe(false)
     expect(s.carouselEnabled.value).toBe(true)
     expect(s.returnHomeEnabled.value).toBe(false)
+    expect(s.navAutoHide.value).toBe(true)
     expect(s.defaultReminderMinutes.value).toBe(30)
     // The guard stays up through the watcher flush, then releases.
     expect(isApplyingRemoteSettings()).toBe(true)

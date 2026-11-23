@@ -179,6 +179,27 @@ test.describe("Settings", () => {
     await expect(page.locator(".settings-search-empty")).toHaveCount(0)
   })
 
+  test("auto-hide navigation tucks the rail away and reveals it at the left edge", async ({ page }) => {
+    await openSettings(page)
+    const card = page.locator(".settings-card.settings-card--home")
+    const nav = page.locator(".app-nav")
+
+    const requestPromise = page.waitForRequest(
+      (r) => r.url().includes("/household/settings") && r.method() === "PATCH",
+    )
+    await card.locator(".setting-row").filter({ hasText: "Auto-hide navigation" }).locator(".ui-toggle").click()
+    expect(JSON.parse((await requestPromise).postData() || "{}").settings.screens.autoHideNav).toBe(true)
+
+    await expect(nav).toHaveClass(/app-nav--autohide/)
+    await page.mouse.move(700, 400)
+    await expect(nav).toHaveClass(/app-nav--hidden/)
+
+    // Reaching for the left edge reveals the rail again.
+    await page.mouse.move(5, 400)
+    await expect(nav).not.toHaveClass(/app-nav--hidden/)
+    await expect(page.locator('.nav-item[aria-label="Calendar"]')).toBeVisible()
+  })
+
   test("resetting the home layout asks for confirmation and saves the default", async ({ page }) => {
     await openSettings(page)
     const card = page.locator(".settings-card.settings-card--home")

@@ -371,13 +371,15 @@ function resetLyricsOffset() {
 }
 
 /** Kiosk screen choices are household-wide, like the music options. */
-function onScreenToggle(key: "carousel" | "returnHome", value: boolean) {
+function onScreenToggle(key: "carousel" | "returnHome" | "autoHideNav", value: boolean) {
   if (key === "carousel") settings.updateCarouselEnabled(!!value)
-  else settings.updateReturnHomeEnabled(!!value)
+  else if (key === "returnHome") settings.updateReturnHomeEnabled(!!value)
+  else settings.updateNavAutoHide(!!value)
   householdApi.updateSettings({
     screens: {
       carousel: settings.carouselEnabled.value,
       returnHome: settings.returnHomeEnabled.value,
+      autoHideNav: settings.navAutoHide.value,
     },
   }).catch(() => {})
 }
@@ -1319,6 +1321,17 @@ watch(searchTokens, applySearch, { flush: "post" })
             <UiToggle
               :model-value="settings.returnHomeEnabled.value"
               @update:model-value="(v: boolean) => onScreenToggle('returnHome', v)"
+            />
+          </div>
+
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Auto-hide navigation</p>
+              <p class="row-desc">Slide the nav rail away until the pointer reaches the left edge, leaving a slim handle</p>
+            </div>
+            <UiToggle
+              :model-value="settings.navAutoHide.value"
+              @update:model-value="(v: boolean) => onScreenToggle('autoHideNav', v)"
             />
           </div>
 

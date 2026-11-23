@@ -179,7 +179,7 @@ describe("SettingsPanel", () => {
     expect(settings.lyricsOffsetMs.value).toBe(-2000)
   })
 
-  it("toggles screen rotation and return-to-home and saves them together", async () => {
+  it("toggles screen rotation, return-to-home and nav auto-hide and saves them together", async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
     const settings = useSettings()
 
@@ -191,6 +191,7 @@ describe("SettingsPanel", () => {
 
     expect(settings.carouselEnabled.value).toBe(false)
     expect(settings.returnHomeEnabled.value).toBe(true)
+    expect(settings.navAutoHide.value).toBe(false)
 
     await row("Rotate screens").find(".ui-toggle").trigger("click")
     await flushPromises()
@@ -200,10 +201,15 @@ describe("SettingsPanel", () => {
     await flushPromises()
     expect(settings.returnHomeEnabled.value).toBe(false)
 
+    await row("Auto-hide navigation").find(".ui-toggle").trigger("click")
+    await flushPromises()
+    expect(settings.navAutoHide.value).toBe(true)
+
     const patch = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH").at(-1)!
     expect(JSON.parse((patch[1] as RequestInit).body as string).settings.screens).toEqual({
       carousel: true,
       returnHome: false,
+      autoHideNav: true,
     })
   })
 

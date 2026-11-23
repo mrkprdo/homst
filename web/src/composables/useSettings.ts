@@ -86,6 +86,8 @@ const musicCardSpin = ref(true)
 const carouselEnabled = ref(false)
 /** Return to Home after 15 minutes without interaction. */
 const returnHomeEnabled = ref(true)
+/** Tuck the nav rail away and reveal it when the pointer nears the left edge. */
+const navAutoHide = ref(false)
 const houseName = ref("")
 const photos = ref<PhotoEntry[]>([])
 /** RTSP camera details exposed by the server (never the password itself). */
@@ -229,6 +231,10 @@ function updateReturnHomeEnabled(on: boolean) {
   returnHomeEnabled.value = on
 }
 
+function updateNavAutoHide(on: boolean) {
+  navAutoHide.value = on
+}
+
 function updateHouseName(name: string) {
   houseName.value = name
 }
@@ -296,6 +302,7 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
     if (s.screens) {
       if (s.screens.carousel !== undefined) updateCarouselEnabled(s.screens.carousel !== false)
       if (s.screens.returnHome !== undefined) updateReturnHomeEnabled(s.screens.returnHome === true)
+      if (s.screens.autoHideNav !== undefined) updateNavAutoHide(s.screens.autoHideNav === true)
     }
     // Keep the accent and preset coherent if an older/partial payload is loaded.
     if (!accentSets[themePreset.value].includes(accentColor.value)) {
@@ -337,6 +344,7 @@ export function useSettings() {
     theme, themePreset, accentColor, fontSize, warm, hudEnabled, houseName, photos,
     lyricsEnabled, lyricsOffsetMs, musicBackground, musicBackgroundSpin, musicCardSpin,
     carouselEnabled, returnHomeEnabled,
+    navAutoHide,
     cameraUrl, cameraUsername, cameraPasswordSet, cameraRotation, cameraStreamPath,
     wifiSsid, wifiPassword, wifiEncryption, wifiHidden,
     defaultReminderMinutes,
@@ -346,6 +354,7 @@ export function useSettings() {
     updateTheme, updateThemePreset, updateAccentColor, updateFontSize, updateWarm, updateHudEnabled,
     updateLyricsEnabled, updateLyricsOffset, updateMusicBackground, updateMusicBackgroundSpin, updateMusicCardSpin,
     updateCarouselEnabled, updateReturnHomeEnabled,
+    updateNavAutoHide,
     updateHouseName, updateDefaultReminderMinutes, applyCameraSettings,
     applyWifiSettings,
     applyHouseholdSettings, refreshFromServer, refreshPhotos,
@@ -369,6 +378,7 @@ export function _resetSettings() {
   musicCardSpin.value = true
   carouselEnabled.value = false
   returnHomeEnabled.value = true
+  navAutoHide.value = false
   houseName.value = ""
   photos.value = []
   cameraUrl.value = ""

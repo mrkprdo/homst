@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { mount } from "@vue/test-utils"
 import { nextTick } from "vue"
 import AppNav from "@/components/shared/AppNav.vue"
 import { useUi } from "@/composables/useUi"
+import { useSettings } from "@/composables/useSettings"
 
 describe("AppNav", () => {
   it("renders 5 nav items (4 panels + profile)", () => {
@@ -88,5 +89,85 @@ describe("AppNav", () => {
     await logo.trigger("click")
     expect(ui.activePanel.value).toBe("home")
     expect(logo.classes()).toContain("active")
+  })
+})
+
+describe("AppNav auto-hide", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    useSettings().updateNavAutoHide(false)
+  })
+
+  const pointerMove = (clientX: number) =>
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX, bubbles: true }))
+
+  it("only applies the auto-hide classes when the setting is on", async () => {
+    const wrapper = mount(AppNav)
+    const settings = useSettings()
+    expect(wrapper.find("nav").classes()).not.toContain("app-nav--autohide")
+
+    settings.updateNavAutoHide(true)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).toContain("app-nav--autohide")
+    expect(wrapper.find("nav").classes()).not.toContain("app-nav--hidden")
+  })
+
+  it("hides once the pointer leaves the rail and reveals near the left edge", async () => {
+    useSettings().updateNavAutoHide(true)
+    const wrapper = mount(AppNav)
+    await nextTick()
+
+    pointerMove(600)
+    vi.advanceTimersByTime(700)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).toContain("app-nav--hidden")
+
+    pointerMove(8)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).not.toContain("app-nav--hidden")
+  })
+
+  it("stays put while the pointer is on the rail", async () => {
+    useSettings().updateNavAutoHide(true)
+    const wrapper = mount(AppNav)
+    await nextTick()
+
+    pointerMove(600)
+    pointerMove(30)
+    vi.advanceTimersByTime(700)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).not.toContain("app-nav--hidden")
+  })
+
+  it("reveals when keyboard focus reaches the rail", async () => {
+    useSettings().updateNavAutoHide(true)
+    const wrapper = mount(AppNav)
+    await nextTick()
+
+    pointerMove(600)
+    vi.advanceTimersByTime(700)
+    await nextTick()
+    expect(wrapper.find("nav").classes()).toContain("app-nav--hidden")
+
+    await wrapper.find("nav").trigger("focusin")
+    expect(wrapper.find("nav").classes()).not.toContain("app-nav--hidden")
+  })
+
+  it("leaves the rail out while it holds keyboard focus", async () => {
+    useSettings().updateNavAutoHide(true)
+    const wrapper = mount(AppNav)
+    await nextTick()
+
+    const nav = wrapper.find("nav")
+    await nav.trigger("focusin")
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }))
+    pointerMove(600)
+    vi.advanceTimersByTime(700)
+    await nextTick()
+    expect(nav.classes()).not.toContain("app-nav--hidden")
   })
 })

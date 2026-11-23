@@ -74,6 +74,8 @@ export interface ScreenPreferences {
   carousel?: boolean
   /** Return to Home after 15 minutes without interaction. */
   returnHome?: boolean
+  /** Slide the nav rail off-screen until the pointer reaches the left edge. */
+  autoHideNav?: boolean
 }
 
 export interface NotificationPreferences {
