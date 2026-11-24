@@ -38,6 +38,23 @@ _SAFE_MIGRATIONS = [
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS assignee_id VARCHAR(36)",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS reminder_minutes INTEGER",
     "ALTER TABLE events ADD COLUMN IF NOT EXISTS source_message TEXT",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS ai_conversation_id UUID",
+    "CREATE INDEX IF NOT EXISTS ix_events_ai_conversation_id "
+    "ON events (ai_conversation_id)",
+    """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'events_ai_conversation_id_fkey'
+        ) THEN
+            ALTER TABLE events
+                ADD CONSTRAINT events_ai_conversation_id_fkey
+                FOREIGN KEY (ai_conversation_id)
+                REFERENCES ai_conversations(id) ON DELETE SET NULL;
+        END IF;
+    END $$;
+    """,
     "ALTER TABLE members DROP COLUMN IF EXISTS email",
     "DELETE FROM reminder_log WHERE channel = 'email'",
     # Databases first created by `create_all` (dev) made events.assignee_id a

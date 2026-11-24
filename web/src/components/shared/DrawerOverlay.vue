@@ -15,7 +15,9 @@ const drawerLabel = computed(() => {
     case "event-detail": return "Event details"
     case "task-detail": return "Task details"
     case "member-detail": return "Household member"
-    case "quick-add": return "Quick add"
+    case "quick-add": return ui.drawer.value.aiConversationId || ui.drawer.value.aiEventId
+      ? "Smart import"
+      : "Quick add"
     case "confirm": return "Confirm"
     default: return "Details"
   }
@@ -152,7 +154,11 @@ onUnmounted(() => {
         </div>
         <h3 v-else-if="ui.drawer.value.type === 'event-detail'">Event</h3>
         <h3 v-else-if="ui.drawer.value.type === 'task-detail'">Task</h3>
-        <h3 v-else-if="ui.drawer.value.type === 'quick-add'">Quick Add</h3>
+        <h3 v-else-if="ui.drawer.value.type === 'quick-add'">
+          {{ ui.drawer.value.aiConversationId || ui.drawer.value.aiEventId
+            ? "Smart import"
+            : "Quick Add" }}
+        </h3>
         <h3 v-else-if="ui.drawer.value.type === 'confirm'">Confirm</h3>
         <button class="close-btn" @click="ui.closeDrawer()" aria-label="Close">
           <PhX :size="20" />

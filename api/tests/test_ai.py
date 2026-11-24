@@ -609,6 +609,33 @@ async def test_parse_text_returns_validated_drafts(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_parse_accepts_history_and_returns_reply(client, monkeypatch):
+    monkeypatch.setattr(settings, "opencode_api_key", "")
+    await configure(client)
+    content = json.dumps({"reply": "Done — two events are ready.", "events": []})
+    captured = fake_client(monkeypatch, response=completion(content))
+    response = await client.post(
+        "/api/v1/ai/parse",
+        json={
+            "text": "Make them an hour later",
+            "history": [
+                {"role": "user", "text": "Standup at 9"},
+                {"role": "assistant", "text": '{"events":[{"title":"Standup"}]}'},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Done — two events are ready."
+    messages = captured["json"]["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[1] == {"role": "user", "content": "Standup at 9"}
+    assert messages[2]["role"] == "assistant"
+    assert "Standup" in messages[2]["content"]
+    assert messages[3]["role"] == "user"
+    assert "Make them an hour later" in messages[3]["content"]
+
+
+@pytest.mark.asyncio
 async def test_parse_go_provider_and_list_content(client, monkeypatch):
     monkeypatch.setattr(settings, "opencode_api_key", "")
     await configure(client, provider="go")

@@ -114,6 +114,7 @@ describe("aiApi", () => {
         ],
         skipped: 2,
         model: "deepseek-v4.1-flash",
+        reply: "I found one event.",
         response: '{"events": []}',
         reasoning: "Read the email.",
         warnings: ["Repeating dates were ignored."],
@@ -130,6 +131,11 @@ describe("aiApi", () => {
             options: "nope",
             about: 5,
           },
+          {
+            kind: "datetime",
+            question: "What date and time is the appointment?",
+            options: ["Tomorrow morning"],
+          },
           { question: "   " },
         ],
         conflicts: [
@@ -142,6 +148,7 @@ describe("aiApi", () => {
             existing_start_at: "2026-05-04T09:00:00-04:00",
             existing_end_at: "2026-05-04T09:30:00-04:00",
             existing_kind: "draft",
+            existing_event_id: "ev-123",
             assignee_id: "m-1",
             message: "Standup overlaps Dentist.",
           },
@@ -157,6 +164,7 @@ describe("aiApi", () => {
       clarifications: [{ question: "Which day?", answer: "Friday" }],
     })
     expect(result.skipped).toBe(2)
+    expect(result.reply).toBe("I found one event.")
     expect(result.response).toBe('{"events": []}')
     expect(result.reasoning).toBe("Read the email.")
     expect(result.warnings).toEqual(["Repeating dates were ignored."])
@@ -176,6 +184,13 @@ describe("aiApi", () => {
         options: [],
         about: null,
       },
+      {
+        id: "q3",
+        kind: "datetime",
+        question: "What date and time is the appointment?",
+        options: ["Tomorrow morning"],
+        about: null,
+      },
     ])
     expect(result.conflicts).toEqual([
       {
@@ -188,6 +203,8 @@ describe("aiApi", () => {
         existingStartAt: "2026-05-04T09:00:00-04:00",
         existingEndAt: "2026-05-04T09:30:00-04:00",
         existingKind: "draft",
+        existingEventId: "ev-123",
+        existingRecurring: false,
         assigneeId: "m-1",
         message: "Standup overlaps Dentist.",
       },
@@ -209,12 +226,15 @@ describe("aiApi", () => {
       image: "data:image/png;base64,abc",
       timezone: "America/Toronto",
       clarifications: [{ question: "Which day?", answer: "Friday" }],
+      history: [],
+      focus_event_id: null,
     })
 
     fetchMock.mockResolvedValueOnce(json({ model: "m" }))
     const empty = await aiApi.parse({ text: "nothing" })
     expect(empty.events).toEqual([])
     expect(empty.skipped).toBe(0)
+    expect(empty.reply).toBe("")
     expect(empty.response).toBe("")
     expect(empty.reasoning).toBeNull()
     expect(empty.warnings).toEqual([])
@@ -255,6 +275,96 @@ function resultFrame() {
     },
   }
 }
+
+describe("aiApi conversations", () => {
+  const apiDraft = {
+    title: "Dentist",
+    description: "Bring the card",
+    start_at: "2026-05-15T10:00:00Z",
+    end_at: "2026-05-15T11:00:00Z",
+    all_day: false,
+    recurrence: null,
+    reminder_minutes: 30,
+    assignee_id: "m1",
+    confidence: 0.9,
+  }
+  const apiConversation = {
+    id: "c1",
+    title: "Dentist",
+    turns: [{
+      role: "assistant",
+      text: "",
+      image_name: null,
+      raw_response: '{"events":[]}',
+      reply: "Found the appointment.",
+      drafts: [apiDraft],
+      added: [],
+      questions: [{
+        id: "q1",
+        kind: "datetime",
+        question: "What date and time is the appointment?",
+        options: [],
+        about: null,
+      }],
+      warnings: [],
+      applied: false,
+      outcome: null,
+    }],
+    created_at: "2026-05-01T00:00:00Z",
+    updated_at: "2026-05-01T00:00:00Z",
+  }
+
+  it("creates, reads and updates a saved conversation", async () => {
+    fetchMock.mockResolvedValueOnce(json(apiConversation))
+    const created = await aiApi.createConversation({
+      title: "Dentist",
+      turns: [{
+        role: "assistant",
+        text: "",
+        imageName: "",
+        rawResponse: '{"events":[]}',
+        reply: "Found the appointment.",
+        drafts: [{
+          title: "Dentist",
+          description: "Bring the card",
+          startAt: "2026-05-15T10:00:00Z",
+          endAt: "2026-05-15T11:00:00Z",
+          allDay: false,
+          recurrence: null,
+          reminderMinutes: 30,
+          assigneeId: "m1",
+          confidence: 0.9,
+        }],
+        added: [],
+        questions: [],
+        warnings: [],
+        applied: false,
+        outcome: null,
+      }],
+    })
+    expect(created.id).toBe("c1")
+    expect(created.turns[0]!.drafts[0]!.startAt).toBe("2026-05-15T10:00:00Z")
+    expect(created.turns[0]!.questions[0]!.kind).toBe("datetime")
+
+    const postBody = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)
+    expect(postBody.turns[0].drafts[0]).toMatchObject({
+      start_at: "2026-05-15T10:00:00Z",
+      reminder_minutes: 30,
+      assignee_id: "m1",
+    })
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/ai/conversations")
+
+    fetchMock.mockResolvedValueOnce(json(apiConversation))
+    await aiApi.updateConversation("c1", { title: "Dentist", turns: [] })
+    expect(fetchMock.mock.calls[1]![1]!.method).toBe("PATCH")
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("/ai/conversations/c1")
+
+    fetchMock.mockResolvedValueOnce(json(apiConversation))
+    const loaded = await aiApi.getConversation("c1")
+    expect(loaded.turns[0]!.reply).toBe("Found the appointment.")
+    expect(loaded.turns[0]!.drafts[0]!.assigneeId).toBe("m1")
+  })
+})
 
 describe("parseStream", () => {
   it("relays reasoning/content and resolves the result", async () => {

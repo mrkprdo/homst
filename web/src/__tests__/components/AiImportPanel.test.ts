@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { flushPromises, mount } from "@vue/test-utils"
 import { nextTick } from "vue"
 import AiImportPanel from "@/components/shared/AiImportPanel.vue"
+import { useEvents } from "@/composables/useEvents"
 
 const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
 
@@ -31,6 +32,7 @@ function eventResponse(body: Record<string, unknown>, index = 0) {
     calendar_id: "cal-1",
     title: body.title,
     description: body.description ?? "",
+    ai_conversation_id: body.ai_conversation_id ?? null,
     start_at: body.start_at,
     end_at: body.end_at ?? null,
     all_day: body.all_day ?? false,
@@ -70,22 +72,34 @@ const DRAFTS = [
   },
 ]
 
-function streamed(
-  drafts: unknown[] = DRAFTS,
+interface StreamOptions {
+  drafts?: unknown[]
+  skipped?: number
+  reply?: string
+  reasoning?: string
+  warnings?: string[]
+  questions?: unknown[]
+  conflicts?: unknown[]
+  needsInput?: boolean
+}
+
+function streamed({
+  drafts = DRAFTS,
   skipped = 0,
+  reply = "",
   reasoning = "Reading the message",
-  warnings: string[] = [],
-  questions: unknown[] = [],
-  conflicts: unknown[] = [],
+  warnings = [],
+  questions = [],
+  conflicts = [],
   needsInput = false,
-) {
+}: StreamOptions = {}) {
   const response = JSON.stringify({ events: drafts })
   const body = [
     `event: reasoning\ndata: ${JSON.stringify({ type: "reasoning", text: reasoning })}\n\n`,
     `event: content\ndata: ${JSON.stringify({ type: "content", text: response })}\n\n`,
     `event: result\ndata: ${JSON.stringify({
       type: "result", events: drafts, skipped, model: "deepseek-v4.1-flash",
-      response, reasoning, warnings, questions, conflicts, needs_input: needsInput,
+      reply, response, reasoning, warnings, questions, conflicts, needs_input: needsInput,
     })}\n\n`,
   ].join("")
   return new Response(body, {
@@ -133,11 +147,22 @@ function progressiveStream(drafts: unknown[] = DRAFTS) {
   }
 }
 
-function handlerWith(drafts: unknown[] = DRAFTS, skipped = 0) {
+function handlerWith(options: StreamOptions = {}) {
   return (url: string, init?: RequestInit): Response => {
     const method = init?.method ?? "GET"
-    if (url.includes("/ai/parse/stream")) return streamed(drafts, skipped)
-    if (url.includes("/ai/parse")) return json({ events: drafts, skipped, model: "deepseek-v4.1-flash" })
+    if (url.includes("/ai/conversations")) {
+      return json({
+        id: "conv-1",
+        title: "Standup",
+        turns: [],
+        created_at: "2026-05-01T00:00:00Z",
+        updated_at: "2026-05-01T00:00:00Z",
+      })
+    }
+    if (url.includes("/ai/parse/stream")) return streamed(options)
+    if (url.includes("/ai/parse")) {
+      return json({ events: options.drafts ?? DRAFTS, model: "deepseek-v4.1-flash" })
+    }
     if (url.includes("/ai")) return json(STATUS_ON)
     if (url.includes("/calendars") && method === "GET") return json([])
     if (url.includes("/calendars") && method === "POST") {
@@ -161,6 +186,26 @@ async function mountPanel(props: Record<string, unknown> = { memberNames: { m1: 
 
 function findButton(wrapper: ReturnType<typeof mount>, label: string) {
   return wrapper.findAll("button").find(button => button.text().includes(label))
+}
+
+async function send(wrapper: ReturnType<typeof mount>, text: string) {
+  await wrapper.find(".ai-composer-input").setValue(text)
+  await wrapper.find(".ai-send").trigger("click")
+  await flushPromises()
+}
+
+function parseCalls() {
+  return fetchMock.mock.calls.filter(call => String(call[0]).includes("/ai/parse"))
+}
+
+function parseBody(index = 0) {
+  return JSON.parse((parseCalls()[index]![1] as RequestInit).body as string)
+}
+
+function addedEvents() {
+  return fetchMock.mock.calls
+    .filter(call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST")
+    .map(call => JSON.parse((call[1] as RequestInit).body as string))
 }
 
 beforeEach(() => {
@@ -189,18 +234,22 @@ describe("AiImportPanel", () => {
     expect(wrapper.find('[role="alert"]').text()).toContain("Couldn't check Smart import")
     await findButton(wrapper, "Try again")!.trigger("click")
     await flushPromises()
-    expect(wrapper.find("#ai-context").exists()).toBe(true)
+    expect(wrapper.find(".ai-composer-input").exists()).toBe(true)
+    expect(wrapper.text()).toContain("What's on the schedule?")
   })
 
-  it("parses text, previews drafts and creates the selected events", async () => {
+  it("sends the first message and shows the confirmation", async () => {
     install(handlerWith())
     const wrapper = await mountPanel()
 
-    await wrapper.find("#ai-context").setValue("Standup every Monday at 9:30")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
+    expect(wrapper.text()).toContain("What's on the schedule?")
+    expect(wrapper.find(".ai-send").attributes("disabled")).toBeDefined()
 
-    expect(wrapper.text()).toContain("2 events generated")
+    await send(wrapper, "Dinner with Sam on Friday at 7pm")
+
+    expect(wrapper.findAll(".ai-msg--user")).toHaveLength(1)
+    expect(wrapper.text()).toContain("Dinner with Sam on Friday at 7pm")
+    expect(wrapper.text()).toContain("2 events ready")
     expect(wrapper.text()).toContain("Team standup")
     expect(wrapper.text()).toContain("Repeats weekly · 5 times")
     expect(wrapper.text()).toContain("10 minutes before")
@@ -208,28 +257,27 @@ describe("AiImportPanel", () => {
     expect(wrapper.text()).toContain("Zoom")
     expect(wrapper.text()).toContain("Check details")
     expect(wrapper.text()).toContain("All day")
+  })
 
+  it("adds the selected drafts and emits the total when done", async () => {
+    install(handlerWith({ reply: "I found two events. Check the times." }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup every Monday at 9:30")
+
+    expect(wrapper.text()).toContain("I found two events. Check the times.")
     await wrapper.findAll(".ai-item-edit")[0]!.trigger("click")
     expect((wrapper.find(".ai-edit-title").element as HTMLInputElement).value).toBe("Team standup")
     await wrapper.findAll(".ai-item-edit")[0]!.trigger("click")
     expect(wrapper.find(".ai-item-editor").exists()).toBe(false)
 
-    const add = findButton(wrapper, "Add 2 events")!
-    await add.trigger("click")
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
     await flushPromises()
 
     expect(wrapper.emitted("done")).toBeUndefined()
-    expect(wrapper.text()).toContain("Added 2 events to your calendar.")
-    expect(wrapper.text()).toContain("Recently added")
+    expect(wrapper.text()).toContain("Added 2 events")
     expect(wrapper.findAll(".ai-added-item")).toHaveLength(2)
-    expect(findButton(wrapper, "Done")).toBeTruthy()
-    expect(findButton(wrapper, "Add another")).toBeTruthy()
-
-    const posts = fetchMock.mock.calls.filter(
-      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
-    )
-    expect(posts).toHaveLength(2)
-    expect(JSON.parse((posts[0]![1] as RequestInit).body as string)).toMatchObject({
+    expect(addedEvents()).toHaveLength(2)
+    expect(addedEvents()[0]).toMatchObject({
       calendar_id: "cal-1",
       title: "Team standup",
       reminder_minutes: 10,
@@ -240,12 +288,57 @@ describe("AiImportPanel", () => {
     expect(wrapper.emitted("done")).toEqual([[2]])
   })
 
-  it("selects none/all and starts over", async () => {
+  it("saves the conversation and links created events to it", async () => {
+    const conversationBodies: Record<string, unknown>[] = []
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/conversations")) {
+        conversationBodies.push(JSON.parse(String(init?.body)))
+        return json({
+          id: "conv-1",
+          title: "Standup",
+          turns: [],
+          created_at: "2026-05-01T00:00:00Z",
+          updated_at: "2026-05-01T00:00:00Z",
+        })
+      }
+      if (url.includes("/ai/parse/stream")) return streamed({ reply: "Two events are ready." })
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/calendars") && method === "GET") return json([])
+      if (url.includes("/calendars") && method === "POST") {
+        return json({
+          id: "cal-1", household_id: "h", name: "Personal", color: "sage",
+          source: "internal", feed_url: null, is_visible: true, created_by: null,
+        })
+      }
+      if (url.includes("/events") && method === "POST") {
+        return json(eventResponse(JSON.parse(String(init?.body))))
+      }
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup every Monday at 9:30")
+    await flushPromises()
+
+    expect(conversationBodies.length).toBeGreaterThan(0)
+    expect(conversationBodies[0]!.title).toBe("Standup every Monday at 9:30")
+    const savedTurns = conversationBodies[0]!.turns as Array<Record<string, unknown>>
+    expect(savedTurns[0]!.role).toBe("user")
+    expect(savedTurns[0]!.text).toBe("Standup every Monday at 9:30")
+    expect(savedTurns[1]!.role).toBe("assistant")
+
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
+    await flushPromises()
+    const events = addedEvents()
+    expect(events).toHaveLength(2)
+    expect(events[0]!.ai_conversation_id).toBe("conv-1")
+    expect(events[1]!.ai_conversation_id).toBe("conv-1")
+  })
+
+  it("selects none/all and keeps the add button in sync", async () => {
     install(handlerWith())
     const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
+    await send(wrapper, "Standup")
 
     await findButton(wrapper, "Select none")!.trigger("click")
     expect(findButton(wrapper, "Add 0 events")!.attributes("disabled")).toBeDefined()
@@ -253,93 +346,478 @@ describe("AiImportPanel", () => {
     expect(findButton(wrapper, "Add 1 event")).toBeTruthy()
     await findButton(wrapper, "Select all")!.trigger("click")
     expect(findButton(wrapper, "Add 2 events")).toBeTruthy()
-
-    await findButton(wrapper, "Change message")!.trigger("click")
-    expect((wrapper.find("#ai-context").element as HTMLTextAreaElement).value).toBe("Standup")
-    expect(wrapper.text()).not.toContain("2 events generated")
   })
 
-  it("reports parse failures and empty results", async () => {
-    install((url, init) => {
-      if (url.includes("/ai/parse/stream")) return json({ detail: "OpenCode is down" }, 500)
+  it("answers a question with a quick reply and keeps the conversation as history", async () => {
+    let calls = 0
+    install(url => {
+      if (url.includes("/ai/parse/stream")) {
+        calls += 1
+        if (calls === 1) {
+          return streamed({
+            drafts: DRAFTS,
+            reply: "Who is Team standup for?",
+            questions: [{
+              id: "q1",
+              kind: "assignee",
+              question: "Who is Team standup for?",
+              options: ["Alice", "Bob"],
+              about: "Team standup",
+            }],
+            needsInput: true,
+          })
+        }
+        return streamed({ drafts: DRAFTS, reply: "I've assigned it to Alice." })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel({ memberNames: { m1: "Alice", m2: "Bob" } })
+    await send(wrapper, "Standup")
+
+    expect(wrapper.text()).toContain("Who is Team standup for?")
+    await findButton(wrapper, "Alice")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("I've assigned it to Alice.")
+    expect(wrapper.findAll(".ai-msg--user")).toHaveLength(2)
+    const body = parseBody(1)
+    expect(body.clarifications).toEqual([
+      { question: "Who is Team standup for?", answer: "Alice" },
+    ])
+    expect(body.history).toEqual([
+      { role: "user", text: "Standup" },
+      { role: "assistant", text: JSON.stringify({ events: DRAFTS }) },
+    ])
+  })
+
+  it("asks for a precise date and time with a date picker and time dropdown", async () => {
+    let calls = 0
+    install(url => {
+      if (url.includes("/ai/parse/stream")) {
+        calls += 1
+        if (calls === 1) {
+          return streamed({
+            drafts: [],
+            reply: "What date and time is the dog's neuter appointment?",
+            questions: [{
+              id: "q1",
+              kind: "datetime",
+              question: "What date and time is the dog's neuter appointment?",
+              options: [],
+            }],
+            needsInput: true,
+          })
+        }
+        return streamed({ drafts: DRAFTS, reply: "The appointment is on the calendar." })
+      }
       if (url.includes("/ai")) return json(STATUS_ON)
       return json({})
     })
     const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-    expect(wrapper.find('[role="alert"]').text()).toContain("OpenCode is down")
+    await send(wrapper, "Dog neuter appointment")
 
-    install(handlerWith([], 2))
-    const empty = await mountPanel()
-    await empty.find("#ai-context").setValue("Newsletter")
-    await findButton(empty, "Generate Event")!.trigger("click")
+    expect(wrapper.text()).toContain("What date and time is the dog's neuter appointment?")
+    expect(wrapper.text()).not.toContain("Tomorrow morning")
+    expect(wrapper.find('.ai-datetime input[type="date"]').exists()).toBe(true)
+    expect(wrapper.find(".ai-datetime select").exists()).toBe(true)
+
+    const confirm = findButton(wrapper, "Confirm date and time")!
+    expect(confirm.attributes("disabled")).toBeDefined()
+
+    await wrapper.find('.ai-datetime input[type="date"]').setValue("2026-11-27")
+    await wrapper.find(".ai-datetime select").setValue("09:00")
+    expect(confirm.attributes("disabled")).toBeUndefined()
+    await confirm.trigger("click")
     await flushPromises()
-    expect(empty.text()).toContain("No events generated")
-    expect(empty.text()).toContain("2 entries couldn't be turned into an event")
-    expect(empty.find(".ai-empty").exists()).toBe(true)
-    expect(empty.find(".ai-source").exists()).toBe(true)
+
+    const body = parseBody(1)
+    expect(body.clarifications).toHaveLength(1)
+    expect(body.clarifications[0].question).toBe("What date and time is the dog's neuter appointment?")
+    expect(body.clarifications[0].answer).toContain("2026")
+    expect(body.clarifications[0].answer).toContain("9:00")
+    expect(wrapper.text()).toContain(body.clarifications[0].answer)
+    expect(wrapper.text()).toContain("The appointment is on the calendar.")
   })
 
-  it("renders date fallbacks and unknown repeat rules", async () => {
-    install(
-      handlerWith([
+  it("reopens a saved thread from an event and updates that event", async () => {
+    const existingDraft = {
+      title: "Dentist",
+      description: "Bring the insurance card",
+      start_at: "2026-05-15T15:00:00Z",
+      end_at: "2026-05-15T16:00:00Z",
+      all_day: false,
+      recurrence: null,
+      reminder_minutes: null,
+      assignee_id: null,
+      confidence: 0.9,
+    }
+    const updatedDraft = {
+      ...existingDraft,
+      start_at: "2026-05-15T16:00:00Z",
+      end_at: "2026-05-15T17:00:00Z",
+    }
+    const storedConversation = {
+      id: "conv-1",
+      title: "Dentist Friday at 3",
+      turns: [
         {
-          title: "Broken",
-          description: "",
-          start_at: "not-a-date",
-          end_at: null,
-          all_day: false,
-          recurrence: { freq: "hourly" },
-          reminder_minutes: null,
-          assignee_id: null,
-          confidence: 0.2,
+          role: "user",
+          text: "Dentist Friday at 3",
+          image_name: null,
+          raw_response: null,
+          reply: null,
+          drafts: [],
+          added: [],
+          questions: [],
+          warnings: [],
+          applied: false,
+          outcome: null,
         },
         {
-          title: "No repeat",
-          description: "",
-          start_at: "2026-03-01T10:00:00Z",
-          end_at: null,
-          all_day: false,
-          recurrence: null,
-          reminder_minutes: null,
-          assignee_id: null,
-          confidence: 0.9,
+          role: "assistant",
+          text: "",
+          image_name: null,
+          raw_response: '{"events":[{"title":"Dentist"}]}',
+          reply: "The dentist is booked.",
+          drafts: [],
+          added: [existingDraft],
+          questions: [],
+          warnings: [],
+          applied: true,
+          outcome: "success",
         },
-        {
-          title: "Bad until",
-          description: "",
-          start_at: "2026-03-01T10:00:00Z",
-          end_at: null,
-          all_day: false,
-          recurrence: { freq: "monthly", until: "nope" },
-          reminder_minutes: null,
-          assignee_id: null,
-          confidence: 0.9,
-        },
-      ]),
-    )
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Dates")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-    expect(wrapper.text()).toContain("Date unknown")
-    expect(wrapper.text()).toContain("Repeats hourly")
-    expect(wrapper.text()).toContain("Repeats monthly")
-    expect(wrapper.text()).not.toContain("No dated events")
+      ],
+      created_at: "2026-05-01T00:00:00Z",
+      updated_at: "2026-05-01T00:00:00Z",
+    }
 
-    await wrapper.findAll(".ai-item-edit")[0]!.trigger("click")
-    expect((wrapper.find(".ai-edit-title").element as HTMLInputElement).value).toBe("Broken")
-    await wrapper.findAll(".ai-item-edit")[0]!.trigger("click")
+    useEvents().upsertEvent({
+      id: "ev-1", calendarId: "cal-1", title: "Dentist",
+      description: "Bring the insurance card",
+      sourceMessage: "Dentist Friday at 3",
+      aiConversationId: "conv-1",
+      startAt: "2026-05-15T15:00:00Z", endAt: "2026-05-15T16:00:00Z",
+      allDay: false, recurrence: null, source: "internal",
+      externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+    })
+
+    let updatedBody: Record<string, unknown> | null = null
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/conversations/conv-1")) {
+        return json(method === "GET" ? storedConversation : { ...storedConversation, updated_at: "2026-05-02T00:00:00Z" })
+      }
+      if (url.includes("/ai/parse/stream")) {
+        return streamed({
+          drafts: [updatedDraft, { ...updatedDraft, title: "Extra event" }],
+          reply: "Moved to 4 PM.",
+        })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/events/ev-1") && method === "PATCH") {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        updatedBody = body
+        return json(eventResponse(body))
+      }
+      return json({})
+    })
+
+    const wrapper = await mountPanel({
+      memberNames: {},
+      conversationId: "conv-1",
+      focusEventId: "ev-1",
+    })
+
+    expect(wrapper.text()).toContain("Updating")
+    expect(wrapper.text()).toContain("Dentist")
+    expect(wrapper.text()).toContain("Dentist Friday at 3")
+    expect(wrapper.text()).toContain("The dentist is booked.")
+    expect(wrapper.text()).toContain("Event updated")
+    expect(findButton(wrapper, "Add another")).toBeUndefined()
+
+    await send(wrapper, "Actually make it 4 PM")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Moved to 4 PM.")
+    expect(wrapper.findAll(".ai-item")).toHaveLength(1)
+    expect(wrapper.text()).not.toContain("Extra event")
+
+    const body = parseBody(0)
+    expect(body.focus_event_id).toBe("ev-1")
+    expect(body.history).toEqual([
+      { role: "user", text: "Dentist Friday at 3" },
+      { role: "assistant", text: '{"events":[{"title":"Dentist"}]}' },
+    ])
+
+    await findButton(wrapper, "Update event")!.trigger("click")
+    await flushPromises()
+
+    expect(updatedBody).toMatchObject({
+      title: "Dentist",
+      start_at: "2026-05-15T16:00:00Z",
+      end_at: "2026-05-15T17:00:00Z",
+      ai_conversation_id: "conv-1",
+    })
+    expect(wrapper.text()).toContain("Done — the event is updated.")
+    expect(wrapper.text()).toContain("Event updated")
+    const posts = fetchMock.mock.calls.filter(
+      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
+    )
+    expect(posts).toHaveLength(0)
+  })
+
+  it("starts a chat from an older event's original message", async () => {
+    let patchedBody: Record<string, unknown> | null = null
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/conversations")) {
+        return json({
+          id: "conv-new",
+          title: "Bring the card on Friday",
+          turns: [],
+          created_at: "2026-05-01T00:00:00Z",
+          updated_at: "2026-05-01T00:00:00Z",
+        })
+      }
+      if (url.includes("/ai/parse/stream")) {
+        return streamed({ drafts: [DRAFTS[0]], reply: "Moved to 4 PM." })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/events/ev-old") && method === "PATCH") {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        patchedBody = body
+        return json(eventResponse(body))
+      }
+      return json({})
+    })
+
+    const wrapper = await mountPanel({
+      memberNames: {},
+      focusEventId: "ev-old",
+      focusEventTitle: "Old dentist",
+      focusSourceMessage: "Bring the card on Friday",
+    })
+
+    expect(wrapper.text()).toContain("Updating")
+    expect(wrapper.text()).toContain("Old dentist")
+    expect(wrapper.text()).toContain("No saved chat history for this event")
+    expect(wrapper.text()).toContain("Bring the card on Friday")
+
+    await send(wrapper, "Make it 4 PM")
+    await flushPromises()
+
+    const body = parseBody(0)
+    expect(body.focus_event_id).toBe("ev-old")
+    expect(body.history).toEqual([
+      { role: "user", text: "Bring the card on Friday" },
+    ])
+
+    await findButton(wrapper, "Update event")!.trigger("click")
+    await flushPromises()
+
+    expect(patchedBody).toMatchObject({
+      title: "Team standup",
+      ai_conversation_id: "conv-new",
+    })
+    expect(wrapper.text()).toContain("Done — the event is updated.")
+  })
+
+  it("invites a change when an event has no saved chat or source message", async () => {
+    install(url => {
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel({
+      memberNames: {},
+      focusEventId: "ev-empty",
+      focusEventTitle: "Gym session",
+    })
+
+    expect(wrapper.text()).toContain("Updating")
+    expect(wrapper.text()).toContain("Gym session")
+    expect(wrapper.text()).toContain("No chat history for this event")
+    expect(wrapper.text()).toContain("You can still tell me what to change")
+    expect(wrapper.find(".ai-composer-input").exists()).toBe(true)
+  })
+
+  it("refines drafts over several turns and marks superseded cards", async () => {
+    install(handlerWith({ reply: "Two events are ready." }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup at 9:30")
+
+    expect(wrapper.text()).toContain("2 events ready")
+    await send(wrapper, "Make it 10:30")
+    await flushPromises()
+
+    expect(wrapper.findAll(".ai-msg--user")).toHaveLength(2)
+    expect(wrapper.text()).toContain("2 events were not added.")
+    expect(wrapper.text()).toContain("Make it 10:30")
+    const body = parseBody(1)
+    expect(body.text).toBe("Make it 10:30")
+    expect(body.history).toEqual([
+      { role: "user", text: "Standup at 9:30" },
+      { role: "assistant", text: JSON.stringify({ events: DRAFTS }) },
+    ])
+  })
+
+  it("attaches photos from the picker, paste and drop", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel()
+
+    const input = wrapper.find('input[type="file"]')
+    const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "image/png" })
+    Object.defineProperty(input.element, "files", { value: [file], configurable: true })
+    await input.trigger("change")
+    await vi.waitFor(() => expect(wrapper.text()).toContain("shot.png"))
+    await wrapper.find(".ai-attachment-clear").trigger("click")
+    expect(wrapper.text()).not.toContain("shot.png")
+
+    await wrapper.find(".ai-import").trigger("paste", { clipboardData: { files: [file] } })
+    await vi.waitFor(() => expect(wrapper.text()).toContain("shot.png"))
+    await wrapper.find(".ai-attachment-clear").trigger("click")
+
+    await wrapper.find(".ai-import").trigger("dragover")
+    expect(wrapper.find(".ai-drop-hint").exists()).toBe(true)
+    await wrapper.find(".ai-import").trigger("dragleave")
+    await wrapper.find(".ai-import").trigger("drop", { dataTransfer: { files: [file] } })
+    await vi.waitFor(() => expect(wrapper.text()).toContain("shot.png"))
+
+    await send(wrapper, "Dinner Friday")
+    const body = parseBody()
+    expect(body.image).toContain("data:image/png;base64,")
+    expect(body.text).toBe("Dinner Friday")
+
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
+    await flushPromises()
+    const source = addedEvents()[0]!.source_message as string
+    expect(source).toContain("Dinner Friday")
+    expect(source).toContain("[Image: shot.png]")
+  })
+
+  it("ignores unusable files", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel()
+    const input = wrapper.find('input[type="file"]')
+
+    const text = new File(["hello"], "notes.txt", { type: "text/plain" })
+    Object.defineProperty(input.element, "files", { value: [text], configurable: true })
+    await input.trigger("change")
+    expect(wrapper.text()).toContain("Choose a PNG, JPEG, WebP or GIF image")
+
+    const huge = new File([new Uint8Array(9 * 1024 * 1024)], "huge.png", { type: "image/png" })
+    Object.defineProperty(input.element, "files", { value: [huge], configurable: true })
+    await input.trigger("change")
+    expect(wrapper.text()).toContain("larger than 8 MB")
+    expect(wrapper.find(".ai-attachment").exists()).toBe(false)
+  })
+
+  it("reports parse failures and retries the same message", async () => {
+    let calls = 0
+    install((url) => {
+      if (url.includes("/ai/parse/stream")) {
+        calls += 1
+        if (calls === 1) return json({ detail: "OpenCode is down" }, 500)
+        return streamed()
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+
+    expect(wrapper.find('[role="alert"]').text()).toContain("OpenCode is down")
+    await findButton(wrapper, "Try again")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain("OpenCode is down")
+    expect(wrapper.text()).toContain("2 events ready")
+    expect(wrapper.findAll(".ai-msg--user")).toHaveLength(1)
+  })
+
+  it("reports empty results with skipped rows and offers manual entry", async () => {
+    install(handlerWith({ drafts: [], skipped: 2, reply: "I couldn't find a dated event." }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Newsletter")
+
+    expect(wrapper.text()).toContain("I couldn't find a dated event.")
+    expect(wrapper.text()).toContain("Worth checking")
+    expect(wrapper.text()).toContain("2 entries couldn't be turned into an event")
+    expect(findButton(wrapper, "Add manually")).toBeTruthy()
+    await findButton(wrapper, "Add manually")!.trigger("click")
+    expect(wrapper.emitted("manual")).toHaveLength(1)
+  })
+
+  it("shows progress while the model streams, without showing raw JSON", async () => {
+    const stream = progressiveStream()
+    install(url => {
+      if (url.includes("/ai/parse/stream")) return stream.response
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+
+    expect(wrapper.text()).toContain("Reading that…")
+    expect(wrapper.find(".ai-typing").exists()).toBe(true)
+    expect(wrapper.text()).not.toContain("2 events ready")
+    expect(wrapper.text()).not.toContain('"events"')
+
+    stream.finish()
+    await flushPromises()
+    expect(wrapper.text()).toContain("2 events ready")
+    expect(wrapper.text()).not.toContain("How I read it")
+    expect(wrapper.text()).not.toContain("Reading the message and checking each date.")
+  })
+
+  it("edits a draft before adding it", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+
+    expect(wrapper.find(".ai-item--low").exists()).toBe(true)
+    await wrapper.findAll(".ai-item-edit")[1]!.trigger("click")
+    await wrapper.find(".ai-edit-title").setValue("Holiday (school closed)")
+    await wrapper.find('.ai-edit-toggle input[type="checkbox"]').setValue(false)
+    await nextTick()
+    const times = wrapper.findAll('.ai-item--editing input[type="time"]')
+    await times[0]!.setValue("09:15")
+    await findButton(wrapper, "Save changes")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.find(".ai-item--low").exists()).toBe(false)
     expect(wrapper.find(".ai-item-editor").exists()).toBe(false)
+
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
+    await flushPromises()
+    const edited = addedEvents().find(body => body.title === "Holiday (school closed)")
+    expect(edited!.start_at).toBe(new Date("2026-05-06T09:15").toISOString())
+    expect(edited!.end_at).toBe(new Date("2026-05-06T10:15").toISOString())
+    expect(edited!.all_day).toBe(false)
+  })
+
+  it("validates the inline editor", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+
+    await wrapper.findAll(".ai-item-edit")[1]!.trigger("click")
+    const title = wrapper.find(".ai-edit-title")
+    await title.setValue("")
+    expect(wrapper.text()).toContain("Add a title.")
+    expect(findButton(wrapper, "Save changes")!.attributes("disabled")).toBeDefined()
+
+    await title.setValue("Holiday")
+    const dates = wrapper.findAll('.ai-item--editing input[type="date"]')
+    await dates[0]!.setValue("2026-05-07")
+    await dates[1]!.setValue("2026-05-01")
+    expect(wrapper.text()).toContain("The end date can't be before the start date.")
   })
 
   it("reports when none of the drafts can be saved", async () => {
     install((url, init) => {
       const method = init?.method ?? "GET"
-      if (url.includes("/ai/parse/stream")) return streamed(DRAFTS)
-      if (url.includes("/ai/parse")) return json({ events: DRAFTS, skipped: 0, model: "m" })
+      if (url.includes("/ai/parse/stream")) return streamed()
       if (url.includes("/ai")) return json(STATUS_ON)
       if (url.includes("/calendars") && method === "GET") return json([])
       if (url.includes("/calendars") && method === "POST") {
@@ -352,9 +830,8 @@ describe("AiImportPanel", () => {
       return json({})
     })
     const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
+    await send(wrapper, "Standup")
+
     await findButton(wrapper, "Add 2 events")!.trigger("click")
     await flushPromises()
     expect(wrapper.text()).toContain("No events were added")
@@ -366,7 +843,7 @@ describe("AiImportPanel", () => {
     let eventCalls = 0
     install((url, init) => {
       const method = init?.method ?? "GET"
-      if (url.includes("/ai/parse/stream")) return streamed(DRAFTS)
+      if (url.includes("/ai/parse/stream")) return streamed()
       if (url.includes("/ai")) return json(STATUS_ON)
       if (url.includes("/calendars") && method === "GET") return json([])
       if (url.includes("/calendars") && method === "POST") {
@@ -383,9 +860,7 @@ describe("AiImportPanel", () => {
       return json({})
     })
     const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
+    await send(wrapper, "Standup")
     await findButton(wrapper, "Add 2 events")!.trigger("click")
     await flushPromises()
 
@@ -395,457 +870,139 @@ describe("AiImportPanel", () => {
     expect(findButton(wrapper, "Done")).toBeUndefined()
   })
 
-  it("shows extraction warnings", async () => {
-    install((url) => {
-      if (url.includes("/ai/parse/stream")) {
-        return streamed(DRAFTS, 0, "Reading", [
-          "The message may list 30 dated items, but only 2 were found. Check for missing events.",
-        ])
-      }
-      if (url.includes("/ai")) return json(STATUS_ON)
-      return json({})
-    })
+  it("shows extraction warnings with the drafts", async () => {
+    install(handlerWith({
+      warnings: [
+        "The message may list 30 dated items, but only 2 were found. Check for missing events.",
+      ],
+    }))
     const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Lunch schedule")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
+    await send(wrapper, "Lunch schedule")
     expect(wrapper.find(".ai-warnings").text()).toContain("only 2 were found")
   })
 
-  it("attaches images from the file picker, drag-and-drop and paste", async () => {
-    install(handlerWith())
-    const wrapper = await mountPanel()
-
-    await findButton(wrapper, "Browse")!.trigger("click")
-
-    const input = wrapper.find('input[type="file"]')
-    const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "image/png" })
-    Object.defineProperty(input.element, "files", { value: [file], configurable: true })
-    await input.trigger("change")
-    await vi.waitFor(() => expect(wrapper.text()).toContain("shot.png"))
-    await findButton(wrapper, "Browse")?.trigger("click")
-    await wrapper.find(".ai-drop").trigger("dragover")
-    await wrapper.find(".ai-drop").trigger("dragleave")
-    await wrapper.find(".ai-clear").trigger("click")
-    expect(wrapper.text()).not.toContain("shot.png")
-
-    await wrapper.find(".ai-drop").trigger("drop", { dataTransfer: { files: [file] } })
-    await vi.waitFor(() => expect(wrapper.text()).toContain("shot.png"))
-    await wrapper.find(".ai-clear").trigger("click")
-
-    const imageFile = new File([new Uint8Array([4])], "paste.png", { type: "image/png" })
-    await wrapper.find(".ai-import").trigger("paste", { clipboardData: { files: [imageFile] } })
-    await vi.waitFor(() => expect(wrapper.text()).toContain("paste.png"))
-
-    await wrapper.find("#ai-context").setValue("Dinner Friday")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-    const parseCall = fetchMock.mock.calls.find(call => String(call[0]).includes("/ai/parse"))
-    const body = JSON.parse((parseCall![1] as RequestInit).body as string)
-    expect(body.image).toContain("data:image/png;base64,")
-
-    await findButton(wrapper, "Add 2 events")!.trigger("click")
-    await flushPromises()
-    const posts = fetchMock.mock.calls.filter(
-      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
-    )
-    const source = JSON.parse((posts[0]![1] as RequestInit).body as string).source_message
-    expect(source).toContain("Dinner Friday")
-    expect(source).toContain("[Image: paste.png]")
-  })
-
-  it("ignores unusable files and drops", async () => {
-    install(handlerWith())
-    const wrapper = await mountPanel()
-    const input = wrapper.find('input[type="file"]')
-
-    const text = new File(["hello"], "notes.txt", { type: "text/plain" })
-    Object.defineProperty(input.element, "files", { value: [text], configurable: true })
-    await input.trigger("change")
-    expect(wrapper.text()).toContain("Choose a PNG, JPEG, WebP or GIF image")
-
-    const huge = new File([new Uint8Array(9 * 1024 * 1024)], "huge.png", { type: "image/png" })
-    Object.defineProperty(input.element, "files", { value: [huge], configurable: true })
-    await input.trigger("change")
-    expect(wrapper.text()).toContain("larger than 8 MB")
-
-    await wrapper.find(".ai-drop").trigger("drop", { dataTransfer: { files: [] } })
-    await wrapper.find(".ai-import").trigger("paste", { clipboardData: { files: [] } })
-    expect(wrapper.find(".ai-thumb").exists()).toBe(false)
-  })
-
-  it("requires a message and treats the image as optional", async () => {
-    install(handlerWith())
-    const wrapper = await mountPanel()
-    expect(wrapper.text()).toContain("Message with event details")
-    expect(wrapper.text()).toContain("Upload image (optional)")
-    expect(wrapper.find("#ai-context").attributes("required")).toBeDefined()
-
-    const input = wrapper.find('input[type="file"]')
-    const file = new File([new Uint8Array([1, 2, 3])], "agenda.png", { type: "image/png" })
-    Object.defineProperty(input.element, "files", { value: [file], configurable: true })
-    await input.trigger("change")
-    await vi.waitFor(() => expect(wrapper.text()).toContain("agenda.png"))
-
-    expect(findButton(wrapper, "Generate Event")!.attributes("disabled")).toBeDefined()
-    await wrapper.find("#ai-context").setValue("Dinner Friday at 7pm")
-    expect(findButton(wrapper, "Generate Event")!.attributes("disabled")).toBeUndefined()
-  })
-
-  it("shows progress while the model streams, without putting JSON in the way", async () => {
-    const stream = progressiveStream()
-    install(url => {
-      if (url.includes("/ai/parse/stream")) return stream.response
-      if (url.includes("/ai")) return json(STATUS_ON)
-      return json({})
-    })
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.text()).toContain("Generating event details…")
-    expect(wrapper.text()).toContain("Model activity")
-    expect(wrapper.text()).toContain("Reading the message and checking each date.")
-    expect(wrapper.text()).not.toContain("2 events generated")
-
-    stream.finish()
-    await flushPromises()
-    expect(wrapper.text()).toContain("2 events generated")
-  })
-
-  it("edits a draft before adding it", async () => {
-    install(handlerWith())
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.find(".ai-item--low").exists()).toBe(true)
-    await wrapper.findAll(".ai-item-edit")[1]!.trigger("click")
-    expect(wrapper.find(".ai-added-item").exists()).toBe(false)
-
-    await wrapper.find(".ai-edit-title").setValue("Holiday (school closed)")
-    await wrapper.find('.ai-edit-toggle input[type="checkbox"]').setValue(false)
-    await nextTick()
-    const times = wrapper.findAll('.ai-item--editing input[type="time"]')
-    await times[0]!.setValue("09:15")
-    await findButton(wrapper, "Save changes")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.find(".ai-item--low").exists()).toBe(false)
-    expect(wrapper.find(".ai-item-editor").exists()).toBe(false)
-
-    await findButton(wrapper, "Add 2 events")!.trigger("click")
-    await flushPromises()
-    const posts = fetchMock.mock.calls.filter(
-      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
-    )
-    const edited = posts
-      .map(call => JSON.parse((call[1] as RequestInit).body as string))
-      .find(body => body.title === "Holiday (school closed)")
-    expect(edited.start_at).toBe(new Date("2026-05-06T09:15").toISOString())
-    expect(edited.end_at).toBe(new Date("2026-05-06T10:15").toISOString())
-    expect(edited.all_day).toBe(false)
-  })
-
-  it("validates the inline editor and keeps all-day ranges", async () => {
-    install(handlerWith())
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-
-    await wrapper.findAll(".ai-item-edit")[1]!.trigger("click")
-    const title = wrapper.find(".ai-edit-title")
-    await title.setValue("")
-    expect(wrapper.text()).toContain("Add a title.")
-    expect(findButton(wrapper, "Save changes")!.attributes("disabled")).toBeDefined()
-
-    await title.setValue("Holiday")
-    let dates = wrapper.findAll('.ai-item--editing input[type="date"]')
-    await dates[0]!.setValue("2026-05-07")
-    await dates[1]!.setValue("2026-05-01")
-    expect(wrapper.text()).toContain("The end date can't be before the start date.")
-
-    dates = wrapper.findAll('.ai-item--editing input[type="date"]')
-    await dates[1]!.setValue("")
-    await wrapper.find('.ai-edit-toggle input[type="checkbox"]').setValue(false)
-    await nextTick()
-    const times = wrapper.findAll('.ai-item--editing input[type="time"]')
-    await times[1]!.setValue("07:00")
-    expect(wrapper.text()).toContain("The end time must be after the start time.")
-
-    await wrapper.find('.ai-edit-toggle input[type="checkbox"]').setValue(true)
-    await nextTick()
-    expect(wrapper.findAll('.ai-item--editing input[type="time"]')).toHaveLength(0)
-    dates = wrapper.findAll('.ai-item--editing input[type="date"]')
-    await dates[1]!.setValue("2026-05-08")
-    await findButton(wrapper, "Save changes")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.find(".ai-item--low").exists()).toBe(false)
-    expect(wrapper.text()).toContain("All day")
-
-    await findButton(wrapper, "Add 2 events")!.trigger("click")
-    await flushPromises()
-    const posts = fetchMock.mock.calls.filter(
-      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
-    )
-    const edited = posts
-      .map(call => JSON.parse((call[1] as RequestInit).body as string))
-      .find(body => body.title === "Holiday")
-    expect(edited.all_day).toBe(true)
-    expect(new Date(edited.end_at).toISOString()).toBe(new Date("2026-05-08T23:59:59").toISOString())
-  })
-
-  it("offers a manual fallback and keeps the source editable", async () => {
-    install(handlerWith([], 2))
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Newsletter")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.find(".ai-empty").exists()).toBe(true)
-    await findButton(wrapper, "Add manually")!.trigger("click")
-    expect(wrapper.emitted("manual")).toHaveLength(1)
-
-    await findButton(wrapper, "Change message")!.trigger("click")
-    expect((wrapper.find("#ai-context").element as HTMLTextAreaElement).value).toBe("Newsletter")
-  })
-
-  it("starts another import from the success screen", async () => {
-    install(handlerWith())
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-    await findButton(wrapper, "Add 2 events")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.text()).toContain("Added 2 events")
-    await findButton(wrapper, "Add another")!.trigger("click")
-    expect((wrapper.find("#ai-context").element as HTMLTextAreaElement).value).toBe("")
-    expect(wrapper.text()).not.toContain("Added 2 events")
-  })
-
-  it("shows the original message and multi-day drafts", async () => {
-    const longDescription = "Bring the signed form, a packed lunch, water and comfortable shoes for the walk. ".repeat(3)
-    install(handlerWith([
-      {
-        title: "Conference",
-        description: longDescription,
-        start_at: "2026-05-01T09:00:00-04:00",
-        end_at: "2026-05-03T17:00:00-04:00",
-        all_day: false,
-        recurrence: null,
-        reminder_minutes: null,
-        assignee_id: null,
-        confidence: 0.9,
-      },
-      {
-        title: "School break",
-        description: "",
-        start_at: "2026-05-04T00:00:00-04:00",
-        end_at: "2026-05-06T00:00:00-04:00",
-        all_day: true,
-        recurrence: null,
-        reminder_minutes: null,
-        assignee_id: null,
-        confidence: 0.9,
-      },
-    ]))
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Conference details")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.find(".ai-source-preview").text()).toContain("Conference details")
-    expect(wrapper.find(".ai-source-text").text()).toContain("Conference details")
-    expect(wrapper.find(".ai-item-when").text()).toContain("–")
-    expect(wrapper.text()).toContain("All day")
-    expect(wrapper.find(".ai-item-desc").text().endsWith("…")).toBe(true)
-  })
-
-  it("asks for confirmation and re-parses with the answers", async () => {
-    let parseCalls = 0
-    install(url => {
-      if (url.includes("/ai/parse/stream")) {
-        parseCalls += 1
-        if (parseCalls === 1) {
-          return streamed(DRAFTS, 0, "Reading", [], [
-            {
-              id: "q1",
-              kind: "assignee",
-              question: "Who is Team standup for?",
-              options: ["Alice", "Bob"],
-              about: "Team standup",
-            },
-          ], [], true)
-        }
-        return streamed(DRAFTS)
-      }
-      if (url.includes("/ai")) return json(STATUS_ON)
-      return json({})
-    })
-    const wrapper = await mountPanel({ memberNames: { m1: "Alice", m2: "Bob" } })
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.text()).toContain("One detail to confirm")
-    expect(wrapper.text()).toContain("Who is Team standup for?")
-    expect(wrapper.text()).toContain("Who it's for")
-    expect(findButton(wrapper, "Continue")!.attributes("disabled")).toBeDefined()
-
-    await wrapper.find(".ai-question input").setValue("Alice")
-    expect(findButton(wrapper, "Continue")!.attributes("disabled")).toBeUndefined()
-    await findButton(wrapper, "Alice")!.trigger("click")
-    expect(findButton(wrapper, "Continue")!.attributes("disabled")).toBeUndefined()
-    await findButton(wrapper, "Continue")!.trigger("click")
-    await flushPromises()
-
-    expect(wrapper.text()).toContain("2 events generated")
-    expect(wrapper.text()).not.toContain("One detail to confirm")
-    const calls = fetchMock.mock.calls.filter(call => String(call[0]).includes("/ai/parse"))
-    const body = JSON.parse((calls[1]![1] as RequestInit).body as string)
-    expect(body.clarifications).toEqual([
-      { question: "Who is Team standup for?", answer: "Alice" },
-    ])
-  })
-
-  it("lets the household skip questions or start over when nothing can be drafted", async () => {
-    install(url => {
-      if (url.includes("/ai/parse/stream")) {
-        return streamed(DRAFTS, 0, "Reading", [], [
-          { id: "q1", kind: "clarification", question: "Which week?", options: [] },
-        ], [], true)
-      }
-      if (url.includes("/ai")) return json(STATUS_ON)
-      return json({})
-    })
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-
-    await findButton(wrapper, "Review events anyway")!.trigger("click")
-    await flushPromises()
-    expect(wrapper.text()).toContain("2 events generated")
-    expect(wrapper.find(".ai-warnings").text()).toContain("Still unclear: Which week?")
-
-    install(url => {
-      if (url.includes("/ai/parse/stream")) {
-        return streamed([], 0, "Reading", [], [
-          { id: "q1", kind: "clarification", question: "Which week?" },
-        ], [], true)
-      }
-      if (url.includes("/ai")) return json(STATUS_ON)
-      return json({})
-    })
-    const empty = await mountPanel()
-    await empty.find("#ai-context").setValue("Something unclear")
-    await findButton(empty, "Generate Event")!.trigger("click")
-    await flushPromises()
-    expect(empty.text()).toContain("One detail to confirm")
-    await findButton(empty, "Start over")!.trigger("click")
-    expect((empty.find("#ai-context").element as HTMLTextAreaElement).value).toBe("")
-  })
-
-  it("stops asking after three rounds and keeps the open question as a warning", async () => {
-    install(url => {
-      if (url.includes("/ai/parse/stream")) {
-        return streamed(DRAFTS, 0, "Reading", [], [
-          { id: "q1", kind: "clarification", question: "Still unclear?", options: ["Yes"] },
-        ], [], true)
-      }
-      if (url.includes("/ai")) return json(STATUS_ON)
-      return json({})
-    })
-    const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
-
-    for (let round = 0; round < 3; round += 1) {
-      await findButton(wrapper, "Yes")!.trigger("click")
-      await findButton(wrapper, "Continue")!.trigger("click")
-      await flushPromises()
-    }
-    expect(wrapper.text()).toContain("2 events generated")
-    expect(wrapper.find(".ai-warnings").text()).toContain("Still needs an answer: Still unclear?")
-    const calls = fetchMock.mock.calls.filter(call => String(call[0]).includes("/ai/parse"))
-    expect(calls).toHaveLength(4)
-  })
-
-  it("prompts for schedule conflicts and lets the person decide", async () => {
-    const conflict = (index: number) => ({
-      id: `conflict-${index}`,
-      draft_index: index - 1,
-      title: DRAFTS[index - 1]!.title,
-      start_at: DRAFTS[index - 1]!.start_at,
-      existing_title: index === 1 ? "Dentist" : "School run",
+  it("blocks adding while a schedule conflict is unresolved", async () => {
+    const conflict = {
+      id: "conflict-1",
+      draft_index: 0,
+      title: DRAFTS[0]!.title,
+      start_at: DRAFTS[0]!.start_at,
+      existing_title: "Dentist",
       existing_start_at: "2026-05-04T09:00:00-04:00",
       existing_kind: "existing",
-      message: `${DRAFTS[index - 1]!.title} overlaps an existing event.`,
-    })
-    install(url => {
+      message: "Team standup overlaps an existing event.",
+    }
+    install(handlerWith({ conflicts: [conflict] }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+
+    expect(wrapper.text()).toContain("Schedule conflict")
+    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeDefined()
+    expect(wrapper.text()).toContain("Resolve the conflicts first.")
+
+    await findButton(wrapper, "Keep both")!.trigger("click")
+    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeUndefined()
+  })
+
+  it("replaces the conflicting existing event only after the new one is saved", async () => {
+    const calls: string[] = []
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/conversations")) {
+        return json({
+          id: "conv-1",
+          title: "Standup",
+          turns: [],
+          created_at: "2026-05-01T00:00:00Z",
+          updated_at: "2026-05-01T00:00:00Z",
+        })
+      }
       if (url.includes("/ai/parse/stream")) {
-        return streamed(DRAFTS, 0, "Reading", [], [], [conflict(1), conflict(2)])
+        return streamed({
+          conflicts: [{
+            id: "conflict-1",
+            draft_index: 0,
+            title: DRAFTS[0]!.title,
+            start_at: DRAFTS[0]!.start_at,
+            existing_title: "Dentist",
+            existing_start_at: "2026-05-04T09:00:00-04:00",
+            existing_kind: "existing",
+            existing_event_id: "ev-old",
+            message: "Team standup overlaps Dentist.",
+          }],
+        })
       }
       if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/calendars") && method === "GET") return json([])
+      if (url.includes("/calendars") && method === "POST") {
+        return json({
+          id: "cal-1", household_id: "h", name: "Personal", color: "sage",
+          source: "internal", feed_url: null, is_visible: true, created_by: null,
+        })
+      }
+      if (url.includes("/events/ev-old") && method === "DELETE") {
+        calls.push("delete")
+        return new Response(null, { status: 204 })
+      }
+      if (url.includes("/events") && method === "POST") {
+        calls.push("create")
+        return json(eventResponse(JSON.parse(String(init?.body))))
+      }
       return json({})
     })
     const wrapper = await mountPanel()
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
+    await send(wrapper, "Standup")
 
-    expect(wrapper.text()).toContain("Schedule conflicts")
-    expect(wrapper.findAll(".ai-conflict")).toHaveLength(2)
-    expect(wrapper.text()).toContain("Team standup overlaps an existing event.")
-    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeDefined()
-    expect(wrapper.text()).toContain("Resolve the conflicts above first.")
-
-    await (wrapper.vm as unknown as { applySelected: () => Promise<void> }).applySelected()
-    await flushPromises()
-    const blockedPosts = fetchMock.mock.calls.filter(
-      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
-    )
-    expect(blockedPosts).toHaveLength(0)
-
-    const checks = wrapper.findAll('.ai-item input[type="checkbox"]')
-    await checks[0]!.trigger("change")
-    expect(wrapper.findAll(".ai-conflict")).toHaveLength(1)
-    await checks[0]!.trigger("change")
-    expect(wrapper.findAll(".ai-conflict")).toHaveLength(2)
-
-    await findButton(wrapper, "Add anyway")!.trigger("click")
-    expect(wrapper.findAll(".ai-conflict")).toHaveLength(1)
-    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeDefined()
-
-    await findButton(wrapper, "Change time")!.trigger("click")
-    await flushPromises()
+    expect(wrapper.text()).toContain("Schedule conflict")
+    await findButton(wrapper, "Replace existing")!.trigger("click")
     expect(wrapper.findAll(".ai-conflict")).toHaveLength(0)
-    expect(wrapper.find(".ai-item-editor").exists()).toBe(true)
-    await findButton(wrapper, "Cancel")!.trigger("click")
+    expect(wrapper.text()).toContain("Will be removed when saved")
+    expect(wrapper.text()).toContain("Dentist")
+
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
     await flushPromises()
-    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeUndefined()
+
+    expect(calls.filter(call => call === "create")).toHaveLength(2)
+    expect(calls).toContain("delete")
+    expect(wrapper.text()).toContain("Added 2 events")
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it("resets the conversation with New chat", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+    expect(wrapper.text()).toContain("2 events ready")
+
+    await findButton(wrapper, "New chat")!.trigger("click")
+    expect(wrapper.text()).toContain("What's on the schedule?")
+    expect(wrapper.text()).not.toContain("2 events ready")
+    expect((wrapper.find(".ai-composer-input").element as HTMLTextAreaElement).value).toBe("")
+  })
+
+  it("sends on Enter but leaves Shift+Enter for a new line", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel()
+    const input = wrapper.find(".ai-composer-input")
+
+    await input.setValue("Dinner Friday")
+    await input.trigger("keydown", { key: "Enter", shiftKey: true })
+    await flushPromises()
+    expect(parseCalls()).toHaveLength(0)
+
+    await input.trigger("keydown", { key: "Enter" })
+    await flushPromises()
+    expect(parseCalls()).toHaveLength(1)
   })
 
   it("edits who an event is for", async () => {
     install(handlerWith())
-    const wrapper = await mountPanel({
-      memberNames: { m2: "Bob", m1: "Alice", m3: "" },
-    })
-    await wrapper.find("#ai-context").setValue("Standup")
-    await findButton(wrapper, "Generate Event")!.trigger("click")
-    await flushPromises()
+    const wrapper = await mountPanel({ memberNames: { m2: "Bob", m1: "Alice", m3: "" } })
+    await send(wrapper, "Standup")
 
     await wrapper.findAll(".ai-item-edit")[1]!.trigger("click")
     const select = wrapper.find(".ai-item--editing select")
-    const options = select.findAll("option")
-    expect(options.map(option => option.text())).toEqual(["No one", "Alice", "Bob"])
+    expect(select.findAll("option").map(option => option.text())).toEqual(["No one", "Alice", "Bob"])
     await select.setValue("m2")
     await findButton(wrapper, "Save changes")!.trigger("click")
     await flushPromises()
@@ -853,12 +1010,7 @@ describe("AiImportPanel", () => {
     expect(wrapper.text()).toContain("For Bob")
     await findButton(wrapper, "Add 2 events")!.trigger("click")
     await flushPromises()
-    const posts = fetchMock.mock.calls.filter(
-      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
-    )
-    const holiday = posts
-      .map(call => JSON.parse((call[1] as RequestInit).body as string))
-      .find(body => body.title === "Holiday")
-    expect(holiday.assignee_id).toBe("m2")
+    const holiday = addedEvents().find(body => body.title === "Holiday")
+    expect(holiday!.assignee_id).toBe("m2")
   })
 })

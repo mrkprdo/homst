@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.events.publisher import publish_event
-from app.models.all import Calendar, Event, Household, ReminderLog
+from app.models.all import AiConversation, Calendar, Event, Household, ReminderLog
 from app.schemas.all import (
     CalendarCreate,
     CalendarResponse,
@@ -135,6 +135,9 @@ def _event_to_response(ev: Event) -> EventResponse:
         title=ev.title,
         description=ev.description or "",
         source_message=ev.source_message,
+        ai_conversation_id=(
+            UUID(ev.ai_conversation_id) if ev.ai_conversation_id else None
+        ),
         start_at=ev.start_at,
         end_at=ev.end_at,
         all_day=ev.all_day or False,
@@ -202,11 +205,22 @@ async def create_event(req: EventCreate, db: AsyncSession = Depends(get_db)):
     if req.end_at and req.end_at <= req.start_at:
         raise HTTPException(status_code=422, detail="end_at must be after start_at")
 
+    conversation_id = None
+    if req.ai_conversation_id is not None:
+        conversation = await db.get(AiConversation, str(req.ai_conversation_id))
+        if (
+            conversation is None
+            or conversation.household_id != DEFAULT_HOUSEHOLD_ID
+        ):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        conversation_id = conversation.id
+
     ev = Event(
         calendar_id=str(cal.id),
         title=req.title,
         description=req.description or "",
         source_message=req.source_message,
+        ai_conversation_id=conversation_id,
         start_at=req.start_at,
         end_at=req.end_at,
         all_day=req.all_day,
@@ -254,14 +268,33 @@ async def update_event(event_id: UUID, req: EventUpdate, db: AsyncSession = Depe
         ev.description = req.description
     if "source_message" in req.model_fields_set:
         ev.source_message = req.source_message
+    if "ai_conversation_id" in req.model_fields_set:
+        conversation_id = None
+        if req.ai_conversation_id is not None:
+            conversation = await db.get(
+                AiConversation, str(req.ai_conversation_id)
+            )
+            if (
+                conversation is None
+                or conversation.household_id != DEFAULT_HOUSEHOLD_ID
+            ):
+                raise HTTPException(
+                    status_code=404, detail="Conversation not found"
+                )
+            conversation_id = conversation.id
+        ev.ai_conversation_id = conversation_id
     if req.start_at is not None:
         ev.start_at = req.start_at
     if "end_at" in req.model_fields_set:
         ev.end_at = req.end_at
     if req.all_day is not None:
         ev.all_day = req.all_day
-    if req.recurrence is not None:
-        ev.recurrence = req.recurrence.model_dump(mode="json", exclude_none=True)
+    if "recurrence" in req.model_fields_set:
+        ev.recurrence = (
+            req.recurrence.model_dump(mode="json", exclude_none=True)
+            if req.recurrence is not None
+            else None
+        )
     if "reminder_minutes" in req.model_fields_set:
         ev.reminder_minutes = req.reminder_minutes
     if req.assignee_id is not None:

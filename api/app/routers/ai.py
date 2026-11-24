@@ -11,9 +11,11 @@ from sse_starlette.sse import EventSourceResponse
 
 from app import ai
 from app.db import get_db
-from app.models.all import Calendar, Event, Household, Member
+from app.models.all import AiConversation, Calendar, Event, Household, Member
 from app.schemas.all import (
     AiConfigUpdate,
+    AiConversationResponse,
+    AiConversationWrite,
     AiModelsResponse,
     AiParseRequest,
     AiParseResponse,
@@ -31,7 +33,9 @@ def _http_error(exc: ai.AiError) -> HTTPException:
 
 
 async def _load_busy(
-    db: AsyncSession, members: list[tuple[str, str]]
+    db: AsyncSession,
+    members: list[tuple[str, str]],
+    exclude_event_id: str | None = None,
 ) -> list[dict]:
     """Household events near the import window, for double-booking checks."""
     cal_ids = (
@@ -56,6 +60,7 @@ async def _load_busy(
                     Event.recurrence["freq"].as_string().isnot(None),
                 ),
                 Event.start_at <= to_dt,
+                Event.id != exclude_event_id if exclude_event_id else True,
             )
             .order_by(Event.start_at)
             .limit(ai.MAX_BUSY_EVENTS)
@@ -68,6 +73,7 @@ async def _load_busy(
             continue
         busy.append(
             {
+                "id": getattr(event, "id", None),
                 "title": event.title,
                 "start_at": event.start_at.isoformat(),
                 "end_at": event.end_at.isoformat() if event.end_at else None,
@@ -80,8 +86,47 @@ async def _load_busy(
     return busy
 
 
+def _local_iso(value: datetime | None, tz) -> str | None:
+    if value is None:
+        return None
+    moment = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return moment.astimezone(tz).isoformat()
+
+
+async def _load_focus_event(
+    req: AiParseRequest, db: AsyncSession, members: list[tuple[str, str]], tz
+) -> dict | None:
+    """The existing event a resumed conversation is editing, if any."""
+    if req.focus_event_id is None:
+        return None
+    result = await db.execute(
+        select(Event)
+        .join(Calendar)
+        .where(
+            Event.id == str(req.focus_event_id),
+            Calendar.household_id == DEFAULT_HOUSEHOLD_ID,
+        )
+    )
+    event = result.scalar_one_or_none()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event.source == "external":
+        raise HTTPException(status_code=403, detail="External events are read-only")
+    names = {member_id: name for member_id, name in members}
+    return {
+        "title": event.title,
+        "description": event.description or "",
+        "start_at": _local_iso(event.start_at, tz),
+        "end_at": _local_iso(event.end_at, tz),
+        "all_day": bool(event.all_day),
+        "recurrence": event.recurrence,
+        "reminder_minutes": event.reminder_minutes,
+        "assignee": names.get(event.assignee_id),
+    }
+
+
 async def _load_context(req: AiParseRequest, db: AsyncSession):
-    """Resolve the timezone, members and nearby events for one import."""
+    """Resolve the timezone, members, nearby events and edit target."""
     household = await db.get(Household, DEFAULT_HOUSEHOLD_ID)
     household_settings = household.settings if household and household.settings else {}
     timezone_name = req.timezone or household_settings.get("timezone")
@@ -92,8 +137,13 @@ async def _load_context(req: AiParseRequest, db: AsyncSession):
         select(Member.id, Member.name).where(Member.household_id == DEFAULT_HOUSEHOLD_ID)
     )
     members = [(row[0], row[1]) for row in rows.all()]
-    busy = await _load_busy(db, members)
-    return tz, tz_label, members, busy
+    busy = await _load_busy(
+        db,
+        members,
+        exclude_event_id=str(req.focus_event_id) if req.focus_event_id else None,
+    )
+    focus_event = await _load_focus_event(req, db, members, tz)
+    return tz, tz_label, members, busy, focus_event
 
 
 async def _require_config(db: AsyncSession) -> dict:
@@ -159,13 +209,79 @@ async def test_ai_connection(db: AsyncSession = Depends(get_db)):
     return {**ai.status_payload(config), "ok": ok, "message": message}
 
 
+def _conversation_title(req: AiConversationWrite) -> str:
+    title = req.title.strip()
+    if not title:
+        for turn in req.turns:
+            if turn.role == "user" and turn.text.strip():
+                title = turn.text
+                break
+    return " ".join(title.split())[:255] or "Smart import"
+
+
+def _conversation_response(row: AiConversation) -> dict:
+    return {
+        "id": row.id,
+        "title": row.title,
+        "turns": row.turns or [],
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+@router.post("/conversations", response_model=AiConversationResponse, status_code=201)
+async def create_conversation(
+    req: AiConversationWrite, db: AsyncSession = Depends(get_db)
+):
+    """Save a Smart import chat so its events can reopen it later."""
+    row = AiConversation(
+        household_id=DEFAULT_HOUSEHOLD_ID,
+        title=_conversation_title(req),
+        turns=[turn.model_dump() for turn in req.turns[-40:]],
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _conversation_response(row)
+
+
+@router.get(
+    "/conversations/{conversation_id}", response_model=AiConversationResponse
+)
+async def get_conversation(
+    conversation_id: str, db: AsyncSession = Depends(get_db)
+):
+    row = await db.get(AiConversation, conversation_id)
+    if row is None or row.household_id != DEFAULT_HOUSEHOLD_ID:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return _conversation_response(row)
+
+
+@router.patch(
+    "/conversations/{conversation_id}", response_model=AiConversationResponse
+)
+async def update_conversation(
+    conversation_id: str,
+    req: AiConversationWrite,
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(AiConversation, conversation_id)
+    if row is None or row.household_id != DEFAULT_HOUSEHOLD_ID:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    row.title = _conversation_title(req)
+    row.turns = [turn.model_dump() for turn in req.turns[-40:]]
+    await db.commit()
+    await db.refresh(row)
+    return _conversation_response(row)
+
+
 @router.post("/parse", response_model=AiParseResponse)
 async def parse_schedule(
     req: AiParseRequest, db: AsyncSession = Depends(get_db)
 ):
     """Parse text/screenshot into drafts. Creating the events stays explicit."""
     config = await _require_config(db)
-    tz, tz_label, members, busy = await _load_context(req, db)
+    tz, tz_label, members, busy, focus_event = await _load_context(req, db)
     try:
         return await ai.parse_schedule(
             config,
@@ -176,6 +292,8 @@ async def parse_schedule(
             members=members,
             busy=busy,
             clarifications=[item.model_dump() for item in req.clarifications],
+            history=[item.model_dump() for item in req.history],
+            focus_event=focus_event,
         )
     except ai.AiError as exc:
         raise _http_error(exc) from exc
@@ -189,7 +307,7 @@ async def parse_schedule_stream(
     config = await _require_config(db)
     if not req.text.strip() and not req.image:
         raise HTTPException(status_code=422, detail="Paste an email or attach a screenshot")
-    tz, tz_label, members, busy = await _load_context(req, db)
+    tz, tz_label, members, busy, focus_event = await _load_context(req, db)
 
     async def event_generator():
         try:
@@ -202,6 +320,8 @@ async def parse_schedule_stream(
                 members=members,
                 busy=busy,
                 clarifications=[item.model_dump() for item in req.clarifications],
+                history=[item.model_dump() for item in req.history],
+                focus_event=focus_event,
             ):
                 yield {"event": event["type"], "data": json.dumps(event)}
         except ai.AiError as exc:

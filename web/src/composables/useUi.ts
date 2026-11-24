@@ -22,6 +22,12 @@ export interface DrawerState {
    * event form without navigating away.
    */
   intent?: "event" | "task" | null
+  /** Reopen a saved Smart chat from one of its events. */
+  aiConversationId?: string | null
+  aiEventId?: string | null
+  aiEventTitle?: string | null
+  /** Original import text, shown as the first message when no chat was saved. */
+  aiSourceMessage?: string | null
 }
 
 const activePanel = ref<PanelView>("home")
@@ -70,6 +76,47 @@ function openDrawer(
   nextTick(() => { isDrawerOpen.value = true })
 }
 
+/** Open Smart import with a saved thread and the event it should update. */
+function openAiConversation(
+  conversationId: string,
+  eventId: string,
+  eventTitle?: string | null,
+  sourceMessage?: string | null,
+) {
+  drawer.value = {
+    type: "quick-add",
+    id: null,
+    date: null,
+    time: null,
+    intent: "event",
+    aiConversationId: conversationId,
+    aiEventId: eventId,
+    aiEventTitle: eventTitle ?? null,
+    aiSourceMessage: sourceMessage ?? null,
+  }
+  nextTick(() => { isDrawerOpen.value = true })
+}
+
+/** Start a new Smart chat focused on an event that has no saved thread. */
+function openEventChat(
+  eventId: string,
+  eventTitle?: string | null,
+  sourceMessage?: string | null,
+) {
+  drawer.value = {
+    type: "quick-add",
+    id: null,
+    date: null,
+    time: null,
+    intent: "event",
+    aiConversationId: null,
+    aiEventId: eventId,
+    aiEventTitle: eventTitle ?? null,
+    aiSourceMessage: sourceMessage ?? null,
+  }
+  nextTick(() => { isDrawerOpen.value = true })
+}
+
 function closeDrawer() {
   if (closeGuard.value && !closeGuard.value()) return
   isDrawerOpen.value = false
@@ -106,6 +153,8 @@ export function useUi() {
     openCalendar,
     consumeCalendarTarget,
     openDrawer,
+    openAiConversation,
+    openEventChat,
     closeDrawer,
     openAnnouncements,
     closeAnnouncements,
@@ -116,7 +165,11 @@ export function useUi() {
 
 export function _resetUi() {
   activePanel.value = "home"
-  drawer.value = { type: null, id: null, date: null, time: null, intent: null }
+  drawer.value = {
+    type: null, id: null, date: null, time: null, intent: null,
+    aiConversationId: null, aiEventId: null, aiEventTitle: null,
+    aiSourceMessage: null,
+  }
   isDrawerOpen.value = false
   announcementsOpen.value = false
   closeGuard.value = null

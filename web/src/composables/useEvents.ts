@@ -8,6 +8,7 @@ export interface Event {
   title: string
   description: string
   sourceMessage?: string | null
+  aiConversationId?: string | null
   startAt: string
   endAt: string | null
   allDay: boolean

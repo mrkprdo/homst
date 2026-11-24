@@ -32,7 +32,7 @@ export interface AiClarification {
   answer: string
 }
 
-export type AiQuestionKind = "clarification" | "assignee" | "conflict"
+export type AiQuestionKind = "clarification" | "assignee" | "conflict" | "datetime"
 
 export interface AiQuestion {
   id: string
@@ -52,14 +52,49 @@ export interface AiConflict {
   existingStartAt: string
   existingEndAt: string | null
   existingKind: "existing" | "draft"
+  existingEventId: string | null
+  existingRecurring: boolean
   assigneeId: string | null
   message: string
+}
+
+export interface AiChatMessage {
+  role: "user" | "assistant"
+  text: string
+}
+
+export interface AiConversationTurn {
+  role: "user" | "assistant"
+  text: string
+  imageName: string
+  rawResponse: string
+  reply: string
+  drafts: AiDraft[]
+  added: AiDraft[]
+  questions: AiQuestion[]
+  warnings: string[]
+  applied: boolean
+  outcome: "success" | "partial" | "failed" | null
+}
+
+export interface AiConversation {
+  id: string
+  title: string
+  turns: AiConversationTurn[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AiConversationWrite {
+  title: string
+  turns: AiConversationTurn[]
 }
 
 export interface AiParseResult {
   events: AiDraft[]
   skipped: number
   model: string
+  reply: string
   response: string
   reasoning: string | null
   warnings: string[]
@@ -127,6 +162,8 @@ interface ApiConflict {
   existing_start_at?: string
   existing_end_at?: string | null
   existing_kind?: string
+  existing_event_id?: string | null
+  existing_recurring?: boolean
   assignee_id?: string | null
   message?: string
 }
@@ -135,12 +172,35 @@ interface ApiParseResult {
   events: ApiDraft[]
   skipped: number
   model: string
+  reply?: string
   response?: string
   reasoning?: string | null
   warnings?: string[]
   questions?: ApiQuestion[]
   conflicts?: ApiConflict[]
   needs_input?: boolean
+}
+
+interface ApiConversationTurn {
+  role: "user" | "assistant"
+  text?: string
+  image_name?: string | null
+  raw_response?: string | null
+  reply?: string | null
+  drafts?: ApiDraft[]
+  added?: ApiDraft[]
+  questions?: ApiQuestion[]
+  warnings?: string[]
+  applied?: boolean
+  outcome?: "success" | "partial" | "failed" | null
+}
+
+interface ApiConversation {
+  id: string
+  title: string
+  turns: ApiConversationTurn[]
+  created_at: string
+  updated_at: string
 }
 
 interface ApiTestResult extends ApiStatus {
@@ -169,6 +229,22 @@ function mapStatus(s: ApiStatus): AiStatus {
   }
 }
 
+function mapQuestion(q: ApiQuestion, index: number): AiQuestion {
+  const kind: AiQuestionKind =
+    q.kind === "assignee" || q.kind === "conflict" || q.kind === "datetime"
+      ? q.kind
+      : "clarification"
+  return {
+    id: typeof q.id === "string" && q.id ? q.id : `q${index + 1}`,
+    kind,
+    question: q.question!,
+    options: Array.isArray(q.options)
+      ? q.options.filter((option): option is string => typeof option === "string")
+      : [],
+    about: typeof q.about === "string" ? q.about : null,
+  }
+}
+
 function mapDraft(d: ApiDraft): AiDraft {
   return {
     title: d.title,
@@ -190,6 +266,7 @@ function mapParseResult(r: ApiParseResult): AiParseResult {
     events: (Array.isArray(r.events) ? r.events : []).map(mapDraft),
     skipped: r.skipped ?? 0,
     model: r.model,
+    reply: typeof r.reply === "string" ? r.reply : "",
     response: typeof r.response === "string" ? r.response : "",
     reasoning: typeof r.reasoning === "string" ? r.reasoning : null,
     warnings: Array.isArray(r.warnings)
@@ -197,19 +274,7 @@ function mapParseResult(r: ApiParseResult): AiParseResult {
       : [],
     questions: questions
       .filter(q => typeof q.question === "string" && q.question.trim().length > 0)
-      .map((q, index) => {
-        const kind: AiQuestionKind =
-          q.kind === "assignee" || q.kind === "conflict" ? q.kind : "clarification"
-        return {
-          id: typeof q.id === "string" && q.id ? q.id : `q${index + 1}`,
-          kind,
-          question: q.question!,
-          options: Array.isArray(q.options)
-            ? q.options.filter((option): option is string => typeof option === "string")
-            : [],
-          about: typeof q.about === "string" ? q.about : null,
-        }
-      }),
+      .map(mapQuestion),
     conflicts: conflicts
       .filter(c => typeof c.message === "string" && typeof c.draft_index === "number")
       .map((c, index) => ({
@@ -222,10 +287,77 @@ function mapParseResult(r: ApiParseResult): AiParseResult {
         existingStartAt: c.existing_start_at ?? "",
         existingEndAt: c.existing_end_at ?? null,
         existingKind: c.existing_kind === "draft" ? "draft" : "existing",
+        existingEventId: c.existing_event_id ?? null,
+        existingRecurring: c.existing_recurring === true,
         assigneeId: c.assignee_id ?? null,
         message: c.message!,
       })),
     needsInput: r.needs_input === true,
+  }
+}
+
+function mapConversationTurn(turn: ApiConversationTurn): AiConversationTurn {
+  return {
+    role: turn.role === "assistant" ? "assistant" : "user",
+    text: typeof turn.text === "string" ? turn.text : "",
+    imageName: typeof turn.image_name === "string" ? turn.image_name : "",
+    rawResponse: typeof turn.raw_response === "string" ? turn.raw_response : "",
+    reply: typeof turn.reply === "string" ? turn.reply : "",
+    drafts: (Array.isArray(turn.drafts) ? turn.drafts : []).map(mapDraft),
+    added: (Array.isArray(turn.added) ? turn.added : []).map(mapDraft),
+    questions: (Array.isArray(turn.questions) ? turn.questions : [])
+      .filter(q => typeof q.question === "string" && q.question.trim().length > 0)
+      .map(mapQuestion),
+    warnings: Array.isArray(turn.warnings)
+      ? turn.warnings.filter((warning): warning is string => typeof warning === "string")
+      : [],
+    applied: turn.applied === true,
+    outcome: turn.outcome === "success" || turn.outcome === "partial" || turn.outcome === "failed"
+      ? turn.outcome
+      : null,
+  }
+}
+
+function mapConversation(raw: ApiConversation): AiConversation {
+  return {
+    id: raw.id,
+    title: typeof raw.title === "string" ? raw.title : "",
+    turns: (Array.isArray(raw.turns) ? raw.turns : []).map(mapConversationTurn),
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  }
+}
+
+function draftPayload(draft: AiDraft) {
+  return {
+    title: draft.title,
+    description: draft.description,
+    start_at: draft.startAt,
+    end_at: draft.endAt,
+    all_day: draft.allDay,
+    recurrence: draft.recurrence,
+    reminder_minutes: draft.reminderMinutes,
+    assignee_id: draft.assigneeId,
+    confidence: draft.confidence,
+  }
+}
+
+function conversationPayload(payload: AiConversationWrite) {
+  return {
+    title: payload.title,
+    turns: payload.turns.map(turn => ({
+      role: turn.role,
+      text: turn.text,
+      image_name: turn.imageName || null,
+      raw_response: turn.rawResponse || null,
+      reply: turn.reply || null,
+      drafts: turn.drafts.map(draftPayload),
+      added: turn.added.map(draftPayload),
+      questions: turn.questions,
+      warnings: turn.warnings,
+      applied: turn.applied,
+      outcome: turn.outcome,
+    })),
   }
 }
 
@@ -249,6 +381,8 @@ export async function parseStream(
     image?: string | null
     timezone?: string | null
     clarifications?: AiClarification[]
+    history?: AiChatMessage[]
+    focusEventId?: string | null
   },
   handlers: AiStreamHandlers = {},
 ): Promise<AiParseResult> {
@@ -266,6 +400,8 @@ export async function parseStream(
         image: payload.image ?? null,
         timezone: payload.timezone ?? null,
         clarifications: payload.clarifications ?? [],
+        history: payload.history ?? [],
+        focus_event_id: payload.focusEventId ?? null,
       }),
     })
   } catch {
@@ -354,11 +490,26 @@ export const aiApi = {
     image?: string | null
     timezone?: string | null
     clarifications?: AiClarification[]
+    history?: AiChatMessage[]
+    focusEventId?: string | null
   }) =>
     api.post<ApiParseResult>("/ai/parse", {
       text: payload.text,
       image: payload.image ?? null,
       timezone: payload.timezone ?? null,
       clarifications: payload.clarifications ?? [],
+      history: payload.history ?? [],
+      focus_event_id: payload.focusEventId ?? null,
     }).then(mapParseResult),
+
+  createConversation: (payload: AiConversationWrite) =>
+    api.post<ApiConversation>("/ai/conversations", conversationPayload(payload))
+      .then(mapConversation),
+
+  updateConversation: (id: string, payload: AiConversationWrite) =>
+    api.patch<ApiConversation>(`/ai/conversations/${id}`, conversationPayload(payload))
+      .then(mapConversation),
+
+  getConversation: (id: string) =>
+    api.get<ApiConversation>(`/ai/conversations/${id}`).then(mapConversation),
 }

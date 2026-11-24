@@ -23,6 +23,55 @@ describe("EventDetailPanel", () => {
     expect(w.text()).toContain("Event not found")
   })
 
+  it("reopens the Smart conversation linked to an imported event", async () => {
+    const ev = useEvents()
+    const ui = useUi()
+    ev.upsertEvent({
+      id: "e-chat", calendarId: "c1", title: "Dentist", description: "",
+      aiConversationId: "conv-1",
+      startAt: "2026-05-15T10:00:00Z", endAt: "2026-05-15T11:00:00Z",
+      allDay: false, recurrence: null, source: "internal",
+      externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+    })
+    ui.openDrawer("event-detail", "e-chat")
+    await nextTick()
+
+    const w = mount(EventDetailPanel)
+    const button = w.findAll("button").find(item => item.text().includes("Update with chat"))!
+    expect(button).toBeTruthy()
+    await button.trigger("click")
+
+    expect(ui.drawer.value.type).toBe("quick-add")
+    expect(ui.drawer.value.intent).toBe("event")
+    expect(ui.drawer.value.aiConversationId).toBe("conv-1")
+    expect(ui.drawer.value.aiEventId).toBe("e-chat")
+  })
+
+  it("opens Smart chat for an older event with no saved conversation", async () => {
+    const ev = useEvents()
+    const ui = useUi()
+    ev.upsertEvent({
+      id: "e-old", calendarId: "c1", title: "Old dentist", description: "",
+      sourceMessage: "Bring the card on Friday",
+      startAt: "2026-05-15T10:00:00Z", endAt: "2026-05-15T11:00:00Z",
+      allDay: false, recurrence: null, source: "internal",
+      externalUid: null, createdBy: null, createdAt: "", updatedAt: "",
+    })
+    ui.openDrawer("event-detail", "e-old")
+    await nextTick()
+
+    const w = mount(EventDetailPanel)
+    const button = w.findAll("button").find(item => item.text().includes("Update with chat"))!
+    expect(button).toBeTruthy()
+    await button.trigger("click")
+
+    expect(ui.drawer.value.type).toBe("quick-add")
+    expect(ui.drawer.value.aiConversationId).toBeNull()
+    expect(ui.drawer.value.aiEventId).toBe("e-old")
+    expect(ui.drawer.value.aiEventTitle).toBe("Old dentist")
+    expect(ui.drawer.value.aiSourceMessage).toBe("Bring the card on Friday")
+  })
+
   it("renders timed, all-day, multi-day, recurring, reminder, assigned & external events; edits and deletes", async () => {
     const ev = useEvents()
     const mb = useMembers()
@@ -53,8 +102,8 @@ describe("EventDetailPanel", () => {
     expect(w.text()).toContain("Reminder 30 minutes before")
     expect(w.text()).toContain("Alice")
     expect(w.text()).toContain("Bring card")
-    expect(w.text()).toContain("Imported message")
-    expect(w.text()).toContain("Original email body")
+    expect(w.text()).not.toContain("Imported message")
+    expect(w.text()).not.toContain("Original email body")
 
     // Start edit → recurrence until branch populated
     const editBtn = w.findAll("button").find(b => b.text().includes("Edit"))!
@@ -122,10 +171,10 @@ describe("EventDetailPanel", () => {
     await w.findAll("button").find(b => b.text().includes("Cancel"))!.trigger("click")
 
     // Delete confirm + cancel + confirmDelete
-    await w.findAll("button").find(b => b.text().includes("Delete"))!.trigger("click")
+    await w.find('[aria-label="Delete event"]').trigger("click")
     expect(w.text()).toContain("Delete this event?")
     await w.findAll("button").find(b => b.text() === "Cancel")!.trigger("click")
-    await w.findAll("button").find(b => b.text().includes("Delete"))!.trigger("click")
+    await w.find('[aria-label="Delete event"]').trigger("click")
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }))
     await w.findAll("button").find(b => b.text() === "Delete")!.trigger("click")
     await flushPromises()

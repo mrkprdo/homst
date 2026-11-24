@@ -481,6 +481,10 @@ const priorities = [
 
 .mqa-sheet {
   width: 100%;
+  /* Keep every quick-add tab the same height. Smart import has less natural
+     content than the manual forms, so a max-height alone made it collapse. */
+  height: 92vh;
+  height: 92dvh;
   max-height: 92vh;
   max-height: 92dvh;
   background: var(--color-bgElevated);

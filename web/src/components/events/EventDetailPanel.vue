@@ -4,7 +4,7 @@ import { useEvents } from "@/composables/useEvents"
 import { useMembers } from "@/composables/useMembers"
 import { useUi } from "@/composables/useUi"
 import { calendarApi, type UpdateEventPayload } from "@/api/calendar"
-import { PhCalendar, PhClock, PhRepeat, PhPencil, PhTrash, PhCheck, PhX, PhWarning, PhUser, PhDownloadSimple, PhBell } from "@phosphor-icons/vue"
+import { PhCalendar, PhClock, PhRepeat, PhPencil, PhTrash, PhCheck, PhX, PhWarning, PhUser, PhDownloadSimple, PhBell, PhChatCircleDots } from "@phosphor-icons/vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiInput from "@/components/ui/UiInput.vue"
 import UiTextarea from "@/components/ui/UiTextarea.vue"
@@ -176,6 +176,16 @@ async function saveEdit() {
   }
 }
 
+function continueWithSmart() {
+  const ev = event.value
+  if (!ev || ev.source !== "internal") return
+  if (ev.aiConversationId) {
+    ui.openAiConversation(ev.aiConversationId, ev.id, ev.title, ev.sourceMessage)
+  } else {
+    ui.openEventChat(ev.id, ev.title, ev.sourceMessage)
+  }
+}
+
 async function confirmDelete() {
   if (!event.value) return
   await calendarApi.deleteEvent(event.value.id).catch(() => {})
@@ -252,11 +262,6 @@ const isExternal = computed(() => event.value?.source !== "internal")
 
       <p v-if="event.description" class="edp-desc">{{ event.description }}</p>
 
-      <details v-if="event.sourceMessage" class="edp-source">
-        <summary class="edp-source-summary">Imported message</summary>
-        <p class="edp-source-text">{{ event.sourceMessage }}</p>
-      </details>
-
       <!-- Delete confirm inline -->
       <div v-if="deleting" class="edp-delete-confirm">
         <PhWarning :size="16" class="edp-warn-icon" />
@@ -271,12 +276,34 @@ const isExternal = computed(() => event.value?.source !== "internal")
         <UiButton v-if="!isExternal" size="sm" @click="startEdit">
           <PhPencil :size="14" />Edit
         </UiButton>
-        <UiButton variant="ghost" size="sm" @click="downloadIcs(event!)">
-          <PhDownloadSimple :size="14" />.ics
+        <UiButton
+          v-if="!isExternal"
+          variant="ghost"
+          size="sm"
+          @click="continueWithSmart"
+        >
+          <PhChatCircleDots :size="14" />Update with chat
         </UiButton>
-        <UiButton v-if="!isExternal" variant="ghost" size="sm" class="edp-delete-btn" @click="deleting = true">
-          <PhTrash :size="14" />Delete
-        </UiButton>
+        <span class="edp-actions-spacer" />
+        <button
+          type="button"
+          class="edp-icon-btn"
+          aria-label="Download .ics"
+          title="Download .ics"
+          @click="downloadIcs(event!)"
+        >
+          <PhDownloadSimple :size="18" />
+        </button>
+        <button
+          v-if="!isExternal"
+          type="button"
+          class="edp-icon-btn edp-icon-btn--danger"
+          aria-label="Delete event"
+          title="Delete event"
+          @click="deleting = true"
+        >
+          <PhTrash :size="18" />
+        </button>
       </div>
     </template>
 
@@ -446,42 +473,53 @@ const isExternal = computed(() => event.value?.source !== "internal")
   white-space: pre-wrap;
 }
 
-/* ── Imported source message ── */
-.edp-source {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bgSubtle);
-  padding: var(--space-2) var(--space-3);
-}
-
-.edp-source-summary {
-  cursor: pointer;
-  font-size: var(--text-label-size);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-textMuted);
-}
-
-.edp-source-text {
-  margin: var(--space-2) 0 0;
-  max-height: 220px;
-  overflow-y: auto;
-  font-size: var(--text-label-size);
-  line-height: 1.5;
-  color: var(--color-textSecondary);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 /* ── Actions ── */
 .edp-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
 }
 
-.edp-delete-btn { color: var(--color-danger); }
-.edp-delete-btn:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
+.edp-actions-spacer {
+  flex: 1;
+}
+
+.edp-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-textSecondary);
+  cursor: pointer;
+  transition: color var(--duration-fast), background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.edp-icon-btn:hover {
+  border-color: var(--color-border);
+  background: var(--color-bgSubtle);
+  color: var(--color-textPrimary);
+}
+
+.edp-icon-btn--danger:hover {
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--color-danger);
+}
+
+.edp-icon-btn:focus-visible {
+  outline: 2px solid var(--color-accent-darker);
+  outline-offset: 2px;
+}
 
 /* ── Delete confirm ── */
 .edp-delete-confirm {

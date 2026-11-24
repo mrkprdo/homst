@@ -76,6 +76,21 @@ class Calendar(Base):
     events = relationship("Event", back_populates="calendar")
 
 
+class AiConversation(Base):
+    """A saved Smart import chat, linked to the events it created."""
+
+    __tablename__ = "ai_conversations"
+
+    id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
+    household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)
+    title = Column(String(255), nullable=False, default="")
+    # Compact client-owned transcript. It is returned verbatim so an event's
+    # original chat can be opened and continued later.
+    turns = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Event(Base):
     __tablename__ = "events"
 
@@ -86,6 +101,13 @@ class Event(Base):
     # Raw email/screenshot text that produced an AI-imported event. Kept
     # separate from ``description`` so the parsed notes stay readable.
     source_message = Column(Text, nullable=True)
+    # The Smart import chat that created this event, when there is one.
+    ai_conversation_id = Column(
+        Uuid(as_uuid=False),
+        ForeignKey("ai_conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     start_at = Column(DateTime(timezone=True), nullable=False)
     end_at = Column(DateTime(timezone=True), nullable=True)
     all_day = Column(Boolean, default=False)

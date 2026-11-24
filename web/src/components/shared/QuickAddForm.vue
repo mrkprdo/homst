@@ -321,7 +321,11 @@ const canSubmit = computed(() => {
 </script>
 
 <template>
-  <div class="quick-add-form" @keydown="handleKeydown">
+  <div
+    class="quick-add-form"
+    :class="{ 'quick-add-form--ai': isEvent && mode === 'ai' }"
+    @keydown="handleKeydown"
+  >
     <div v-if="isEvent" class="mode-switch" role="group" aria-label="Add mode">
       <button
         type="button"
@@ -505,6 +509,10 @@ const canSubmit = computed(() => {
     <AiImportPanel
       v-else
       :member-names="memberNameMap"
+      :conversation-id="ui.drawer.value.aiConversationId ?? undefined"
+      :focus-event-id="ui.drawer.value.aiEventId ?? undefined"
+      :focus-event-title="ui.drawer.value.aiEventTitle ?? undefined"
+      :focus-source-message="ui.drawer.value.aiSourceMessage ?? undefined"
       @done="onAiDone"
       @manual="mode = 'manual'"
     />
@@ -516,6 +524,12 @@ const canSubmit = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+/* Smart import fills the drawer so its composer stays pinned to the bottom
+   even when the conversation is short. Manual forms keep their natural height. */
+.quick-add-form--ai {
+  height: 100%;
 }
 
 .field-row {

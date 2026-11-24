@@ -90,7 +90,7 @@ describe("EventDetailPanel — edit-mode fields & validation", () => {
       expect(w.text()).toContain("Unassigned")
 
       // .ics export button
-      await btn(w, ".ics").trigger("click")
+      await w.find('[aria-label="Download .ics"]').trigger("click")
       expect(anchorClick).toHaveBeenCalled()
 
       // Enter edit mode → startEdit's "forever" fallback (no until / no count)

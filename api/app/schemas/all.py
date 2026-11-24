@@ -113,6 +113,7 @@ class EventCreate(BaseModel):
     title: str = Field(max_length=NAME_MAX)
     description: str = Field("", max_length=DESCRIPTION_MAX)
     source_message: Optional[str] = Field(None, max_length=DESCRIPTION_MAX)
+    ai_conversation_id: Optional[UUID] = None
     start_at: datetime
     end_at: Optional[datetime] = None
     all_day: bool = False
@@ -125,6 +126,7 @@ class EventUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=NAME_MAX)
     description: Optional[str] = Field(None, max_length=DESCRIPTION_MAX)
     source_message: Optional[str] = Field(None, max_length=DESCRIPTION_MAX)
+    ai_conversation_id: Optional[UUID] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     all_day: Optional[bool] = None
@@ -139,6 +141,7 @@ class EventResponse(BaseModel):
     title: str
     description: str = ""
     source_message: Optional[str] = None
+    ai_conversation_id: Optional[UUID] = None
     start_at: datetime
     end_at: Optional[datetime] = None
     all_day: bool = False
@@ -345,6 +348,13 @@ class AiClarification(BaseModel):
     answer: str = Field(max_length=2000)
 
 
+class AiChatMessage(BaseModel):
+    """One earlier chat turn sent back so the model can refine its drafts."""
+
+    role: Literal["user", "assistant"]
+    text: str = Field(max_length=20_000)
+
+
 class AiParseRequest(BaseModel):
     text: str = Field("", max_length=100_000)
     # A data URL. The router re-encodes the image before it is forwarded.
@@ -353,6 +363,11 @@ class AiParseRequest(BaseModel):
     # Answers to the questions the harness asked last time. The model applies
     # them and re-emits the complete event list.
     clarifications: list[AiClarification] = Field(default_factory=list, max_length=12)
+    # Earlier turns, oldest first. Follow-up messages ("make it 3pm") are
+    # resolved against these instead of starting from scratch.
+    history: list[AiChatMessage] = Field(default_factory=list, max_length=24)
+    # When set, this is an edit of an existing event rather than a new import.
+    focus_event_id: Optional[UUID] = None
 
 
 class AiEventDraft(BaseModel):
@@ -371,7 +386,7 @@ class AiQuestion(BaseModel):
     """A question the model wants answered before the import can finish."""
 
     id: str
-    kind: Literal["clarification", "assignee", "conflict"] = "clarification"
+    kind: Literal["clarification", "assignee", "conflict", "datetime"] = "clarification"
     question: str
     options: list[str] = []
     about: Optional[str] = None
@@ -389,6 +404,8 @@ class AiConflict(BaseModel):
     existing_start_at: datetime
     existing_end_at: Optional[datetime] = None
     existing_kind: Literal["existing", "draft"] = "existing"
+    existing_event_id: Optional[UUID] = None
+    existing_recurring: bool = False
     assignee_id: Optional[UUID] = None
     message: str
 
@@ -397,6 +414,9 @@ class AiParseResponse(BaseModel):
     events: list[AiEventDraft]
     skipped: int = 0
     model: str
+    # A short, model-authored sentence confirming what it found or asking for
+    # the one detail it still needs. The UI shows this as the chat response.
+    reply: str = ""
     # Raw assistant output (the JSON answer) and any reasoning the model
     # streamed alongside it. Shown in a collapsed panel for transparency.
     response: str = ""
@@ -406,3 +426,30 @@ class AiParseResponse(BaseModel):
     questions: list[AiQuestion] = []
     conflicts: list[AiConflict] = []
     needs_input: bool = False
+
+
+class AiConversationTurn(BaseModel):
+    """One saved chat turn, retained verbatim for reopening the conversation."""
+
+    role: Literal["user", "assistant"]
+    text: str = Field("", max_length=20_000)
+    image_name: Optional[str] = Field(None, max_length=255)
+    raw_response: Optional[str] = Field(None, max_length=20_000)
+    reply: Optional[str] = Field(None, max_length=600)
+    drafts: list[dict] = Field(default_factory=list, max_length=60)
+    added: list[dict] = Field(default_factory=list, max_length=60)
+    questions: list[dict] = Field(default_factory=list, max_length=6)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+    applied: bool = False
+    outcome: Optional[Literal["success", "partial", "failed"]] = None
+
+
+class AiConversationWrite(BaseModel):
+    title: str = Field("", max_length=255)
+    turns: list[AiConversationTurn] = Field(default_factory=list, max_length=40)
+
+
+class AiConversationResponse(AiConversationWrite):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime

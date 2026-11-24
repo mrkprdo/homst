@@ -155,6 +155,7 @@ def test_normalize_questions_caps_dedupes_and_skips_answered():
     assert questions[0]["options"] == ["Alice", "A" * ai.MAX_OPTION_CHARS]
     assert questions[0]["about"] == "Party"
     assert questions[1]["question"] == "When is it?"
+    assert questions[1]["kind"] == "datetime"
     assert questions[1]["options"] == []
     assert questions[2]["kind"] == "assignee"
     assert questions[2]["question"] == "Who is it for?"
@@ -165,6 +166,19 @@ def test_normalize_questions_caps_dedupes_and_skips_answered():
         MEMBERS,
     )
     assert many[0]["options"] == [f"option {n}" for n in range(ai.MAX_QUESTION_OPTIONS)]
+
+    datetime_question = ai._normalize_questions(
+        [
+            {
+                "question": "What date and time is the dog's neuter appointment?",
+                "kind": "datetime",
+                "options": ["Tomorrow morning", "This week"],
+            }
+        ],
+        MEMBERS,
+    )
+    assert datetime_question[0]["kind"] == "datetime"
+    assert datetime_question[0]["options"] == []
 
     assert ai._normalize_questions("nope", MEMBERS) == []
 
@@ -276,6 +290,7 @@ def test_validate_payload_ex_collects_questions_warnings_and_conflicts():
 def test_conflict_detection_respects_owners_and_drafts():
     busy = [
         {
+            "id": "ev-dentist",
             "title": "Dentist",
             "start_at": "2027-01-05T09:30:00Z",
             "end_at": "2027-01-05T10:30:00Z",
@@ -315,6 +330,7 @@ def test_conflict_detection_respects_owners_and_drafts():
     assert len(conflicts) == 3
     assert conflicts[0]["draft_index"] == 0
     assert conflicts[0]["existing_title"] == "Dentist"
+    assert conflicts[0]["existing_event_id"] == "ev-dentist"
     assert conflicts[1]["draft_index"] == 1
     assert conflicts[1]["existing_title"] == "Bob's shift"
     assert conflicts[2]["draft_index"] == 2
@@ -614,6 +630,62 @@ def test_stream_schedule_sends_clarifications_and_returns_questions(monkeypatch)
     assert "Q: Which day?" in captured["json"]["messages"][1]["content"]
 
 
+def test_history_is_forwarded_and_reply_is_cleaned(monkeypatch):
+    content = json.dumps(
+        {
+            "reply": "  I found   two events.\nCheck the times. ",
+            "events": [
+                {"title": "Practice", "start_at": "2027-01-05T09:00:00Z"},
+                {"title": "Dinner", "start_at": "2027-01-05T19:00:00Z"},
+            ],
+        }
+    )
+    captured = fake_client(monkeypatch, response=completion(content))
+    result = asyncio.run(
+        ai.parse_schedule(
+            CONFIG,
+            text="Make it 3pm instead",
+            image=None,
+            tz=TZ,
+            tz_label="UTC",
+            members=MEMBERS,
+            history=[
+                {"role": "user", "text": "Practice at 9"},
+                {"role": "assistant", "text": '{"events":[{"title":"Practice"}]}'},
+            ],
+        )
+    )
+    messages = captured["json"]["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[1] == {"role": "user", "content": "Practice at 9"}
+    assert messages[2]["role"] == "assistant"
+    assert '"title":"Practice"' in messages[2]["content"]
+    assert messages[3]["role"] == "user"
+    assert "Make it 3pm instead" in messages[3]["content"]
+    assert result["reply"] == "I found two events. Check the times."
+    assert len(result["events"]) == 2
+
+
+def test_history_is_capped_and_ignores_bad_turns():
+    history = [
+        {"role": "system", "text": "ignore"},
+        {"role": "user", "text": "   "},
+        {"role": "user", "text": 5},
+        *[
+            {"role": "user", "text": f"turn {index}"}
+            for index in range(ai.MAX_HISTORY_MESSAGES + 10)
+        ],
+    ]
+    messages = ai._history_messages(history)
+    assert len(messages) == ai.MAX_HISTORY_MESSAGES
+    assert messages[0]["content"] == "turn 10"
+    assert messages[-1]["content"] == "turn 29"
+    assert "ignore" not in [message["content"] for message in messages]
+
+    long_turn = ai._history_messages([{"role": "user", "text": "x" * 50_000}])
+    assert len(long_turn[0]["content"]) == ai.MAX_HISTORY_CHARS
+
+
 async def _collect(events):
     return [event async for event in events]
 
@@ -737,6 +809,7 @@ async def test_parse_endpoint_returns_conflicts_and_assignee_questions(
     assert len(body["conflicts"]) == 1
     assert body["conflicts"][0]["existing_title"] == "Dentist"
     assert body["conflicts"][0]["existing_kind"] == "existing"
+    assert body["conflicts"][0]["existing_event_id"] == existing["id"]
     assert body["events"][0]["assignee_id"] == member["id"]
     system = captured["json"]["messages"][0]["content"]
     user = captured["json"]["messages"][1]["content"]
@@ -785,3 +858,138 @@ async def test_parse_endpoint_expands_recurring_busy_events(client, monkeypatch)
     assert response.status_code == 200
     assert response.json()["conflicts"][0]["existing_title"] == "Weekly swim"
     assert response.json()["needs_input"] is True
+
+@pytest.mark.asyncio
+async def test_conversation_endpoints_round_trip(client):
+    payload = {
+        "title": "Dentist Friday at 3",
+        "turns": [
+            {"role": "user", "text": "Dentist Friday at 3"},
+            {
+                "role": "assistant",
+                "text": "",
+                "reply": "The dentist is booked.",
+                "applied": True,
+                "outcome": "success",
+            },
+        ],
+    }
+    created = await client.post("/api/v1/ai/conversations", json=payload)
+    assert created.status_code == 201
+    body = created.json()
+    conversation_id = body["id"]
+    assert body["title"] == "Dentist Friday at 3"
+    assert body["turns"][0]["text"] == "Dentist Friday at 3"
+    assert body["turns"][1]["reply"] == "The dentist is booked."
+
+    loaded = await client.get(f"/api/v1/ai/conversations/{conversation_id}")
+    assert loaded.status_code == 200
+    assert loaded.json()["turns"][1]["applied"] is True
+
+    updated = await client.patch(
+        f"/api/v1/ai/conversations/{conversation_id}",
+        json={**payload, "title": "Updated dentist"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "Updated dentist"
+
+    missing = await client.get(
+        "/api/v1/ai/conversations/00000000-0000-0000-0000-000000000123"
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_event_can_link_to_a_conversation(client):
+    calendar = (
+        await client.post(
+            "/api/v1/calendars", json={"name": "Home", "color": "sage"}
+        )
+    ).json()
+    conversation = (
+        await client.post(
+            "/api/v1/ai/conversations",
+            json={
+                "title": "Dentist",
+                "turns": [{"role": "user", "text": "Dentist Friday"}],
+            },
+        )
+    ).json()
+    event = await client.post(
+        "/api/v1/events",
+        json={
+            "calendar_id": calendar["id"],
+            "title": "Dentist",
+            "start_at": "2027-01-05T09:00:00Z",
+            "end_at": "2027-01-05T10:00:00Z",
+            "ai_conversation_id": conversation["id"],
+        },
+    )
+    assert event.status_code == 201
+    assert event.json()["ai_conversation_id"] == conversation["id"]
+
+    listing = await client.get("/api/v1/events")
+    assert listing.json()[0]["ai_conversation_id"] == conversation["id"]
+
+    missing = await client.post(
+        "/api/v1/events",
+        json={
+            "calendar_id": calendar["id"],
+            "title": "No thread",
+            "start_at": "2027-01-05T09:00:00Z",
+            "ai_conversation_id": "00000000-0000-0000-0000-000000000123",
+        },
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_parse_edits_the_focused_event(client, monkeypatch):
+    monkeypatch.setattr(settings, "opencode_api_key", "")
+    await configure(client)
+    calendar = (
+        await client.post(
+            "/api/v1/calendars", json={"name": "Home", "color": "sage"}
+        )
+    ).json()
+    event = (
+        await client.post(
+            "/api/v1/events",
+            json={
+                "calendar_id": calendar["id"],
+                "title": "Dentist",
+                "description": "Bring the card",
+                "start_at": "2027-01-05T09:00:00Z",
+                "end_at": "2027-01-05T10:00:00Z",
+            },
+        )
+    ).json()
+    content = json.dumps(
+        {
+            "events": [
+                {
+                    "title": "Dentist",
+                    "start_at": "2027-01-05T09:00:00Z",
+                    "end_at": "2027-01-05T10:00:00Z",
+                }
+            ]
+        }
+    )
+    captured = fake_client(monkeypatch, response=completion(content))
+    response = await client.post(
+        "/api/v1/ai/parse",
+        json={
+            "text": "Change the description only",
+            "focus_event_id": event["id"],
+        },
+    )
+    assert response.status_code == 200
+    system = captured["json"]["messages"][0]["content"]
+    user = captured["json"]["messages"][1]["content"]
+    assert "edit of an existing event" in system
+    assert "Event being updated" in user
+    assert "Dentist" in user
+    assert "Return exactly one event" in user
+    # The event being edited is not treated as a conflict with itself.
+    assert response.json()["conflicts"] == []
+    assert response.json()["events"][0]["title"] == "Dentist"
