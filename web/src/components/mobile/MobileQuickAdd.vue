@@ -10,6 +10,13 @@ import { PhCheck, PhX, PhCalendarBlank, PhSparkle } from "@phosphor-icons/vue"
 import { REMINDER_OPTIONS, reminderMinutesFromValue } from "@/utils/reminders"
 import AiImportPanel from "@/components/shared/AiImportPanel.vue"
 
+const props = defineProps<{
+  conversationId?: string
+  focusEventId?: string
+  focusEventTitle?: string
+  focusSourceMessage?: string
+}>()
+
 const emit = defineEmits<{ close: [] }>()
 
 const { ensureDefaultCalendar, upsertEvent } = useEvents()
@@ -23,6 +30,12 @@ function defaultReminderValue(): string {
 }
 
 const tab = ref<"event" | "task" | "ai">("ai")
+const focusedChat = computed(() => !!props.focusEventId)
+watch(
+  () => props.focusEventId,
+  (value) => { if (value) tab.value = "ai" },
+  { immediate: true },
+)
 
 onMounted(async () => {
   await Promise.all([loadMembers(), ensureTasksLoaded()])
@@ -255,6 +268,10 @@ function handleSubmit() {
 }
 
 function onAiDone(count: number) {
+  if (props.focusEventId) {
+    showToast("Event updated")
+    return
+  }
   showToast(count === 0 ? "Done" : count === 1 ? "Event added" : `${count} events added`)
 }
 
@@ -275,30 +292,33 @@ const priorities = [
     <div class="mqa-sheet" role="dialog" aria-modal="true" aria-label="Add with Smart, an event or a task" @click.stop>
       <div class="mqa-handle" />
       <div class="mqa-header" role="group" aria-label="Add type">
-        <button
-          class="mqa-tab"
-          type="button"
-          :class="{ active: tab === 'ai' }"
-          :aria-pressed="tab === 'ai'"
-          @click="tab = 'ai'"
-        >
-          <PhSparkle :size="14" weight="fill" aria-hidden="true" />
-          Smart
-        </button>
-        <button
-          class="mqa-tab"
-          type="button"
-          :class="{ active: tab === 'event' }"
-          :aria-pressed="tab === 'event'"
-          @click="tab = 'event'"
-        >Event</button>
-        <button
-          class="mqa-tab"
-          type="button"
-          :class="{ active: tab === 'task' }"
-          :aria-pressed="tab === 'task'"
-          @click="tab = 'task'"
-        >Task</button>
+        <template v-if="!focusedChat">
+          <button
+            class="mqa-tab"
+            type="button"
+            :class="{ active: tab === 'ai' }"
+            :aria-pressed="tab === 'ai'"
+            @click="tab = 'ai'"
+          >
+            <PhSparkle :size="14" weight="fill" aria-hidden="true" />
+            Smart
+          </button>
+          <button
+            class="mqa-tab"
+            type="button"
+            :class="{ active: tab === 'event' }"
+            :aria-pressed="tab === 'event'"
+            @click="tab = 'event'"
+          >Event</button>
+          <button
+            class="mqa-tab"
+            type="button"
+            :class="{ active: tab === 'task' }"
+            :aria-pressed="tab === 'task'"
+            @click="tab = 'task'"
+          >Task</button>
+        </template>
+        <span v-else class="mqa-title">Smart import</span>
         <button class="mqa-close" type="button" @click="emit('close')" aria-label="Close"><PhX :size="20" /></button>
       </div>
 
@@ -445,7 +465,15 @@ const priorities = [
         </template>
         <!-- Smart import -->
         <template v-if="tab === 'ai'">
-          <AiImportPanel :member-names="memberNameMap" @done="onAiDone" @manual="tab = 'event'" />
+          <AiImportPanel
+            :member-names="memberNameMap"
+            :conversation-id="conversationId"
+            :focus-event-id="focusEventId"
+            :focus-event-title="focusEventTitle"
+            :focus-source-message="focusSourceMessage"
+            @done="onAiDone"
+            @manual="tab = 'event'"
+          />
         </template>
       </div>
 
@@ -532,6 +560,14 @@ const priorities = [
 }
 
 .mqa-tab.active { color: var(--color-accent-darker); background: var(--color-accent-lighter); }
+
+.mqa-title {
+  flex: 1;
+  padding-left: var(--space-2);
+  color: var(--color-textPrimary);
+  font-size: var(--text-body-size);
+  font-weight: var(--font-weight-medium);
+}
 
 .mqa-close {
   display: flex;

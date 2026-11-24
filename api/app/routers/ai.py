@@ -1,4 +1,4 @@
-"""Smart import: turn pasted emails or screenshots into event drafts."""
+"""HOMST's Smart Event Assistant: turn messages or screenshots into event drafts."""
 
 import json
 from datetime import datetime, timedelta, timezone

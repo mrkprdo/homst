@@ -41,6 +41,26 @@ const showEventDetail = ref(false)
 const showTaskDetail = ref(false)
 const showInstallBanner = ref(true)
 
+interface AiResumeState {
+  conversationId?: string
+  eventId: string
+  title?: string
+  sourceMessage?: string
+}
+
+const aiResume = ref<AiResumeState | null>(null)
+
+function openQuickAdd() {
+  aiResume.value = null
+  showQuickAdd.value = true
+}
+
+function closeQuickAdd() {
+  showQuickAdd.value = false
+  aiResume.value = null
+  ui.closeDrawer()
+}
+
 const isStandalone =
   window.matchMedia("(display-mode: standalone)").matches ||
   (window.navigator as { standalone?: boolean }).standalone === true
@@ -105,8 +125,24 @@ function closeTaskDetail() {
 watch(
   () => ui.drawer.value.type,
   (type) => {
-    if (type === "event-detail") showEventDetail.value = true
-    else if (type === "task-detail") showTaskDetail.value = true
+    if (type === "event-detail") {
+      showEventDetail.value = true
+    } else if (type === "task-detail") {
+      showTaskDetail.value = true
+    } else if (type === "quick-add" && ui.drawer.value.aiEventId) {
+      // Event detail's "Update with chat" opens in the desktop drawer. The
+      // mobile shell has its own detail sheets, so translate that request into
+      // its Smart quick-add sheet instead.
+      aiResume.value = {
+        conversationId: ui.drawer.value.aiConversationId ?? undefined,
+        eventId: ui.drawer.value.aiEventId,
+        title: ui.drawer.value.aiEventTitle ?? undefined,
+        sourceMessage: ui.drawer.value.aiSourceMessage ?? undefined,
+      }
+      showEventDetail.value = false
+      showTaskDetail.value = false
+      showQuickAdd.value = true
+    }
   },
   { immediate: true },
 )
@@ -204,7 +240,7 @@ watch(
         class="ms-fab"
         type="button"
         aria-label="Add an event, a task or use Smart import"
-        @click="showQuickAdd = true"
+        @click="openQuickAdd"
       >
         <PhPlus :size="26" weight="bold" />
       </button>
@@ -221,7 +257,14 @@ watch(
       </button>
     </nav>
 
-    <MobileQuickAdd v-if="showQuickAdd" @close="showQuickAdd = false" />
+    <MobileQuickAdd
+      v-if="showQuickAdd"
+      :conversation-id="aiResume?.conversationId"
+      :focus-event-id="aiResume?.eventId"
+      :focus-event-title="aiResume?.title"
+      :focus-source-message="aiResume?.sourceMessage"
+      @close="closeQuickAdd"
+    />
     <MobileProfile v-if="showProfile" @close="showProfile = false" />
     <MobileAnnouncements
       v-if="showAnnouncements"

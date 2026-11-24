@@ -1225,10 +1225,12 @@ function outcomeMessage(turn: Turn): string {
         </div>
 
         <div v-else-if="!hasConversation && focusEventId" class="ai-welcome">
-          <span class="ai-welcome-mark" aria-hidden="true">
-            <PhPencilSimple :size="22" weight="fill" />
-          </span>
-          <h4 class="ai-welcome-title">No chat history for this event</h4>
+          <div class="ai-welcome-head">
+            <span class="ai-welcome-mark" aria-hidden="true">
+              <PhPencilSimple :size="22" weight="fill" />
+            </span>
+            <h4 class="ai-welcome-title">No chat history for this event</h4>
+          </div>
           <p class="ai-welcome-copy">
             You can still tell me what to change. The event's current details
             are loaded, and I'll update them when you save.
@@ -1236,10 +1238,12 @@ function outcomeMessage(turn: Turn): string {
         </div>
 
         <div v-else-if="!hasConversation" class="ai-welcome">
-          <span class="ai-welcome-mark" aria-hidden="true">
-            <PhSparkle :size="24" weight="fill" />
-          </span>
-          <h4 class="ai-welcome-title">What's on the schedule?</h4>
+          <div class="ai-welcome-head">
+            <span class="ai-welcome-mark" aria-hidden="true">
+              <PhSparkle :size="24" weight="fill" />
+            </span>
+            <h4 class="ai-welcome-title">What's on the schedule?</h4>
+          </div>
           <p class="ai-welcome-copy">
             Tell me in your own words, or add a photo of a school letter,
             invitation or calendar. I'll turn it into events you can check.
@@ -2009,7 +2013,16 @@ function outcomeMessage(turn: Turn): string {
   to { opacity: 1; transform: translateY(0); }
 }
 
+.ai-welcome-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+}
+
 .ai-welcome-mark {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2022,6 +2035,8 @@ function outcomeMessage(turn: Turn): string {
 }
 
 .ai-welcome-title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   color: var(--color-textPrimary);
   font-size: var(--text-title-size);

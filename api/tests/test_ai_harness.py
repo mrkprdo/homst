@@ -1,4 +1,4 @@
-"""Control-flow tests for the Smart import harness.
+"""Control-flow tests for HOMST's Smart Event Assistant.
 
 Covers clarification rounds, member resolution, question normalisation and
 deterministic schedule-conflict detection. The outbound model call is faked;
@@ -41,6 +41,19 @@ def draft(
         "all_day": all_day,
         "assignee_id": assignee_id,
     }
+
+
+# ── Persona ────────────────────────────────────────────────────────────────
+
+
+def test_system_prompt_identifies_as_smart_event_assistant():
+    prompt = ai._system_prompt(
+        datetime(2027, 1, 5, 9, tzinfo=TZ), "UTC", ["Alice Smith"], has_image=False
+    )
+    assert prompt.startswith("I'm HOMST's Smart Event Assistant.")
+    assert prompt.count("I'm HOMST's Smart Event Assistant.") >= 2
+    assert "Do not repeat the introduction" in prompt
+    assert "__TZ__" not in prompt
 
 
 # ── Members ────────────────────────────────────────────────────────────────

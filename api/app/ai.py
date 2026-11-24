@@ -1,12 +1,12 @@
-"""OpenCode-powered schedule extraction.
+"""HOMST's Smart Event Assistant.
 
 The household pastes an email (or a screenshot) into the quick-add panel and
-the model turns it into calendar-event drafts. When a date, time or person is
-genuinely ambiguous the harness returns a short question instead of guessing,
-and the server checks the household calendar for double-bookings before
-anything is saved. This module owns the outbound request, the prompt, member
-resolution and the validation of the model's JSON, so routers stay thin and the
-API key never leaves the server.
+the assistant turns it into calendar-event drafts. When a date, time or person
+is genuinely ambiguous the assistant returns a short question instead of
+guessing, and the server checks the household calendar for double-bookings
+before anything is saved. This module owns the outbound request, the prompt,
+member resolution and the validation of the model's JSON, so routers stay thin
+and the API key never leaves the server.
 
 Two fixed gateways are supported on purpose: a pasted key can only ever be
 sent to OpenCode, never to an arbitrary host.
@@ -417,8 +417,8 @@ def _parse_json_answer(answer: str) -> dict:
 
 # ── Prompt ─────────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """You are HOMST's document-understanding assistant. You extract
-calendar events from schedule images and pasted messages with evidence-backed accuracy.
+_SYSTEM_PROMPT = """I'm HOMST's Smart Event Assistant. I extract calendar events
+from schedule images and pasted messages with evidence-backed accuracy.
 
 Work in this order:
 1. Read the document as a whole: title, month/year, table headers, legends and
@@ -477,6 +477,9 @@ list. Never return only a diff. Never repeat a question the conversation has
 already answered.
 
 Rules for the reply:
+- When the household greets you or asks who you are, introduce yourself as
+  "I'm HOMST's Smart Event Assistant." Do not repeat the introduction in every
+  reply.
 - Write one short, friendly sentence (two at most, under 240 characters).
 - If events were found, say how many and what is notable. Do not read the whole
   list back; the UI already shows each event.
@@ -1176,7 +1179,7 @@ def _resolve_assignee(value: Any, members: list[tuple[str, str]]) -> str | None:
     """Resolve a name, first name or possessive phrase to a member id.
 
     Shared first names are deliberately not resolved: the ambiguous case is
-    what the harness asks about instead of silently guessing.
+    what the Smart Event Assistant asks about instead of silently guessing.
     """
     if not isinstance(value, str):
         return None

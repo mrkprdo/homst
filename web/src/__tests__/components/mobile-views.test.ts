@@ -94,6 +94,39 @@ describe("MobileShell", () => {
     expect(useUi().announcementsOpen.value).toBe(false)
   })
 
+  it("translates Update with chat into the mobile Smart sheet", async () => {
+    const ev = useEvents()
+    ev.upsertEvent({
+      id: "e-chat", calendarId: "c1", title: "Dentist", description: "",
+      sourceMessage: "Dentist Friday at 3", aiConversationId: "conv-1",
+      startAt: new Date().toISOString(), endAt: null, allDay: false,
+      recurrence: null, source: "internal", externalUid: null,
+      createdBy: null, createdAt: "", updatedAt: "",
+    })
+
+    const w = mount(MobileShell, {
+      global: { stubs: { AiImportPanel: true } },
+    })
+    await flushPromises()
+
+    await w.find(".mc-event").trigger("click")
+    await nextTick()
+    expect(w.find(".ms-detail-overlay").exists()).toBe(true)
+
+    const chat = w.findAll("button").find(item => item.text().includes("Update with chat"))
+    expect(chat).toBeTruthy()
+    await chat!.trigger("click")
+    await nextTick()
+
+    expect(w.find(".ms-detail-overlay").exists()).toBe(false)
+    const quickAdd = w.findComponent(MobileQuickAdd)
+    expect(quickAdd.exists()).toBe(true)
+    expect(quickAdd.props("conversationId")).toBe("conv-1")
+    expect(quickAdd.props("focusEventId")).toBe("e-chat")
+    expect(quickAdd.props("focusEventTitle")).toBe("Dentist")
+    expect(quickAdd.props("focusSourceMessage")).toBe("Dentist Friday at 3")
+  })
+
   it("opens notification intents from shared UI state", async () => {
     const ui = useUi()
     const w = mount(MobileShell)
