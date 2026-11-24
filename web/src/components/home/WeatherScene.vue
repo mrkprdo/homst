@@ -166,7 +166,11 @@ function hailStyle(n: number) {
    --wx-u is 1% of the card's smaller side. Every sized element AND its offset
    is expressed in it, so the whole scene scales as one proportional picture
    at any grid size. Mixing %-of-card offsets with px-capped sizes used to push
-   the sun/clouds past the card edge once a card grew past the caps. */
+   the sun/clouds past the card edge once a card grew past the caps.
+
+   In portrait tiles the picture is centred in the extra height (see the
+   orientation query at the end) so a tall card doesn't leave a cloudy scene
+   stranded at the top with an empty lower half. */
 .weather-scene {
   --wx-u: min(1cqh, 1cqw);
   --wx-cloud: color-mix(in srgb, var(--color-info) 44%, var(--color-bgSurface));
@@ -641,6 +645,59 @@ function hailStyle(n: number) {
   height: auto;
   opacity: 0;
   animation: wx-bolt 8s steps(1, end) infinite;
+}
+
+/* ── Portrait tiles ─────────────────────────────────────────────────────────
+   The picture is authored for the card's smaller side. When the tile is taller
+   than it is wide, anchor the artwork to the vertical centre instead of the top
+   edge so the sky stays composed instead of pooling above empty space. The
+   offsets include each cloud's overhang, keeping the painted mass centred even
+   though the tops sit above it. */
+@container w (orientation: portrait) {
+  .wx-celestial {
+    top: calc(50% - var(--wx-u) * 74);
+  }
+
+  /* Clear skies have no cloud deck to anchor the picture, so the sun itself
+     moves into the centred band and its warmth follows it. */
+  .is-clear .wx-celestial {
+    top: calc(50% - var(--wx-u) * 50);
+  }
+
+  .is-clear .wx-wash {
+    background:
+      radial-gradient(120% 110% at 88% calc(50% - var(--wx-u) * 40), color-mix(in srgb, var(--color-warning) 30%, transparent), transparent 58%),
+      linear-gradient(180deg, color-mix(in srgb, var(--color-sky-light) 24%, transparent), transparent 68%);
+  }
+
+  .wx-cloud--a {
+    top: calc(50% - var(--wx-u) * 40);
+  }
+
+  .wx-cloud--b {
+    top: calc(50% - var(--wx-u) * 2);
+  }
+
+  .wx-cloud--c {
+    top: calc(50% + var(--wx-u) * 38);
+  }
+
+  .wx-fog span:nth-child(1) {
+    top: calc(50% - var(--wx-u) * 42);
+  }
+
+  .wx-fog span:nth-child(2) {
+    top: calc(50% - var(--wx-u) * 8);
+  }
+
+  .wx-fog span:nth-child(3) {
+    top: calc(50% + var(--wx-u) * 26);
+  }
+
+  .wx-bolt {
+    top: min(calc(50% + var(--wx-u) * 60), calc(100% - var(--wx-u) * 22));
+    bottom: auto;
+  }
 }
 
 /* ── Motion ───────────────────────────────────────────────────────────────── */

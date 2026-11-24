@@ -65,6 +65,46 @@ test.describe("Home dashboard", () => {
     expect(style.margin).toBeGreaterThanOrEqual(3)
   })
 
+  test("tall weather cards centre the scene instead of anchoring it to the top", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.route("https://geocoding-api.open-meteo.com/**", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) }),
+    )
+    await page.route("https://api.open-meteo.com/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          current: { temperature_2m: 21.4, apparent_temperature: 20.1, weather_code: 3, is_day: 1, relative_humidity_2m: 55, wind_speed_10m: 12.3 },
+          daily: { temperature_2m_max: [25.2], temperature_2m_min: [14.8], weather_code: [3] },
+        }),
+      }),
+    )
+
+    await page.evaluate(() => {
+      localStorage.setItem("homst-widget-layout", JSON.stringify([
+        { id: "weather", col: 0, row: 0, w: 1, h: 4 },
+        { id: "datetime", col: 1, row: 0, w: 1, h: 1 },
+      ]))
+      localStorage.setItem("homst:weather-coords", JSON.stringify({ lat: 43.65, lon: -79.38 }))
+    })
+    await page.reload()
+
+    const weather = page.locator(".widget").filter({ hasText: "Weather" }).first()
+    await expect(weather.locator(".weather-temp")).toBeVisible()
+
+    // The cloud art is painted above the raw box (::before), so compare the
+    // base offset to the card height: 13% of the box used to mean a top band;
+    // once the tile is taller than wide the scene is centred and the first
+    // cloud starts well into the card.
+    const cloudOffset = await weather.evaluate((el) => {
+      const card = el.getBoundingClientRect()
+      const cloud = el.querySelector(".wx-cloud--a")!.getBoundingClientRect()
+      return (cloud.top - card.top) / card.height
+    })
+    expect(cloudOffset).toBeGreaterThan(0.25)
+  })
+
   test("widgets without data show their empty states", async ({ page }) => {
     await expect(page.locator(".widget").filter({ hasText: "Today's Schedule" })).toContainText("No events today")
     await expect(page.locator(".widget").filter({ hasText: "To Do" })).toContainText("All clear")
