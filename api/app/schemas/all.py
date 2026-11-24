@@ -338,11 +338,21 @@ class AiTestResponse(AiStatusResponse):
     message: str
 
 
+class AiClarification(BaseModel):
+    """One answered question from the previous Smart import round."""
+
+    question: str = Field(max_length=300)
+    answer: str = Field(max_length=2000)
+
+
 class AiParseRequest(BaseModel):
     text: str = Field("", max_length=100_000)
     # A data URL. The router re-encodes the image before it is forwarded.
     image: Optional[str] = Field(None, max_length=16_000_000)
     timezone: Optional[str] = Field(None, max_length=64)
+    # Answers to the questions the harness asked last time. The model applies
+    # them and re-emits the complete event list.
+    clarifications: list[AiClarification] = Field(default_factory=list, max_length=12)
 
 
 class AiEventDraft(BaseModel):
@@ -357,6 +367,32 @@ class AiEventDraft(BaseModel):
     confidence: float = 0.0
 
 
+class AiQuestion(BaseModel):
+    """A question the model wants answered before the import can finish."""
+
+    id: str
+    kind: Literal["clarification", "assignee", "conflict"] = "clarification"
+    question: str
+    options: list[str] = []
+    about: Optional[str] = None
+
+
+class AiConflict(BaseModel):
+    """A concrete double-booking the server found in the household calendar."""
+
+    id: str
+    draft_index: int
+    title: str
+    start_at: datetime
+    end_at: Optional[datetime] = None
+    existing_title: str
+    existing_start_at: datetime
+    existing_end_at: Optional[datetime] = None
+    existing_kind: Literal["existing", "draft"] = "existing"
+    assignee_id: Optional[UUID] = None
+    message: str
+
+
 class AiParseResponse(BaseModel):
     events: list[AiEventDraft]
     skipped: int = 0
@@ -366,3 +402,7 @@ class AiParseResponse(BaseModel):
     response: str = ""
     reasoning: Optional[str] = None
     warnings: list[str] = []
+    # Questions the harness needs answered before the import is final.
+    questions: list[AiQuestion] = []
+    conflicts: list[AiConflict] = []
+    needs_input: bool = False

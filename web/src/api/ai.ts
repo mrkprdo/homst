@@ -27,6 +27,35 @@ export interface AiDraft {
   confidence: number
 }
 
+export interface AiClarification {
+  question: string
+  answer: string
+}
+
+export type AiQuestionKind = "clarification" | "assignee" | "conflict"
+
+export interface AiQuestion {
+  id: string
+  kind: AiQuestionKind
+  question: string
+  options: string[]
+  about: string | null
+}
+
+export interface AiConflict {
+  id: string
+  draftIndex: number
+  title: string
+  startAt: string
+  endAt: string | null
+  existingTitle: string
+  existingStartAt: string
+  existingEndAt: string | null
+  existingKind: "existing" | "draft"
+  assigneeId: string | null
+  message: string
+}
+
 export interface AiParseResult {
   events: AiDraft[]
   skipped: number
@@ -34,6 +63,9 @@ export interface AiParseResult {
   response: string
   reasoning: string | null
   warnings: string[]
+  questions: AiQuestion[]
+  conflicts: AiConflict[]
+  needsInput: boolean
 }
 
 export interface AiStreamHandlers {
@@ -77,6 +109,28 @@ interface ApiDraft {
   confidence: number
 }
 
+interface ApiQuestion {
+  id?: string
+  kind?: string
+  question?: string
+  options?: string[]
+  about?: string | null
+}
+
+interface ApiConflict {
+  id?: string
+  draft_index?: number
+  title?: string
+  start_at?: string
+  end_at?: string | null
+  existing_title?: string
+  existing_start_at?: string
+  existing_end_at?: string | null
+  existing_kind?: string
+  assignee_id?: string | null
+  message?: string
+}
+
 interface ApiParseResult {
   events: ApiDraft[]
   skipped: number
@@ -84,6 +138,9 @@ interface ApiParseResult {
   response?: string
   reasoning?: string | null
   warnings?: string[]
+  questions?: ApiQuestion[]
+  conflicts?: ApiConflict[]
+  needs_input?: boolean
 }
 
 interface ApiTestResult extends ApiStatus {
@@ -127,6 +184,8 @@ function mapDraft(d: ApiDraft): AiDraft {
 }
 
 function mapParseResult(r: ApiParseResult): AiParseResult {
+  const questions = Array.isArray(r.questions) ? r.questions : []
+  const conflicts = Array.isArray(r.conflicts) ? r.conflicts : []
   return {
     events: (Array.isArray(r.events) ? r.events : []).map(mapDraft),
     skipped: r.skipped ?? 0,
@@ -136,6 +195,37 @@ function mapParseResult(r: ApiParseResult): AiParseResult {
     warnings: Array.isArray(r.warnings)
       ? r.warnings.filter((warning): warning is string => typeof warning === "string")
       : [],
+    questions: questions
+      .filter(q => typeof q.question === "string" && q.question.trim().length > 0)
+      .map((q, index) => {
+        const kind: AiQuestionKind =
+          q.kind === "assignee" || q.kind === "conflict" ? q.kind : "clarification"
+        return {
+          id: typeof q.id === "string" && q.id ? q.id : `q${index + 1}`,
+          kind,
+          question: q.question!,
+          options: Array.isArray(q.options)
+            ? q.options.filter((option): option is string => typeof option === "string")
+            : [],
+          about: typeof q.about === "string" ? q.about : null,
+        }
+      }),
+    conflicts: conflicts
+      .filter(c => typeof c.message === "string" && typeof c.draft_index === "number")
+      .map((c, index) => ({
+        id: typeof c.id === "string" && c.id ? c.id : `conflict-${index + 1}`,
+        draftIndex: c.draft_index!,
+        title: c.title ?? "",
+        startAt: c.start_at ?? "",
+        endAt: c.end_at ?? null,
+        existingTitle: c.existing_title ?? "",
+        existingStartAt: c.existing_start_at ?? "",
+        existingEndAt: c.existing_end_at ?? null,
+        existingKind: c.existing_kind === "draft" ? "draft" : "existing",
+        assigneeId: c.assignee_id ?? null,
+        message: c.message!,
+      })),
+    needsInput: r.needs_input === true,
   }
 }
 
@@ -154,7 +244,12 @@ function frameParts(frame: string): { event: string; data: string } {
  * the final validated result. Each SSE frame is handled as soon as it arrives.
  */
 export async function parseStream(
-  payload: { text: string; image?: string | null; timezone?: string | null },
+  payload: {
+    text: string
+    image?: string | null
+    timezone?: string | null
+    clarifications?: AiClarification[]
+  },
   handlers: AiStreamHandlers = {},
 ): Promise<AiParseResult> {
   let response: Response
@@ -170,6 +265,7 @@ export async function parseStream(
         text: payload.text,
         image: payload.image ?? null,
         timezone: payload.timezone ?? null,
+        clarifications: payload.clarifications ?? [],
       }),
     })
   } catch {
@@ -253,10 +349,16 @@ export const aiApi = {
       message: t.message,
     })),
 
-  parse: (payload: { text: string; image?: string | null; timezone?: string | null }) =>
+  parse: (payload: {
+    text: string
+    image?: string | null
+    timezone?: string | null
+    clarifications?: AiClarification[]
+  }) =>
     api.post<ApiParseResult>("/ai/parse", {
       text: payload.text,
       image: payload.image ?? null,
       timezone: payload.timezone ?? null,
+      clarifications: payload.clarifications ?? [],
     }).then(mapParseResult),
 }

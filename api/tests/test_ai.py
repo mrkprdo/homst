@@ -674,7 +674,7 @@ async def test_parse_image_only_is_forwarded(client, monkeypatch):
     )
     assert response.status_code == 200
     user = captured["json"]["messages"][1]["content"]
-    assert user[0]["text"] == "Extract the schedule from this image."
+    assert user[0]["text"].startswith("Extract the schedule from this image.")
     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 

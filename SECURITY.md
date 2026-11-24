@@ -64,6 +64,10 @@ Consequences that are accepted by design:
   `lrclib.net`, which receives the title, artist and duration of the track
   that is playing. Turn them off in **Settings > Music** to keep listening
   data on the device.
+- Smart import sends the pasted message or screenshot, the household member
+  names, and a short list of nearby calendar entries (title, time and assigned
+  member) to OpenCode when an AI key is configured. Removing the key in
+  **Settings > Smart import** turns the feature off.
 
 Out of scope for this model:
 

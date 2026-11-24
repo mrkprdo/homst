@@ -75,6 +75,9 @@ function streamed(
   skipped = 0,
   reasoning = "Reading the message",
   warnings: string[] = [],
+  questions: unknown[] = [],
+  conflicts: unknown[] = [],
+  needsInput = false,
 ) {
   const response = JSON.stringify({ events: drafts })
   const body = [
@@ -82,7 +85,7 @@ function streamed(
     `event: content\ndata: ${JSON.stringify({ type: "content", text: response })}\n\n`,
     `event: result\ndata: ${JSON.stringify({
       type: "result", events: drafts, skipped, model: "deepseek-v4.1-flash",
-      response, reasoning, warnings,
+      response, reasoning, warnings, questions, conflicts, needs_input: needsInput,
     })}\n\n`,
   ].join("")
   return new Response(body, {
@@ -203,7 +206,7 @@ describe("AiImportPanel", () => {
     expect(wrapper.text()).toContain("10 minutes before")
     expect(wrapper.text()).toContain("For Alice")
     expect(wrapper.text()).toContain("Zoom")
-    expect(wrapper.text()).toContain("Check the date")
+    expect(wrapper.text()).toContain("Check details")
     expect(wrapper.text()).toContain("All day")
 
     await wrapper.findAll(".ai-item-edit")[0]!.trigger("click")
@@ -662,5 +665,200 @@ describe("AiImportPanel", () => {
     expect(wrapper.find(".ai-item-when").text()).toContain("–")
     expect(wrapper.text()).toContain("All day")
     expect(wrapper.find(".ai-item-desc").text().endsWith("…")).toBe(true)
+  })
+
+  it("asks for confirmation and re-parses with the answers", async () => {
+    let parseCalls = 0
+    install(url => {
+      if (url.includes("/ai/parse/stream")) {
+        parseCalls += 1
+        if (parseCalls === 1) {
+          return streamed(DRAFTS, 0, "Reading", [], [
+            {
+              id: "q1",
+              kind: "assignee",
+              question: "Who is Team standup for?",
+              options: ["Alice", "Bob"],
+              about: "Team standup",
+            },
+          ], [], true)
+        }
+        return streamed(DRAFTS)
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel({ memberNames: { m1: "Alice", m2: "Bob" } })
+    await wrapper.find("#ai-context").setValue("Standup")
+    await findButton(wrapper, "Generate Event")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("One detail to confirm")
+    expect(wrapper.text()).toContain("Who is Team standup for?")
+    expect(wrapper.text()).toContain("Who it's for")
+    expect(findButton(wrapper, "Continue")!.attributes("disabled")).toBeDefined()
+
+    await wrapper.find(".ai-question input").setValue("Alice")
+    expect(findButton(wrapper, "Continue")!.attributes("disabled")).toBeUndefined()
+    await findButton(wrapper, "Alice")!.trigger("click")
+    expect(findButton(wrapper, "Continue")!.attributes("disabled")).toBeUndefined()
+    await findButton(wrapper, "Continue")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("2 events generated")
+    expect(wrapper.text()).not.toContain("One detail to confirm")
+    const calls = fetchMock.mock.calls.filter(call => String(call[0]).includes("/ai/parse"))
+    const body = JSON.parse((calls[1]![1] as RequestInit).body as string)
+    expect(body.clarifications).toEqual([
+      { question: "Who is Team standup for?", answer: "Alice" },
+    ])
+  })
+
+  it("lets the household skip questions or start over when nothing can be drafted", async () => {
+    install(url => {
+      if (url.includes("/ai/parse/stream")) {
+        return streamed(DRAFTS, 0, "Reading", [], [
+          { id: "q1", kind: "clarification", question: "Which week?", options: [] },
+        ], [], true)
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await wrapper.find("#ai-context").setValue("Standup")
+    await findButton(wrapper, "Generate Event")!.trigger("click")
+    await flushPromises()
+
+    await findButton(wrapper, "Review events anyway")!.trigger("click")
+    await flushPromises()
+    expect(wrapper.text()).toContain("2 events generated")
+    expect(wrapper.find(".ai-warnings").text()).toContain("Still unclear: Which week?")
+
+    install(url => {
+      if (url.includes("/ai/parse/stream")) {
+        return streamed([], 0, "Reading", [], [
+          { id: "q1", kind: "clarification", question: "Which week?" },
+        ], [], true)
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const empty = await mountPanel()
+    await empty.find("#ai-context").setValue("Something unclear")
+    await findButton(empty, "Generate Event")!.trigger("click")
+    await flushPromises()
+    expect(empty.text()).toContain("One detail to confirm")
+    await findButton(empty, "Start over")!.trigger("click")
+    expect((empty.find("#ai-context").element as HTMLTextAreaElement).value).toBe("")
+  })
+
+  it("stops asking after three rounds and keeps the open question as a warning", async () => {
+    install(url => {
+      if (url.includes("/ai/parse/stream")) {
+        return streamed(DRAFTS, 0, "Reading", [], [
+          { id: "q1", kind: "clarification", question: "Still unclear?", options: ["Yes"] },
+        ], [], true)
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await wrapper.find("#ai-context").setValue("Standup")
+    await findButton(wrapper, "Generate Event")!.trigger("click")
+    await flushPromises()
+
+    for (let round = 0; round < 3; round += 1) {
+      await findButton(wrapper, "Yes")!.trigger("click")
+      await findButton(wrapper, "Continue")!.trigger("click")
+      await flushPromises()
+    }
+    expect(wrapper.text()).toContain("2 events generated")
+    expect(wrapper.find(".ai-warnings").text()).toContain("Still needs an answer: Still unclear?")
+    const calls = fetchMock.mock.calls.filter(call => String(call[0]).includes("/ai/parse"))
+    expect(calls).toHaveLength(4)
+  })
+
+  it("prompts for schedule conflicts and lets the person decide", async () => {
+    const conflict = (index: number) => ({
+      id: `conflict-${index}`,
+      draft_index: index - 1,
+      title: DRAFTS[index - 1]!.title,
+      start_at: DRAFTS[index - 1]!.start_at,
+      existing_title: index === 1 ? "Dentist" : "School run",
+      existing_start_at: "2026-05-04T09:00:00-04:00",
+      existing_kind: "existing",
+      message: `${DRAFTS[index - 1]!.title} overlaps an existing event.`,
+    })
+    install(url => {
+      if (url.includes("/ai/parse/stream")) {
+        return streamed(DRAFTS, 0, "Reading", [], [], [conflict(1), conflict(2)])
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await wrapper.find("#ai-context").setValue("Standup")
+    await findButton(wrapper, "Generate Event")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Schedule conflicts")
+    expect(wrapper.findAll(".ai-conflict")).toHaveLength(2)
+    expect(wrapper.text()).toContain("Team standup overlaps an existing event.")
+    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeDefined()
+    expect(wrapper.text()).toContain("Resolve the conflicts above first.")
+
+    await (wrapper.vm as unknown as { applySelected: () => Promise<void> }).applySelected()
+    await flushPromises()
+    const blockedPosts = fetchMock.mock.calls.filter(
+      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
+    )
+    expect(blockedPosts).toHaveLength(0)
+
+    const checks = wrapper.findAll('.ai-item input[type="checkbox"]')
+    await checks[0]!.trigger("change")
+    expect(wrapper.findAll(".ai-conflict")).toHaveLength(1)
+    await checks[0]!.trigger("change")
+    expect(wrapper.findAll(".ai-conflict")).toHaveLength(2)
+
+    await findButton(wrapper, "Add anyway")!.trigger("click")
+    expect(wrapper.findAll(".ai-conflict")).toHaveLength(1)
+    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeDefined()
+
+    await findButton(wrapper, "Change time")!.trigger("click")
+    await flushPromises()
+    expect(wrapper.findAll(".ai-conflict")).toHaveLength(0)
+    expect(wrapper.find(".ai-item-editor").exists()).toBe(true)
+    await findButton(wrapper, "Cancel")!.trigger("click")
+    await flushPromises()
+    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeUndefined()
+  })
+
+  it("edits who an event is for", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel({
+      memberNames: { m2: "Bob", m1: "Alice", m3: "" },
+    })
+    await wrapper.find("#ai-context").setValue("Standup")
+    await findButton(wrapper, "Generate Event")!.trigger("click")
+    await flushPromises()
+
+    await wrapper.findAll(".ai-item-edit")[1]!.trigger("click")
+    const select = wrapper.find(".ai-item--editing select")
+    const options = select.findAll("option")
+    expect(options.map(option => option.text())).toEqual(["No one", "Alice", "Bob"])
+    await select.setValue("m2")
+    await findButton(wrapper, "Save changes")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("For Bob")
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
+    await flushPromises()
+    const posts = fetchMock.mock.calls.filter(
+      call => String(call[0]).endsWith("/events") && (call[1] as RequestInit)?.method === "POST",
+    )
+    const holiday = posts
+      .map(call => JSON.parse((call[1] as RequestInit).body as string))
+      .find(body => body.title === "Holiday")
+    expect(holiday.assignee_id).toBe("m2")
   })
 })

@@ -8,11 +8,20 @@ import {
   PhWarning,
   PhX,
 } from "@phosphor-icons/vue"
-import { aiApi, parseStream, type AiDraft, type AiStatus } from "@/api/ai"
+import {
+  aiApi,
+  parseStream,
+  type AiClarification,
+  type AiConflict,
+  type AiDraft,
+  type AiQuestion,
+  type AiStatus,
+} from "@/api/ai"
 import { calendarApi } from "@/api/calendar"
 import { useEvents } from "@/composables/useEvents"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiInput from "@/components/ui/UiInput.vue"
+import UiSelect from "@/components/ui/UiSelect.vue"
 import UiTextarea from "@/components/ui/UiTextarea.vue"
 import { reminderLabel } from "@/utils/reminders"
 
@@ -47,11 +56,19 @@ const dragging = ref(false)
 const streamContent = ref("")
 const streamReasoning = ref("")
 const warnings = ref<string[]>([])
+const questions = ref<AiQuestion[]>([])
+const conflicts = ref<AiConflict[]>([])
+const answers = ref<Record<string, string>>({})
+const clarifications = ref<AiClarification[]>([])
+const questionRounds = ref(0)
 
-type Stage = "input" | "reading" | "review" | "empty" | "done"
+const MAX_QUESTION_ROUNDS = 3
+
+type Stage = "input" | "reading" | "questions" | "review" | "empty" | "done"
 
 const stage = computed<Stage>(() => {
   if (parsing.value) return "reading"
+  if (questions.value.length > 0) return "questions"
   if (outcome.value === "success" && drafts.value.length === 0) return "done"
   if (drafts.value.length > 0) return "review"
   if (parsed.value) return "empty"
@@ -62,6 +79,20 @@ const hasMessage = computed(() => text.value.trim().length > 0)
 const hasSource = computed(() => hasMessage.value || !!imageDataUrl.value)
 const selectedCount = computed(() => selected.value.filter(Boolean).length)
 const configured = computed(() => status.value?.configured === true)
+const memberOptions = computed(() =>
+  Object.entries(props.memberNames ?? {})
+    .filter(([, name]) => !!name)
+    .map(([id, name]) => ({ id, name }))
+    .sort((first, second) => first.name.localeCompare(second.name)),
+)
+const canAnswerQuestions = computed(
+  () =>
+    questions.value.length > 0 &&
+    questions.value.every(question => !!answers.value[question.id]?.trim()),
+)
+const blockingConflicts = computed(() =>
+  conflicts.value.filter(conflict => selected.value[conflict.draftIndex] !== false),
+)
 
 const sourceTitle = computed(() => {
   if (text.value.trim() && imageDataUrl.value) return "Message and image"
@@ -170,6 +201,7 @@ function draftMeta(draft: AiDraft): string {
   if (reminder) bits.push(reminder)
   const assignee = draft.assigneeId ? props.memberNames?.[draft.assigneeId] : ""
   if (assignee) bits.push(`For ${assignee}`)
+  else if (memberOptions.value.length > 0) bits.push("Not assigned")
   return bits.join(" · ")
 }
 
@@ -186,12 +218,13 @@ interface EditBuffer {
   start: string
   end: string
   allDay: boolean
+  assigneeId: string
 }
 
 const editingIndex = ref<number | null>(null)
 const editBuffer = ref<EditBuffer | null>(null)
 
-function resetResults() {
+function resetResults(keepClarifications = false) {
   drafts.value = []
   selected.value = []
   addedDrafts.value = []
@@ -203,9 +236,16 @@ function resetResults() {
   streamContent.value = ""
   streamReasoning.value = ""
   warnings.value = []
+  questions.value = []
+  conflicts.value = []
+  answers.value = {}
   editingIndex.value = null
   editBuffer.value = null
   streamBox.value = null
+  if (!keepClarifications) {
+    clarifications.value = []
+    questionRounds.value = 0
+  }
 }
 
 watch([streamReasoning, streamContent], async () => {
@@ -219,7 +259,7 @@ watch(stage, async (next) => {
     const scroller = rootEl.value.closest<HTMLElement>(".drawer-content, .mqa-body")
     if (scroller) scroller.scrollTop = 0
   }
-  if (next === "review" || next === "empty" || next === "done") {
+  if (next === "questions" || next === "review" || next === "empty" || next === "done") {
     await nextTick()
     resultsHeading.value?.focus({ preventScroll: true })
   }
@@ -290,13 +330,14 @@ async function parse() {
   if (!hasMessage.value || parsing.value) return
   parsing.value = true
   error.value = ""
-  resetResults()
+  resetResults(true)
   try {
     const result = await parseStream(
       {
         text: text.value,
         image: imageDataUrl.value,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        clarifications: clarifications.value,
       },
       {
         onReasoning: chunk => { streamReasoning.value += chunk },
@@ -307,12 +348,52 @@ async function parse() {
     selected.value = result.events.map(() => true)
     skipped.value = result.skipped
     warnings.value = result.warnings
+    questions.value = result.questions
+    conflicts.value = result.conflicts
+    answers.value = {}
     parsed.value = true
+    if (questions.value.length > 0 && questionRounds.value >= MAX_QUESTION_ROUNDS) {
+      for (const question of questions.value) {
+        warnings.value.push(`Still needs an answer: ${question.question}`)
+      }
+      questions.value = []
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Could not read that message."
   } finally {
     parsing.value = false
   }
+}
+
+function chooseAnswer(question: AiQuestion, option: string) {
+  answers.value[question.id] = option
+}
+
+async function answerQuestions() {
+  if (!canAnswerQuestions.value || parsing.value) return
+  for (const question of questions.value) {
+    const answer = answers.value[question.id]?.trim()
+    if (answer) clarifications.value.push({ question: question.question, answer })
+  }
+  questionRounds.value += 1
+  questions.value = []
+  await parse()
+}
+
+function skipQuestions() {
+  for (const question of questions.value) {
+    warnings.value.push(`Still unclear: ${question.question}`)
+  }
+  questions.value = []
+}
+
+function dismissConflict(id: string) {
+  conflicts.value = conflicts.value.filter(conflict => conflict.id !== id)
+}
+
+function editConflict(conflict: AiConflict) {
+  dismissConflict(conflict.id)
+  openEditor(conflict.draftIndex)
 }
 
 function toggle(index: number) {
@@ -325,11 +406,17 @@ function toggleAll() {
 }
 
 async function applySelected() {
-  if (applying.value || selectedCount.value === 0 || editingIndex.value !== null) return
+  if (
+    applying.value ||
+    selectedCount.value === 0 ||
+    editingIndex.value !== null ||
+    blockingConflicts.value.length > 0
+  ) return
   applying.value = true
   error.value = ""
   failed.value = 0
   outcome.value = null
+  conflicts.value = []
   const saved: AiDraft[] = []
   const failedDrafts: AiDraft[] = []
   const sourceMessage = buildSourceMessage()
@@ -466,6 +553,7 @@ function openEditor(index: number) {
     start: draft.allDay ? "09:00" : timeInputValue(draft.startAt) || "09:00",
     end: draft.endAt ? timeInputValue(draft.endAt) : "",
     allDay: draft.allDay,
+    assigneeId: draft.assigneeId ?? "",
   }
   nextTick(() => {
     const item = rootEl.value?.querySelector<HTMLElement>(".ai-item--editing")
@@ -510,6 +598,7 @@ function saveEdit() {
   draft.startAt = start.toISOString()
   draft.endAt = end ? end.toISOString() : null
   draft.allDay = buffer.allDay
+  draft.assigneeId = buffer.assigneeId || null
   // A person checked this event, so the low-confidence flag no longer applies.
   draft.confidence = 1
   cancelEdit()
@@ -672,7 +761,79 @@ function saveEdit() {
           </details>
         </template>
 
-        <!-- ── 2b. Review the drafts ── -->
+        <!-- ── 2b. Answer the harness's questions ── -->
+        <template v-else-if="stage === 'questions'">
+          <div class="ai-review">
+            <h4 ref="resultsHeading" tabindex="-1" class="ai-results-title">
+              {{ questions.length === 1 ? "One detail to confirm" : `${questions.length} details to confirm` }}
+            </h4>
+            <p class="ai-results-sub">
+              Smart import needs an answer before it can finish these events.
+            </p>
+          </div>
+
+          <ul class="ai-questions">
+            <li
+              v-for="question in questions"
+              :key="question.id"
+              class="ai-question"
+            >
+              <div class="ai-question-head">
+                <span class="ai-question-kind">
+                  {{ question.kind === "assignee" ? "Who it's for" : question.kind === "conflict" ? "Schedule" : "Confirm" }}
+                </span>
+                <p class="ai-question-text">{{ question.question }}</p>
+              </div>
+              <div v-if="question.options.length" class="ai-question-options">
+                <button
+                  v-for="option in question.options"
+                  :key="option"
+                  type="button"
+                  class="ai-question-option"
+                  :class="{ 'ai-question-option--active': answers[question.id] === option }"
+                  @click="chooseAnswer(question, option)"
+                >
+                  {{ option }}
+                </button>
+              </div>
+              <UiInput
+                v-model="answers[question.id]"
+                :placeholder="question.options.length ? 'Or type another answer' : 'Type an answer'"
+                :aria-label="question.question"
+                maxlength="2000"
+              />
+            </li>
+          </ul>
+
+          <p v-if="error" class="ai-error" role="alert">
+            <PhWarning :size="16" weight="fill" class="ai-error-icon" aria-hidden="true" />
+            <span>{{ error }}</span>
+          </p>
+
+          <div class="ai-actions">
+            <UiButton :disabled="parsing || !canAnswerQuestions" @click="answerQuestions">
+              Continue
+            </UiButton>
+            <UiButton
+              v-if="drafts.length > 0"
+              variant="ghost"
+              :disabled="parsing"
+              @click="skipQuestions"
+            >
+              Review events anyway
+            </UiButton>
+            <UiButton
+              v-else
+              variant="ghost"
+              :disabled="parsing"
+              @click="startOver"
+            >
+              Start over
+            </UiButton>
+          </div>
+        </template>
+
+        <!-- ── 2c. Review the drafts ── -->
         <template v-else-if="stage === 'review'">
           <div
             v-if="outcome && outcome !== 'success'"
@@ -684,6 +845,31 @@ function saveEdit() {
             <div class="ai-callout-copy">
               <p class="ai-callout-title">{{ outcomeMessage }}</p>
               <p class="ai-callout-text">{{ outcomeHint }}</p>
+            </div>
+          </div>
+
+          <div v-if="blockingConflicts.length > 0" class="ai-callout ai-callout--warning" role="alert">
+            <PhWarning :size="18" weight="fill" class="ai-callout-icon" aria-hidden="true" />
+            <div class="ai-callout-copy">
+              <p class="ai-callout-title">
+                {{ blockingConflicts.length === 1 ? "Schedule conflict" : "Schedule conflicts" }}
+              </p>
+              <p class="ai-callout-text">
+                These events overlap another event. Choose what to do.
+              </p>
+              <ul class="ai-conflicts">
+                <li v-for="conflict in blockingConflicts" :key="conflict.id" class="ai-conflict">
+                  <p class="ai-conflict-text">{{ conflict.message }}</p>
+                  <div class="ai-conflict-actions">
+                    <UiButton size="sm" variant="ghost" @click="editConflict(conflict)">
+                      Change time
+                    </UiButton>
+                    <UiButton size="sm" variant="ghost" @click="dismissConflict(conflict.id)">
+                      Add anyway
+                    </UiButton>
+                  </div>
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -753,7 +939,7 @@ function saveEdit() {
                     <span v-if="shortDescription(draft)" class="ai-item-desc">{{ shortDescription(draft) }}</span>
                     <span v-if="draft.confidence < 0.6" class="ai-item-flag">
                       <PhWarning :size="13" weight="fill" aria-hidden="true" />
-                      Check the date
+                      Check details
                     </span>
                   </label>
                   <button
@@ -799,6 +985,18 @@ function saveEdit() {
                     <input v-model="editBuffer.allDay" type="checkbox" />
                     <span>All day</span>
                   </label>
+                  <div v-if="memberOptions.length" class="ai-edit-field">
+                    <label :for="`${uid}-edit-assignee`" class="ai-edit-label">Assigned to</label>
+                    <UiSelect
+                      :id="`${uid}-edit-assignee`"
+                      v-model="editBuffer.assigneeId"
+                    >
+                      <option value="">No one</option>
+                      <option v-for="member in memberOptions" :key="member.id" :value="member.id">
+                        {{ member.name }}
+                      </option>
+                    </UiSelect>
+                  </div>
                   <div v-if="!editBuffer.allDay" class="ai-edit-row">
                     <div class="ai-edit-field">
                       <label :for="`${uid}-edit-start`" class="ai-edit-label">Start</label>
@@ -822,9 +1020,11 @@ function saveEdit() {
             </ul>
 
             <div v-if="editingIndex === null" class="ai-add-bar">
-              <span class="ai-add-count">{{ selectedCount }} of {{ drafts.length }} selected</span>
+              <span class="ai-add-count">
+                {{ blockingConflicts.length > 0 ? "Resolve the conflicts above first." : `${selectedCount} of ${drafts.length} selected` }}
+              </span>
               <UiButton
-                :disabled="applying || selectedCount === 0 || editingIndex !== null"
+                :disabled="applying || selectedCount === 0 || editingIndex !== null || blockingConflicts.length > 0"
                 @click="applySelected"
               >
                 {{ applying ? "Adding…" : `Add ${selectedCount} ${selectedCount === 1 ? "event" : "events"}` }}
@@ -1631,6 +1831,113 @@ html.low-power .ai-spinner {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Questions and conflicts ── */
+.ai-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ai-questions,
+.ai-conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bgSurface);
+}
+
+.ai-question-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ai-question-kind {
+  width: fit-content;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-textSecondary);
+  font-size: var(--text-micro-size);
+  line-height: 1.6;
+}
+
+.ai-question-text {
+  margin: 0;
+  color: var(--color-textPrimary);
+  font-size: var(--text-body-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.ai-question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ai-question-option {
+  min-height: 48px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-borderStrong);
+  border-radius: var(--radius-full);
+  background: var(--color-bgSubtle);
+  color: var(--color-textPrimary);
+  font-family: var(--font-family);
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+
+.ai-question-option:hover {
+  border-color: var(--color-accent-darker);
+}
+
+.ai-question-option--active {
+  border-color: var(--color-accent-darker);
+  background: color-mix(in srgb, var(--color-accent-base) 22%, var(--color-bgSurface));
+}
+
+.ai-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+}
+
+.ai-conflict:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.ai-conflict-text {
+  margin: 0;
+  color: var(--color-textPrimary);
+  font-size: var(--text-label-size);
+  line-height: 1.5;
+}
+
+.ai-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 /* ── Empty ── */
 .ai-empty {
   display: flex;
@@ -1772,6 +2079,7 @@ html.low-power .ai-spinner {
 .ai-clear:focus-visible,
 .ai-select-all:focus-visible,
 .ai-item-edit:focus-visible,
+.ai-question-option:focus-visible,
 .ai-checkbox:focus-visible,
 .ai-edit-toggle input:focus-visible,
 .ai-source-summary:focus-visible,

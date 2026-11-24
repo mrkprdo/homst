@@ -1,16 +1,17 @@
 """Smart import: turn pasted emails or screenshots into event drafts."""
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from app import ai
 from app.db import get_db
-from app.models.all import Household, Member
+from app.models.all import Calendar, Event, Household, Member
 from app.schemas.all import (
     AiConfigUpdate,
     AiModelsResponse,
@@ -29,8 +30,58 @@ def _http_error(exc: ai.AiError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
+async def _load_busy(
+    db: AsyncSession, members: list[tuple[str, str]]
+) -> list[dict]:
+    """Household events near the import window, for double-booking checks."""
+    cal_ids = (
+        await db.execute(
+            select(Calendar.id).where(
+                Calendar.household_id == DEFAULT_HOUSEHOLD_ID
+            )
+        )
+    ).scalars().all()
+    if not cal_ids:
+        return []
+    now = datetime.now(timezone.utc)
+    from_dt = now - timedelta(days=30)
+    to_dt = now + timedelta(days=730)
+    rows = (
+        await db.execute(
+            select(Event)
+            .where(
+                Event.calendar_id.in_(cal_ids),
+                or_(
+                    func.coalesce(Event.end_at, Event.start_at) >= from_dt,
+                    Event.recurrence["freq"].as_string().isnot(None),
+                ),
+                Event.start_at <= to_dt,
+            )
+            .order_by(Event.start_at)
+            .limit(ai.MAX_BUSY_EVENTS)
+        )
+    ).scalars().all()
+    names = {member_id: name for member_id, name in members}
+    busy: list[dict] = []
+    for event in rows:
+        if event.start_at is None:
+            continue
+        busy.append(
+            {
+                "title": event.title,
+                "start_at": event.start_at.isoformat(),
+                "end_at": event.end_at.isoformat() if event.end_at else None,
+                "all_day": bool(event.all_day),
+                "assignee_id": event.assignee_id,
+                "assignee": names.get(event.assignee_id),
+                "recurrence": event.recurrence,
+            }
+        )
+    return busy
+
+
 async def _load_context(req: AiParseRequest, db: AsyncSession):
-    """Resolve the household timezone and member names for one import."""
+    """Resolve the timezone, members and nearby events for one import."""
     household = await db.get(Household, DEFAULT_HOUSEHOLD_ID)
     household_settings = household.settings if household and household.settings else {}
     timezone_name = req.timezone or household_settings.get("timezone")
@@ -41,7 +92,8 @@ async def _load_context(req: AiParseRequest, db: AsyncSession):
         select(Member.id, Member.name).where(Member.household_id == DEFAULT_HOUSEHOLD_ID)
     )
     members = [(row[0], row[1]) for row in rows.all()]
-    return tz, tz_label, members
+    busy = await _load_busy(db, members)
+    return tz, tz_label, members, busy
 
 
 async def _require_config(db: AsyncSession) -> dict:
@@ -113,7 +165,7 @@ async def parse_schedule(
 ):
     """Parse text/screenshot into drafts. Creating the events stays explicit."""
     config = await _require_config(db)
-    tz, tz_label, members = await _load_context(req, db)
+    tz, tz_label, members, busy = await _load_context(req, db)
     try:
         return await ai.parse_schedule(
             config,
@@ -122,6 +174,8 @@ async def parse_schedule(
             tz=tz,
             tz_label=tz_label,
             members=members,
+            busy=busy,
+            clarifications=[item.model_dump() for item in req.clarifications],
         )
     except ai.AiError as exc:
         raise _http_error(exc) from exc
@@ -135,7 +189,7 @@ async def parse_schedule_stream(
     config = await _require_config(db)
     if not req.text.strip() and not req.image:
         raise HTTPException(status_code=422, detail="Paste an email or attach a screenshot")
-    tz, tz_label, members = await _load_context(req, db)
+    tz, tz_label, members, busy = await _load_context(req, db)
 
     async def event_generator():
         try:
@@ -146,6 +200,8 @@ async def parse_schedule_stream(
                 tz=tz,
                 tz_label=tz_label,
                 members=members,
+                busy=busy,
+                clarifications=[item.model_dump() for item in req.clarifications],
             ):
                 yield {"event": event["type"], "data": json.dumps(event)}
         except ai.AiError as exc:

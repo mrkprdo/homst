@@ -117,17 +117,81 @@ describe("aiApi", () => {
         response: '{"events": []}',
         reasoning: "Read the email.",
         warnings: ["Repeating dates were ignored."],
+        questions: [
+          {
+            kind: "assignee",
+            question: "Who is this for?",
+            options: ["Alice", 5],
+            about: "Standup",
+          },
+          {
+            kind: "nonsense",
+            question: "Is the year right?",
+            options: "nope",
+            about: 5,
+          },
+          { question: "   " },
+        ],
+        conflicts: [
+          {
+            draft_index: 0,
+            title: "Standup",
+            start_at: "2026-05-04T09:30:00-04:00",
+            end_at: "2026-05-04T10:00:00-04:00",
+            existing_title: "Dentist",
+            existing_start_at: "2026-05-04T09:00:00-04:00",
+            existing_end_at: "2026-05-04T09:30:00-04:00",
+            existing_kind: "draft",
+            assignee_id: "m-1",
+            message: "Standup overlaps Dentist.",
+          },
+          { message: 5 },
+        ],
+        needs_input: true,
       }),
     )
     const result = await aiApi.parse({
       text: "standup",
       image: "data:image/png;base64,abc",
       timezone: "America/Toronto",
+      clarifications: [{ question: "Which day?", answer: "Friday" }],
     })
     expect(result.skipped).toBe(2)
     expect(result.response).toBe('{"events": []}')
     expect(result.reasoning).toBe("Read the email.")
     expect(result.warnings).toEqual(["Repeating dates were ignored."])
+    expect(result.needsInput).toBe(true)
+    expect(result.questions).toEqual([
+      {
+        id: "q1",
+        kind: "assignee",
+        question: "Who is this for?",
+        options: ["Alice"],
+        about: "Standup",
+      },
+      {
+        id: "q2",
+        kind: "clarification",
+        question: "Is the year right?",
+        options: [],
+        about: null,
+      },
+    ])
+    expect(result.conflicts).toEqual([
+      {
+        id: "conflict-1",
+        draftIndex: 0,
+        title: "Standup",
+        startAt: "2026-05-04T09:30:00-04:00",
+        endAt: "2026-05-04T10:00:00-04:00",
+        existingTitle: "Dentist",
+        existingStartAt: "2026-05-04T09:00:00-04:00",
+        existingEndAt: "2026-05-04T09:30:00-04:00",
+        existingKind: "draft",
+        assigneeId: "m-1",
+        message: "Standup overlaps Dentist.",
+      },
+    ])
     expect(result.events[0]).toEqual({
       title: "Standup",
       description: "Zoom",
@@ -144,6 +208,7 @@ describe("aiApi", () => {
       text: "standup",
       image: "data:image/png;base64,abc",
       timezone: "America/Toronto",
+      clarifications: [{ question: "Which day?", answer: "Friday" }],
     })
 
     fetchMock.mockResolvedValueOnce(json({ model: "m" }))
@@ -153,6 +218,9 @@ describe("aiApi", () => {
     expect(empty.response).toBe("")
     expect(empty.reasoning).toBeNull()
     expect(empty.warnings).toEqual([])
+    expect(empty.questions).toEqual([])
+    expect(empty.conflicts).toEqual([])
+    expect(empty.needsInput).toBe(false)
   })
 })
 
@@ -200,7 +268,11 @@ describe("parseStream", () => {
     const reasoning: string[] = []
     const content: string[] = []
     const result = await parseStream(
-      { text: "standup", image: null },
+      {
+        text: "standup",
+        image: null,
+        clarifications: [{ question: "Which day?", answer: "Friday" }],
+      },
       { onReasoning: t => reasoning.push(t), onContent: t => content.push(t) },
     )
     expect(reasoning.join("")).toBe("Read ")
@@ -212,6 +284,9 @@ describe("parseStream", () => {
     expect(String(url)).toContain("/api/v1/ai/parse/stream")
     expect((init as RequestInit).method).toBe("POST")
     expect((init as RequestInit).headers).toMatchObject({ Accept: "text/event-stream" })
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      clarifications: [{ question: "Which day?", answer: "Friday" }],
+    })
   })
 
   it("handles CRLF, split chunks and a final unterminated frame", async () => {
