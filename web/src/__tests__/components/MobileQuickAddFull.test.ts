@@ -23,12 +23,21 @@ function selectWithOption(wrapper: ReturnType<typeof mount>, label: string) {
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+/** Smart import is the default tab; mount directly on the form under test. */
+async function mountTab(tab: "event" | "task") {
+  const wrapper = mount(MobileQuickAdd)
+  await flushPromises()
+  const label = tab === "event" ? "Event" : "Task"
+  await wrapper.findAll(".mqa-tab").find(button => button.text() === label)!.trigger("click")
+  await nextTick()
+  return wrapper
+}
+
 describe("MobileQuickAdd (event form)", () => {
   beforeEach(() => seedMember())
 
   it("shows the assignee colour dot once a member is chosen", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     await selectWithOption(wrapper, "No one").setValue("m1")
     await nextTick()
     expect(wrapper.find(".mqa-select-dot").attributes("style")).toContain("rgb(0, 255, 0)")
@@ -36,8 +45,7 @@ describe("MobileQuickAdd (event form)", () => {
 
   it("prefills the reminder from the household default and shows it in the summary", async () => {
     useSettings().updateDefaultReminderMinutes(10)
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
 
     await wrapper.find('input[placeholder="Event title"]').setValue("Coffee")
     const reminder = selectWithOption(wrapper, "10 minutes before")
@@ -46,8 +54,7 @@ describe("MobileQuickAdd (event form)", () => {
   })
 
   it("switches recurrence and end-repeat modes", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     expect(wrapper.find(".mqa-recur-end").exists()).toBe(false)
 
     await selectWithOption(wrapper, "Does not repeat").setValue("weekly")
@@ -67,8 +74,7 @@ describe("MobileQuickAdd (event form)", () => {
   })
 
   it("hides the time controls when all-day is enabled", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     expect(wrapper.findAll('input[type="time"]')).toHaveLength(2)
 
     await wrapper.find(".mqa-checkbox").setValue(true)
@@ -77,8 +83,7 @@ describe("MobileQuickAdd (event form)", () => {
   })
 
   it("summarises a cross-day event and submits the notes", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     await wrapper.find('input[placeholder="Event title"]').setValue("Overnight")
 
     let dates = wrapper.findAll('input[type="date"]')
@@ -103,8 +108,7 @@ describe("MobileQuickAdd (event form)", () => {
   })
 
   it("creates a multi-day all-day event, shows the toast and closes", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     await wrapper.find('input[placeholder="Event title"]').setValue("Road trip")
 
     const dates = wrapper.findAll('input[type="date"]')
@@ -125,8 +129,7 @@ describe("MobileQuickAdd (event form)", () => {
   })
 
   it("blocks submit when the time range is invalid", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     await wrapper.find('input[placeholder="Event title"]').setValue("Bad range")
 
     let times = wrapper.findAll('input[type="time"]')
@@ -143,8 +146,7 @@ describe("MobileQuickAdd (event form)", () => {
   })
 
   it("applies a quick-duration preset", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     const chips = wrapper.findAll(".mqa-duration-chip")
     expect(chips.map(c => c.text())).toEqual(["15m", "30m", "1h", "2h"])
 
@@ -157,23 +159,21 @@ describe("MobileQuickAdd (event form)", () => {
   })
 
   it("emits close from the X and Cancel buttons", async () => {
-    const wrapper = mount(MobileQuickAdd)
+    const wrapper = await mountTab("event")
     await wrapper.find(".mqa-close").trigger("click")
     await wrapper.find(".mqa-cancel").trigger("click")
     expect(wrapper.emitted("close")).toHaveLength(2)
   })
 
   it("ignores a blank event submission", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     await wrapper.find(".mqa-submit").trigger("click")
     await flushPromises()
     expect(useEvents().events.value).toHaveLength(0)
   })
 
   it("submits recurrence rules with a date and a count", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     await wrapper.find('input[placeholder="Event title"]').setValue("Weekly date")
     await selectWithOption(wrapper, "Does not repeat").setValue("weekly")
     await selectWithOption(wrapper, "Forever").setValue("date")
@@ -184,7 +184,7 @@ describe("MobileQuickAdd (event form)", () => {
     expect(dated.recurrence).toMatchObject({ freq: "weekly" })
     expect((dated.recurrence as any)?.until).toBeTruthy()
 
-    await wrapper.findAll(".mqa-tab")[0]!.trigger("click")
+    await wrapper.findAll(".mqa-tab").find(tab => tab.text() === "Event")!.trigger("click")
     await nextTick()
     await wrapper.find('input[placeholder="Event title"]').setValue("Weekly count")
     await selectWithOption(wrapper, "Does not repeat").setValue("daily")
@@ -206,8 +206,7 @@ describe("MobileQuickAdd (event form)", () => {
     expect(forever.recurrence).not.toHaveProperty("until")  })
 
   it("keeps the end date on or after the start date", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
+    const wrapper = await mountTab("event")
     const dates = wrapper.findAll('input[type="date"]')
     await wrapper.find('input[placeholder="Same day"]').setValue("2026-09-10")
     await dates[0]!.setValue("2026-09-20")
@@ -221,10 +220,7 @@ describe("MobileQuickAdd (task form)", () => {
   beforeEach(() => seedMember())
 
   it("shows the task assignee dot and creates a task", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
-    await wrapper.findAll(".mqa-tab")[1]!.trigger("click")
-    await nextTick()
+    const wrapper = await mountTab("task")
 
     expect(wrapper.find(".mqa-submit").attributes("disabled")).toBeDefined()
     await selectWithOption(wrapper, "No one").setValue("m1")
@@ -249,10 +245,7 @@ describe("MobileQuickAdd (task form)", () => {
   })
 
   it("does not submit a blank task", async () => {
-    const wrapper = mount(MobileQuickAdd)
-    await flushPromises()
-    await wrapper.findAll(".mqa-tab")[1]!.trigger("click")
-    await nextTick()
+    const wrapper = await mountTab("task")
     await wrapper.find(".mqa-submit").trigger("click")
     await flushPromises()
     expect(useTasks().tasks.value).toHaveLength(0)

@@ -22,7 +22,7 @@ function defaultReminderValue(): string {
   return defaultReminderMinutes.value != null ? String(defaultReminderMinutes.value) : ""
 }
 
-const tab = ref<"event" | "task" | "ai">("event")
+const tab = ref<"event" | "task" | "ai">("ai")
 
 onMounted(async () => {
   await Promise.all([loadMembers(), ensureTasksLoaded()])
@@ -272,9 +272,19 @@ const priorities = [
 
 <template>
   <div class="mobile-quick-add" @click.self="emit('close')">
-    <div class="mqa-sheet" role="dialog" aria-modal="true" aria-label="Add an event, task or import" @click.stop>
+    <div class="mqa-sheet" role="dialog" aria-modal="true" aria-label="Add with Smart, an event or a task" @click.stop>
       <div class="mqa-handle" />
       <div class="mqa-header" role="group" aria-label="Add type">
+        <button
+          class="mqa-tab"
+          type="button"
+          :class="{ active: tab === 'ai' }"
+          :aria-pressed="tab === 'ai'"
+          @click="tab = 'ai'"
+        >
+          <PhSparkle :size="14" weight="fill" aria-hidden="true" />
+          Smart
+        </button>
         <button
           class="mqa-tab"
           type="button"
@@ -289,16 +299,6 @@ const priorities = [
           :aria-pressed="tab === 'task'"
           @click="tab = 'task'"
         >Task</button>
-        <button
-          class="mqa-tab"
-          type="button"
-          :class="{ active: tab === 'ai' }"
-          :aria-pressed="tab === 'ai'"
-          @click="tab = 'ai'"
-        >
-          <PhSparkle :size="14" weight="fill" aria-hidden="true" />
-          Import
-        </button>
         <button class="mqa-close" type="button" @click="emit('close')" aria-label="Close"><PhX :size="20" /></button>
       </div>
 

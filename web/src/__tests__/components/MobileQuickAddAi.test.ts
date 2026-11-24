@@ -13,18 +13,32 @@ const AiImportPanelStub = {
   `,
 }
 
-describe("MobileQuickAdd AI tab", () => {
+describe("MobileQuickAdd Smart tab", () => {
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it("shows the importer without the manual footer and closes after adding", async () => {
+  it("starts on Smart and shows the tabs in Smart, Event, Task order", async () => {
+    const wrapper = mount(MobileQuickAdd, {
+      global: { stubs: { AiImportPanel: AiImportPanelStub } },
+    })
+
+    expect(wrapper.findAll(".mqa-tab").map(tab => tab.text())).toEqual([
+      "Smart",
+      "Event",
+      "Task",
+    ])
+    expect(wrapper.find(".mqa-tab.active").text()).toBe("Smart")
+    expect(wrapper.find(".ai-stub").exists()).toBe(true)
+    expect(wrapper.find(".mqa-footer").exists()).toBe(false)
+  })
+
+  it("closes after Smart import adds events", async () => {
     vi.useFakeTimers()
     const wrapper = mount(MobileQuickAdd, {
       global: { stubs: { AiImportPanel: AiImportPanelStub } },
     })
 
-    await wrapper.findAll("button").find(button => button.text() === "Import")!.trigger("click")
     expect(wrapper.find(".ai-stub").exists()).toBe(true)
     expect(wrapper.find(".mqa-footer").exists()).toBe(false)
 
@@ -39,10 +53,16 @@ describe("MobileQuickAdd AI tab", () => {
     const wrapper = mount(MobileQuickAdd, {
       global: { stubs: { AiImportPanel: AiImportPanelStub } },
     })
+    const button = (label: string) =>
+      wrapper.findAll("button").find(item => item.text() === label)!
+
+    expect(wrapper.find(".mqa-footer").exists()).toBe(false)
+    await button("Event").trigger("click")
     expect(wrapper.find(".mqa-footer").exists()).toBe(true)
-    await wrapper.findAll("button").find(button => button.text() === "Import")!.trigger("click")
-    await wrapper.findAll("button").find(button => button.text() === "Event")!.trigger("click")
+    await button("Task").trigger("click")
     expect(wrapper.find(".mqa-footer").exists()).toBe(true)
+    await button("Smart").trigger("click")
+    expect(wrapper.find(".mqa-footer").exists()).toBe(false)
   })
 
   it("switches to the event form when the importer asks for manual entry", async () => {
@@ -50,7 +70,7 @@ describe("MobileQuickAdd AI tab", () => {
       global: { stubs: { AiImportPanel: AiImportPanelStub } },
     })
 
-    await wrapper.findAll("button").find(button => button.text() === "Import")!.trigger("click")
+    expect(wrapper.find(".ai-stub").exists()).toBe(true)
     await wrapper.find(".ai-manual-stub").trigger("click")
 
     expect(wrapper.find(".mqa-footer").exists()).toBe(true)

@@ -405,6 +405,8 @@ describe("MobileQuickAdd", () => {
 
       const w = mount(MobileQuickAdd)
       await flushPromises()
+      await w.findAll(".mqa-tab").find(tab => tab.text() === "Event")!.trigger("click")
+      await nextTick()
 
       // Fill event title, apply duration chip, set recurrence + count, submit
       await w.find('input[placeholder="Event title"]').setValue("Party")
@@ -429,7 +431,7 @@ describe("MobileQuickAdd", () => {
 
       // Switch to Task tab, create task when no list exists (creates General list first)
       const tabs = w.findAll(".mqa-tab")
-      await tabs[1]!.trigger("click")
+      await tabs.find(tab => tab.text() === "Task")!.trigger("click")
       await w.find('input[placeholder="Task title"]').setValue("Vacuum")
       const prioBtns = w.findAll(".mqa-priority-btn")
       await prioBtns[2]!.trigger("click") // high

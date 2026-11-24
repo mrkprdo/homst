@@ -203,7 +203,7 @@ watch(
       <button
         class="ms-fab"
         type="button"
-        aria-label="Add event or task"
+        aria-label="Add an event, a task or use Smart import"
         @click="showQuickAdd = true"
       >
         <PhPlus :size="26" weight="bold" />
