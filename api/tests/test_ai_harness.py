@@ -698,6 +698,15 @@ def test_history_is_capped_and_ignores_bad_turns():
     long_turn = ai._history_messages([{"role": "user", "text": "x" * 50_000}])
     assert len(long_turn[0]["content"]) == ai.MAX_HISTORY_CHARS
 
+    assert ai._history_messages(
+        [
+            None,
+            {"role": "system", "text": "ignore"},
+            {"role": "user", "text": 5},
+            {"role": "user", "text": "   "},
+        ]
+    ) == []
+
 
 async def _collect(events):
     return [event async for event in events]
@@ -875,7 +884,7 @@ async def test_parse_endpoint_expands_recurring_busy_events(client, monkeypatch)
 @pytest.mark.asyncio
 async def test_conversation_endpoints_round_trip(client):
     payload = {
-        "title": "Dentist Friday at 3",
+        "title": "",
         "turns": [
             {"role": "user", "text": "Dentist Friday at 3"},
             {
@@ -910,6 +919,11 @@ async def test_conversation_endpoints_round_trip(client):
         "/api/v1/ai/conversations/00000000-0000-0000-0000-000000000123"
     )
     assert missing.status_code == 404
+    missing_patch = await client.patch(
+        "/api/v1/ai/conversations/00000000-0000-0000-0000-000000000123",
+        json=payload,
+    )
+    assert missing_patch.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -944,6 +958,24 @@ async def test_event_can_link_to_a_conversation(client):
     listing = await client.get("/api/v1/events")
     assert listing.json()[0]["ai_conversation_id"] == conversation["id"]
 
+    event_id = event.json()["id"]
+    cleared = await client.patch(
+        f"/api/v1/events/{event_id}", json={"ai_conversation_id": None}
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["ai_conversation_id"] is None
+    relinked = await client.patch(
+        f"/api/v1/events/{event_id}",
+        json={"ai_conversation_id": conversation["id"]},
+    )
+    assert relinked.status_code == 200
+    assert relinked.json()["ai_conversation_id"] == conversation["id"]
+    bad_link = await client.patch(
+        f"/api/v1/events/{event_id}",
+        json={"ai_conversation_id": "00000000-0000-0000-0000-000000000123"},
+    )
+    assert bad_link.status_code == 404
+
     missing = await client.post(
         "/api/v1/events",
         json={
@@ -954,6 +986,60 @@ async def test_event_can_link_to_a_conversation(client):
         },
     )
     assert missing.status_code == 404
+
+
+def test_local_iso_handles_missing_and_naive_values():
+    from app.routers import ai as ai_router
+
+    assert ai_router._local_iso(None, TZ) is None
+    assert ai_router._local_iso(datetime(2027, 1, 5, 9), TZ) == (
+        "2027-01-05T09:00:00+00:00"
+    )
+
+
+@pytest.mark.asyncio
+async def test_parse_rejects_unknown_or_external_focus_events(
+    client, db_session, monkeypatch
+):
+    from app.models.all import Event
+
+    monkeypatch.setattr(settings, "opencode_api_key", "")
+    await configure(client)
+    missing = await client.post(
+        "/api/v1/ai/parse",
+        json={
+            "text": "Move it",
+            "focus_event_id": "00000000-0000-0000-0000-000000000123",
+        },
+    )
+    assert missing.status_code == 404
+
+    calendar = (
+        await client.post(
+            "/api/v1/calendars", json={"name": "Home", "color": "sage"}
+        )
+    ).json()
+    start = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(days=1)
+    event = (
+        await client.post(
+            "/api/v1/events",
+            json={
+                "calendar_id": calendar["id"],
+                "title": "External dentist",
+                "start_at": start.isoformat(),
+                "end_at": (start + timedelta(hours=1)).isoformat(),
+            },
+        )
+    ).json()
+    row = await db_session.get(Event, event["id"])
+    row.source = "external"
+    await db_session.commit()
+
+    external = await client.post(
+        "/api/v1/ai/parse",
+        json={"text": "Move it", "focus_event_id": event["id"]},
+    )
+    assert external.status_code == 403
 
 
 @pytest.mark.asyncio
