@@ -49,6 +49,29 @@ describe("MobileQuickAdd Smart tab", () => {
     expect(wrapper.emitted("close")).toHaveLength(1)
   })
 
+  it("shows a focused Smart sheet and an updated toast for a resumed event", async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(MobileQuickAdd, {
+      props: {
+        focusEventId: "ev-1",
+        conversationId: "conv-1",
+        focusEventTitle: "Dentist",
+        focusSourceMessage: "Dentist Friday at 3",
+      },
+      global: { stubs: { AiImportPanel: AiImportPanelStub } },
+    })
+
+    expect(wrapper.findAll(".mqa-tab")).toHaveLength(0)
+    expect(wrapper.find(".mqa-title").text()).toBe("Smart import")
+    expect(wrapper.find(".ai-stub").exists()).toBe(true)
+
+    await wrapper.find(".ai-stub").trigger("click")
+    expect(wrapper.find(".mqa-toast").text()).toContain("Event updated")
+
+    vi.advanceTimersByTime(800)
+    expect(wrapper.emitted("close")).toHaveLength(1)
+  })
+
   it("keeps the manual footer on the event and task tabs", async () => {
     const wrapper = mount(MobileQuickAdd, {
       global: { stubs: { AiImportPanel: AiImportPanelStub } },

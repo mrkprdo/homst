@@ -717,7 +717,7 @@ describe("AiImportPanel", () => {
     install((url) => {
       if (url.includes("/ai/parse/stream")) {
         calls += 1
-        if (calls === 1) return json({ detail: "OpenCode is down" }, 500)
+        if (calls <= 2) return json({ detail: "OpenCode is down" }, 500)
         return streamed()
       }
       if (url.includes("/ai")) return json(STATUS_ON)
@@ -729,7 +729,10 @@ describe("AiImportPanel", () => {
     expect(wrapper.find('[role="alert"]').text()).toContain("OpenCode is down")
     await findButton(wrapper, "Try again")!.trigger("click")
     await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toContain("OpenCode is down")
 
+    await findButton(wrapper, "Try again")!.trigger("click")
+    await flushPromises()
     expect(wrapper.text()).not.toContain("OpenCode is down")
     expect(wrapper.text()).toContain("2 events ready")
     expect(wrapper.findAll(".ai-msg--user")).toHaveLength(1)
@@ -746,6 +749,291 @@ describe("AiImportPanel", () => {
     expect(findButton(wrapper, "Add manually")).toBeTruthy()
     await findButton(wrapper, "Add manually")!.trigger("click")
     expect(wrapper.emitted("manual")).toHaveLength(1)
+  })
+
+  it("renders repeat fallbacks and a plain empty response", async () => {
+    install(handlerWith({
+      drafts: [{ ...DRAFTS[0], title: "Odd rota", recurrence: { freq: "hourly" } }],
+    }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Odd rota")
+    expect(wrapper.text()).toContain("Repeats hourly")
+
+    install(handlerWith({ drafts: [], reply: "" }))
+    const empty = await mountPanel()
+    await send(empty, "Nothing dated")
+    expect(empty.text()).toContain("I couldn't find a dated event in that.")
+  })
+
+  it("offers the updated event when the model gives no reply", async () => {
+    install(handlerWith({ drafts: [DRAFTS[0]], reply: "" }))
+    const wrapper = await mountPanel({ focusEventId: "ev-1", focusEventTitle: "Dentist" })
+    await send(wrapper, "Move it")
+    expect(wrapper.text()).toContain("Here's the updated event. Check the changes, then save.")
+    expect(findButton(wrapper, "Update event")).toBeTruthy()
+  })
+
+  it("shows a retry when a saved conversation cannot be loaded", async () => {
+    let loads = 0
+    install(url => {
+      if (url.includes("/ai/conversations/conv-1")) {
+        loads += 1
+        if (loads === 1) return json({ detail: "offline" }, 500)
+        return json({
+          id: "conv-1",
+          title: "Dentist",
+          turns: [{
+            role: "user",
+            text: "Dentist Friday at 3",
+            image_name: null,
+            raw_response: null,
+            reply: null,
+            drafts: [],
+            added: [],
+            questions: [],
+            warnings: [],
+            applied: false,
+            outcome: null,
+          }],
+          created_at: "2026-05-01T00:00:00Z",
+          updated_at: "2026-05-01T00:00:00Z",
+        })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+
+    const wrapper = await mountPanel({ conversationId: "conv-1" })
+    expect(wrapper.text()).toContain("Couldn't open this conversation")
+    await findButton(wrapper, "Try again")!.trigger("click")
+    await flushPromises()
+    expect(wrapper.text()).toContain("Dentist Friday at 3")
+  })
+
+  it("opens the image picker from the plus button", async () => {
+    install(url => (url.includes("/ai") ? json(STATUS_ON) : json({})))
+    const wrapper = await mountPanel()
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    await wrapper.find(".ai-attach").trigger("click")
+    expect(click).toHaveBeenCalled()
+  })
+
+  it("falls back to draft and question text when a saved reply is missing", async () => {
+    install(url => {
+      if (url.includes("/ai/conversations/conv-1")) {
+        return json({
+          id: "conv-1",
+          title: "Original request",
+          turns: [
+            {
+              role: "user",
+              text: "Original request",
+              image_name: null,
+              raw_response: null,
+              reply: null,
+              drafts: [],
+              added: [],
+              questions: [],
+              warnings: [],
+              applied: false,
+              outcome: null,
+            },
+            {
+              role: "assistant",
+              text: "",
+              image_name: null,
+              raw_response: null,
+              reply: "",
+              drafts: [DRAFTS[0]],
+              added: [],
+              questions: [],
+              warnings: [],
+              applied: false,
+              outcome: null,
+            },
+            {
+              role: "assistant",
+              text: "",
+              image_name: null,
+              raw_response: null,
+              reply: "",
+              drafts: [],
+              added: [],
+              questions: [{
+                id: "q1",
+                kind: "clarification",
+                question: "Which week?",
+                options: [],
+                about: null,
+              }],
+              warnings: [],
+              applied: false,
+              outcome: null,
+            },
+            {
+              role: "assistant",
+              text: "",
+              image_name: null,
+              raw_response: null,
+              reply: "",
+              drafts: [],
+              added: [],
+              questions: [],
+              warnings: [],
+              applied: false,
+              outcome: null,
+            },
+          ],
+          created_at: "2026-05-01T00:00:00Z",
+          updated_at: "2026-05-01T00:00:00Z",
+        })
+      }
+      if (url.includes("/ai/parse/stream")) return streamed({ reply: "Sure." })
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+
+    const wrapper = await mountPanel({ conversationId: "conv-1" })
+    await send(wrapper, "Change it")
+    const body = parseBody(0)
+    const assistantHistory = (body.history as Array<{ role: string; text: string }>)
+      .filter(message => message.role === "assistant")
+    expect(assistantHistory[0]!.text).toContain("I proposed these events:")
+    expect(assistantHistory[1]!.text).toBe("Which week?")
+    expect(assistantHistory).toHaveLength(2)
+  })
+
+  it("stops before saving when the conversation cannot be persisted", async () => {
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/conversations")) return json({ detail: "nope" }, 500)
+      if (url.includes("/ai/parse/stream")) return streamed()
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/calendars") && method === "GET") return json([])
+      if (url.includes("/calendars") && method === "POST") {
+        return json({
+          id: "cal-1", household_id: "h", name: "Personal", color: "sage",
+          source: "internal", feed_url: null, is_visible: true, created_by: null,
+        })
+      }
+      if (url.includes("/events")) return json(eventResponse({}))
+      return json({})
+    })
+
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Couldn't save this conversation")
+    expect(addedEvents()).toHaveLength(0)
+    expect(findButton(wrapper, "Add 2 events")).toBeTruthy()
+  })
+
+  it("keeps the event when an update save fails", async () => {
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/conversations")) {
+        return json({
+          id: "conv-1",
+          title: "Dentist",
+          turns: [],
+          created_at: "2026-05-01T00:00:00Z",
+          updated_at: "2026-05-01T00:00:00Z",
+        })
+      }
+      if (url.includes("/ai/parse/stream")) return streamed({ drafts: [DRAFTS[0]], reply: "Moved." })
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/events/ev-1") && method === "PATCH") {
+        return json({ detail: "nope" }, 500)
+      }
+      return json({})
+    })
+
+    const wrapper = await mountPanel({ focusEventId: "ev-1", focusEventTitle: "Dentist" })
+    await send(wrapper, "Move it")
+    await findButton(wrapper, "Update event")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("The event wasn't updated.")
+    expect(findButton(wrapper, "Update event")).toBeTruthy()
+  })
+
+  it("opens the time editor from a conflict", async () => {
+    install(handlerWith({
+      conflicts: [{
+        id: "conflict-1",
+        draft_index: 0,
+        title: DRAFTS[0]!.title,
+        start_at: DRAFTS[0]!.start_at,
+        existing_title: "Dentist",
+        existing_start_at: "2026-05-04T09:00:00-04:00",
+        existing_kind: "existing",
+        existing_event_id: "ev-old",
+        message: "Team standup overlaps Dentist.",
+      }],
+    }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+    await findButton(wrapper, "Change time")!.trigger("click")
+    expect(wrapper.find(".ai-item-editor").exists()).toBe(true)
+    await findButton(wrapper, "Cancel")!.trigger("click")
+    expect(findButton(wrapper, "Add 2 events")!.attributes("disabled")).toBeUndefined()
+  })
+
+  it("reports when the replaced event cannot be removed", async () => {
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/conversations")) {
+        return json({
+          id: "conv-1",
+          title: "Standup",
+          turns: [],
+          created_at: "2026-05-01T00:00:00Z",
+          updated_at: "2026-05-01T00:00:00Z",
+        })
+      }
+      if (url.includes("/ai/parse/stream")) {
+        return streamed({
+          drafts: [DRAFTS[0]],
+          conflicts: [{
+            id: "conflict-1",
+            draft_index: 0,
+            title: DRAFTS[0]!.title,
+            start_at: DRAFTS[0]!.start_at,
+            existing_title: "Dentist",
+            existing_start_at: "2026-05-04T09:00:00-04:00",
+            existing_kind: "existing",
+            existing_event_id: "ev-old",
+            message: "Team standup overlaps Dentist.",
+          }],
+        })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/calendars") && method === "GET") return json([])
+      if (url.includes("/calendars") && method === "POST") {
+        return json({
+          id: "cal-1", household_id: "h", name: "Personal", color: "sage",
+          source: "internal", feed_url: null, is_visible: true, created_by: null,
+        })
+      }
+      if (url.includes("/events/ev-old") && method === "DELETE") {
+        return json({ detail: "nope" }, 500)
+      }
+      if (url.includes("/events") && method === "POST") {
+        return json(eventResponse(JSON.parse(String(init?.body))))
+      }
+      return json({})
+    })
+
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+    await findButton(wrapper, "Replace existing")!.trigger("click")
+    await findButton(wrapper, "Add 1 event")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Added the new event, but couldn't remove")
+    expect(wrapper.text()).toContain("Added 1 event")
   })
 
   it("shows progress while the model streams, without showing raw JSON", async () => {
@@ -808,10 +1096,33 @@ describe("AiImportPanel", () => {
     expect(findButton(wrapper, "Save changes")!.attributes("disabled")).toBeDefined()
 
     await title.setValue("Holiday")
-    const dates = wrapper.findAll('.ai-item--editing input[type="date"]')
+    let dates = wrapper.findAll('.ai-item--editing input[type="date"]')
     await dates[0]!.setValue("2026-05-07")
     await dates[1]!.setValue("2026-05-01")
     expect(wrapper.text()).toContain("The end date can't be before the start date.")
+
+    dates = wrapper.findAll('.ai-item--editing input[type="date"]')
+    await dates[1]!.setValue("")
+    await wrapper.find('.ai-edit-toggle input[type="checkbox"]').setValue(false)
+    await nextTick()
+    const times = wrapper.findAll('.ai-item--editing input[type="time"]')
+    await times[1]!.setValue("07:00")
+    expect(wrapper.text()).toContain("The end time must be after the start time.")
+
+    await wrapper.find('.ai-edit-toggle input[type="checkbox"]').setValue(true)
+    await nextTick()
+    dates = wrapper.findAll('.ai-item--editing input[type="date"]')
+    await dates[1]!.setValue("2026-05-08")
+    await findButton(wrapper, "Save changes")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.find(".ai-item--low").exists()).toBe(false)
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
+    await flushPromises()
+    const edited = addedEvents().find(body => body.title === "Holiday")
+    expect(edited!.all_day).toBe(true)
+    expect(new Date(edited!.end_at as string).toISOString())
+      .toBe(new Date("2026-05-08T23:59:59").toISOString())
   })
 
   it("reports when none of the drafts can be saved", async () => {
@@ -919,17 +1230,30 @@ describe("AiImportPanel", () => {
       }
       if (url.includes("/ai/parse/stream")) {
         return streamed({
-          conflicts: [{
-            id: "conflict-1",
-            draft_index: 0,
-            title: DRAFTS[0]!.title,
-            start_at: DRAFTS[0]!.start_at,
-            existing_title: "Dentist",
-            existing_start_at: "2026-05-04T09:00:00-04:00",
-            existing_kind: "existing",
-            existing_event_id: "ev-old",
-            message: "Team standup overlaps Dentist.",
-          }],
+          conflicts: [
+            {
+              id: "conflict-1",
+              draft_index: 0,
+              title: DRAFTS[0]!.title,
+              start_at: DRAFTS[0]!.start_at,
+              existing_title: "Dentist",
+              existing_start_at: "2026-05-04T09:00:00-04:00",
+              existing_kind: "existing",
+              existing_event_id: "ev-old",
+              message: "Team standup overlaps Dentist.",
+            },
+            {
+              id: "conflict-2",
+              draft_index: 1,
+              title: DRAFTS[1]!.title,
+              start_at: DRAFTS[1]!.start_at,
+              existing_title: "Dentist",
+              existing_start_at: "2026-05-04T09:00:00-04:00",
+              existing_kind: "existing",
+              existing_event_id: "ev-old",
+              message: "Holiday overlaps Dentist.",
+            },
+          ],
         })
       }
       if (url.includes("/ai")) return json(STATUS_ON)
@@ -953,17 +1277,27 @@ describe("AiImportPanel", () => {
     const wrapper = await mountPanel()
     await send(wrapper, "Standup")
 
-    expect(wrapper.text()).toContain("Schedule conflict")
-    await findButton(wrapper, "Replace existing")!.trigger("click")
-    expect(wrapper.findAll(".ai-conflict")).toHaveLength(0)
+    expect(wrapper.text()).toContain("Schedule conflicts")
+    const replaceButtons = () =>
+      wrapper.findAll("button").filter(button => button.text().includes("Replace existing"))
+
+    await replaceButtons()[0]!.trigger("click")
+    expect(wrapper.findAll(".ai-conflict")).toHaveLength(1)
     expect(wrapper.text()).toContain("Will be removed when saved")
-    expect(wrapper.text()).toContain("Dentist")
+
+    // Undo the replacement, then replace both drafts that hit the same event.
+    await findButton(wrapper, "Keep it")!.trigger("click")
+    expect(wrapper.findAll(".ai-conflict")).toHaveLength(2)
+    await replaceButtons()[0]!.trigger("click")
+    await replaceButtons()[0]!.trigger("click")
+    expect(wrapper.findAll(".ai-conflict")).toHaveLength(0)
+    expect(wrapper.findAll(".ai-replacement")).toHaveLength(2)
 
     await findButton(wrapper, "Add 2 events")!.trigger("click")
     await flushPromises()
 
     expect(calls.filter(call => call === "create")).toHaveLength(2)
-    expect(calls).toContain("delete")
+    expect(calls.filter(call => call === "delete")).toHaveLength(1)
     expect(wrapper.text()).toContain("Added 2 events")
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })

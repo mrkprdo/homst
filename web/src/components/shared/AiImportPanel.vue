@@ -256,15 +256,9 @@ function assistantText(turn: Turn): string {
     }
     return `I found ${count} event${count === 1 ? "" : "s"}. Check the details, then add ${count === 1 ? "it" : "them"} when ready.`
   }
-  if (turn.questions.length > 0) {
-    return turn.questions.length === 1
-      ? turn.questions[0]!.question
-      : `${turn.questions.length} details still need an answer.`
-  }
-  if (turn.status === "empty") {
-    return "I couldn't find a dated event in that. Add a day or time and I'll try again."
-  }
-  return ""
+  return turn.status === "empty"
+    ? "I couldn't find a dated event in that. Add a day or time and I'll try again."
+    : ""
 }
 
 function turnNote(turn: Turn): string {
@@ -605,12 +599,10 @@ async function revealLatestAssistant() {
   if (!scroller) return
   const messages = scroller.querySelectorAll<HTMLElement>(".ai-msg--assistant")
   const latest = messages[messages.length - 1]
-  if (!latest) {
-    scroller.scrollTop = scroller.scrollHeight
-    return
+  if (latest) {
+    const top = latest.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    scroller.scrollTop = Math.max(0, scroller.scrollTop + top - 4)
   }
-  const top = latest.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-  scroller.scrollTop = Math.max(0, scroller.scrollTop + top - 4)
 }
 
 function applyParseResult(turn: Turn, result: AiParseResult): AiDraft[] {
@@ -704,11 +696,8 @@ async function answerQuestion(turn: Turn, question: AiQuestion, option: string) 
 }
 
 function datetimeAnswer(turn: Turn, question: AiQuestion) {
-  const key = `${turn.id}:${question.id}`
-  if (!datetimeAnswers.value[key]) {
-    datetimeAnswers.value[key] = { date: "", time: "" }
-  }
-  return datetimeAnswers.value[key]!
+  // Seeded by applyParseResult/loadConversation before the picker renders.
+  return datetimeAnswers.value[`${turn.id}:${question.id}`]!
 }
 
 function seedDatetimeAnswers(turn: Turn) {
@@ -1134,11 +1123,10 @@ function outcomeMessage(turn: Turn): string {
     if (turn.outcome === "failed") return "The event wasn't updated."
     return "Event updated."
   }
-  if (turn.outcome === "failed") return "No events were added."
   if (turn.outcome === "partial") {
     return `Added ${turn.added.length} event${turn.added.length === 1 ? "" : "s"}. ${turn.failed} couldn't be saved.`
   }
-  return `Added ${turn.added.length} event${turn.added.length === 1 ? "" : "s"} to your calendar.`
+  return "No events were added."
 }
 </script>
 
