@@ -3,6 +3,7 @@ import { nextTick } from "vue"
 import { mount, VueWrapper } from "@vue/test-utils"
 import DrawerOverlay from "@/components/shared/DrawerOverlay.vue"
 import { useUi, type DrawerType } from "@/composables/useUi"
+import { setLowPower } from "@/lib/motion"
 
 let wrapper: VueWrapper | null = null
 
@@ -189,5 +190,20 @@ describe("DrawerOverlay", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
     await nextTick()
     expect(ui.isDrawerOpen.value).toBe(false)
+  })
+
+  it("drives the open and close bounce through the stretch progress variable", async () => {
+    setLowPower(true)
+    try {
+      const ui = await mountOpen()
+      const drawer = document.querySelector<HTMLElement>(".drawer")!
+      expect(drawer.style.getPropertyValue("--drawer-p")).toBe("1")
+
+      ui.isDrawerOpen.value = false
+      await nextTick()
+      expect(drawer.style.getPropertyValue("--drawer-p")).toBe("0")
+    } finally {
+      setLowPower(false)
+    }
   })
 })

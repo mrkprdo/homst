@@ -259,7 +259,9 @@ function applyFinalState(target: unknown, params: any): void {
       style.transform = transforms.join(' ')
     }
     for (const [key, value] of Object.entries(otherStyles)) {
-      ;(style as any)[key] = value
+      // Custom properties are not writable through the camelCase style object.
+      if (key.startsWith('--')) style.setProperty(key, value)
+      else (style as any)[key] = value
     }
   }
 }

@@ -244,6 +244,8 @@ describe("lib/motion", () => {
     expect(el1.style.opacity).toBe("0.8")
     animate(el1, { opacity: 0.9 } as any)
     expect(el1.style.opacity).toBe("0.9")
+    animate(el1, { "--motion-var": 0.5 } as any)
+    expect(el1.style.getPropertyValue("--motion-var")).toBe("0.5")
     animate(null as any, { opacity: 0 } as any)
     animate(123 as any, { opacity: 0 } as any)
 

@@ -89,14 +89,20 @@ function onDocumentKeydown(e: KeyboardEvent) {
 
 watch(() => ui.isDrawerOpen.value, async (open) => {
   if (!drawerEl.value) return
-  const width = drawerEl.value.offsetWidth
 
   if (open) {
     lastFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
     document.addEventListener("keydown", onDocumentKeydown, true)
 
+    // The spring overshoots past its target. Driving a progress variable lets
+    // CSS turn that overshoot into a stretch anchored to the right edge,
+    // instead of sliding the panel further left and revealing the page behind.
+    drawerEl.value.style.removeProperty("transform")
+    if (!drawerEl.value.style.getPropertyValue("--drawer-p")) {
+      drawerEl.value.style.setProperty("--drawer-p", "0")
+    }
     animate(drawerEl.value, {
-      translateX: [`${width}px`, '0px'],
+      "--drawer-p": 1,
       ease: springs.overlay,
     })
 
@@ -110,7 +116,7 @@ watch(() => ui.isDrawerOpen.value, async (open) => {
   } else {
     document.removeEventListener("keydown", onDocumentKeydown, true)
     animate(drawerEl.value, {
-      translateX: `${width}px`,
+      "--drawer-p": 0,
       duration: 200,
       ease: ease.in,
     })
@@ -200,8 +206,13 @@ onUnmounted(() => {
   width: min(480px, 100vw);
   background: var(--color-bgElevated);
   z-index: 101;
-  /* Initial off-screen position — anime.js animates from here */
-  transform: translateX(100%);
+  /* 0 = off-screen, 1 = resting open position. Values above 1 are the spring's
+     overshoot: the panel stretches left while its right edge stays pinned. */
+  --drawer-p: 0;
+  transform-origin: right center;
+  transform:
+    translateX(calc(max(0, 1 - var(--drawer-p)) * 100%))
+    scaleX(max(1, var(--drawer-p)));
   border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   display: flex;
   flex-direction: column;
