@@ -72,6 +72,50 @@ const DRAFTS = [
   },
 ]
 
+function makeUpdate(overrides: Record<string, unknown> = {}) {
+  return {
+    ref: 3,
+    event_id: "ev-3",
+    title: "Dentist",
+    start_at: "2026-05-04T09:00:00-04:00",
+    end_at: "2026-05-04T10:00:00-04:00",
+    all_day: false,
+    external: false,
+    before: {
+      title: "Dentist",
+      start_at: "2026-05-04T09:00:00-04:00",
+      end_at: "2026-05-04T10:00:00-04:00",
+      all_day: false,
+    },
+    after: {
+      title: "Dentist (moved)",
+      start_at: "2026-05-04T15:00:00-04:00",
+      end_at: "2026-05-04T16:00:00-04:00",
+      all_day: false,
+    },
+    changes: {
+      title: "Dentist (moved)",
+      start_at: "2026-05-04T15:00:00-04:00",
+      end_at: "2026-05-04T16:00:00-04:00",
+    },
+    ...overrides,
+  }
+}
+
+function makeDelete(overrides: Record<string, unknown> = {}) {
+  return {
+    ref: 4,
+    event_id: "ev-4",
+    title: "Swim",
+    start_at: "2026-05-05T09:00:00-04:00",
+    end_at: null,
+    all_day: true,
+    external: false,
+    reason: "Cancelled",
+    ...overrides,
+  }
+}
+
 interface StreamOptions {
   drafts?: unknown[]
   updates?: unknown[]
@@ -384,6 +428,196 @@ describe("AiImportPanel", () => {
     expect(String(deleteCall![0])).toContain("/events/ev-4")
     expect(wrapper.text()).toContain("calendar is updated")
     expect(findButton(wrapper, "Add another")).toBeUndefined()
+  })
+
+  it("shows update diffs and toggles individual review items", async () => {
+    const update = makeUpdate({
+      changes: { recurrence: { freq: "weekly" }, assignee_id: "m1" },
+    })
+    install(handlerWith({ drafts: [], updates: [update], deletes: [makeDelete()] }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Review these")
+
+    expect(wrapper.text()).toContain("Repeats weekly")
+    expect(wrapper.text()).toContain("Assigned to Alice")
+
+    const boxes = wrapper.findAll(".ai-action .ai-checkbox")
+    expect(boxes).toHaveLength(2)
+    await boxes[0]!.trigger("change")
+    await boxes[0]!.trigger("change")
+    await boxes[1]!.trigger("change")
+    await boxes[1]!.trigger("change")
+    expect(findButton(wrapper, "Apply 2 changes")).toBeTruthy()
+
+    await send(wrapper, "Never mind")
+    expect(wrapper.text()).toContain("2 changes were not saved.")
+  })
+
+  it("applies a single update or deletion from the review list", async () => {
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/parse/stream")) {
+        return streamed({ drafts: [], updates: [makeUpdate()], deletes: [makeDelete()] })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/events/ev-3") && method === "PATCH") {
+        return json(eventResponse({
+          title: "Dentist (moved)",
+          start_at: "2026-05-04T15:00:00-04:00",
+          end_at: "2026-05-04T16:00:00-04:00",
+        }, 3))
+      }
+      if (url.includes("/events/ev-4") && method === "DELETE") return json({})
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Move and delete")
+
+    await wrapper.find(".ai-action-apply").trigger("click")
+    await flushPromises()
+    expect(fetchMock.mock.calls.some(
+      call => (call[1] as RequestInit)?.method === "PATCH",
+    )).toBe(true)
+
+    await wrapper.find(".ai-action-apply--danger").trigger("click")
+    await flushPromises()
+    expect(fetchMock.mock.calls.some(
+      call => (call[1] as RequestInit)?.method === "DELETE",
+    )).toBe(true)
+    expect(findButton(wrapper, "Done")).toBeTruthy()
+    expect(findButton(wrapper, "Add another")).toBeUndefined()
+  })
+
+  it("marks the turn done when an individual update is the last action", async () => {
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/parse/stream")) {
+        return streamed({ drafts: [], updates: [makeUpdate()] })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/events/ev-3") && method === "PATCH") {
+        return json(eventResponse({ title: "Dentist" }, 3))
+      }
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Move just this one")
+
+    await wrapper.find(".ai-action-apply").trigger("click")
+    await flushPromises()
+
+    expect(findButton(wrapper, "Done")).toBeTruthy()
+  })
+
+  it("reports failures when applying review items one by one", async () => {
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/parse/stream")) {
+        return streamed({ drafts: [], updates: [makeUpdate()], deletes: [makeDelete()] })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/events/") && (method === "PATCH" || method === "DELETE")) {
+        return json({ detail: "nope" }, 500)
+      }
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Move and delete")
+
+    await wrapper.find(".ai-action-apply").trigger("click")
+    await flushPromises()
+    expect(wrapper.text()).toContain('Couldn\'t update "Dentist".')
+
+    await wrapper.find(".ai-action-apply--danger").trigger("click")
+    await flushPromises()
+    expect(wrapper.text()).toContain('Couldn\'t delete "Swim".')
+  })
+
+  it("reports partial bulk failures across creates and existing events", async () => {
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/parse/stream")) {
+        return streamed({
+          drafts: [DRAFTS[0]],
+          updates: [makeUpdate()],
+          deletes: [makeDelete()],
+        })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/calendars") && method === "GET") return json([])
+      if (url.includes("/calendars") && method === "POST") {
+        return json({
+          id: "cal-1", household_id: "h", name: "Personal", color: "sage",
+          source: "internal", feed_url: null, is_visible: true, created_by: null,
+        })
+      }
+      if (url.endsWith("/events") && method === "POST") {
+        return json(eventResponse(JSON.parse(String(init?.body))))
+      }
+      if (url.includes("/events/") && (method === "PATCH" || method === "DELETE")) {
+        return json({ detail: "nope" }, 500)
+      }
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Do all three")
+
+    await findButton(wrapper, "Apply 3 changes")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Added 1 event. 2 changes couldn't be saved.")
+  })
+
+  it("skips an update when a replacement already deleted that event", async () => {
+    const update = makeUpdate()
+    const draft = DRAFTS[0]!
+    const conflict = {
+      id: "conflict-1",
+      draft_index: 0,
+      title: draft.title,
+      start_at: draft.start_at,
+      end_at: draft.end_at,
+      existing_title: "Dentist",
+      existing_start_at: update.start_at,
+      existing_end_at: update.end_at,
+      existing_kind: "existing",
+      existing_event_id: "ev-3",
+      existing_recurring: false,
+      message: "Team standup overlaps Dentist.",
+    }
+    let patches = 0
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/parse/stream")) {
+        return streamed({ drafts: [draft], updates: [update], conflicts: [conflict] })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/calendars") && method === "GET") return json([])
+      if (url.includes("/calendars") && method === "POST") {
+        return json({
+          id: "cal-1", household_id: "h", name: "Personal", color: "sage",
+          source: "internal", feed_url: null, is_visible: true, created_by: null,
+        })
+      }
+      if (url.endsWith("/events") && method === "POST") {
+        return json(eventResponse(JSON.parse(String(init?.body))))
+      }
+      if (url.includes("/events/ev-3") && method === "PATCH") {
+        patches += 1
+        return json(eventResponse({ title: "Dentist" }, 3))
+      }
+      if (url.includes("/events/ev-3") && method === "DELETE") return json({})
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Replace and move")
+
+    await findButton(wrapper, "Replace existing")!.trigger("click")
+    await findButton(wrapper, "Apply 2 changes")!.trigger("click")
+    await flushPromises()
+
+    expect(patches).toBe(0)
+    expect(wrapper.text()).toContain("Added 1 event")
   })
 
   it("saves the conversation and links created events to it", async () => {

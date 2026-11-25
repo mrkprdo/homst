@@ -383,6 +383,7 @@ describe("aiApi conversations", () => {
       warnings: ["Check the time", 5],
       applied: false,
       outcome: null,
+      actions: ["done"],
     }],
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
@@ -425,6 +426,8 @@ describe("aiApi conversations", () => {
     expect(created.turns[0]!.drafts[0]!.startAt).toBe("2026-05-15T10:00:00Z")
     expect(created.turns[0]!.questions[0]!.kind).toBe("datetime")
     expect(created.turns[0]!.warnings).toEqual(["Check the time"])
+    expect(created.turns[0]!.actions).toEqual(["done"])
+    expect(created.turns[0]!.actionsDeclared).toBe(true)
 
     const postBody = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)
     expect(postBody.turns[0].drafts[0]).toMatchObject({

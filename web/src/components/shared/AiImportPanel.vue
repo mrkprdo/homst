@@ -1397,10 +1397,7 @@ function outcomeMessage(turn: Turn): string {
     if (!hasExistingChanges(turn)) {
       return `Added ${applied} event${applied === 1 ? "" : "s"}. ${turn.failed} couldn't be saved.`
     }
-    if (applied > 0) {
-      return `Added ${applied} event${applied === 1 ? "" : "s"}. ${turn.failed} change${turn.failed === 1 ? "" : "s"} couldn't be saved.`
-    }
-    return `${turn.failed} change${turn.failed === 1 ? "" : "s"} couldn't be saved.`
+    return `Added ${applied} event${applied === 1 ? "" : "s"}. ${turn.failed} change${turn.failed === 1 ? "" : "s"} couldn't be saved.`
   }
   return hasExistingChanges(turn) ? "No changes were applied." : "No events were added."
 }

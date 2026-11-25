@@ -572,6 +572,152 @@ def test_validate_actions_updates_and_deletes():
     assert deletes[0]["external"] is True
 
 
+def _update_base(**overrides):
+    base = {
+        "ref": 1,
+        "id": "11111111-1111-1111-1111-111111111111",
+        "title": "Dentist",
+        "start_at": "2027-01-05T09:00:00+00:00",
+        "end_at": "2027-01-05T10:00:00+00:00",
+        "all_day": False,
+        "assignee_id": "m-bob",
+        "recurrence": {"freq": "weekly"},
+        "reminder_minutes": 30,
+        "external": False,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_validate_update_covers_every_field_and_bad_value():
+    base = _update_base()
+
+    assert ai._validate_update("nope", base, TZ, MEMBERS) == (None, [])
+    assert ai._validate_update({}, _update_base(start_at="bad"), TZ, MEMBERS) == (None, [])
+
+    action, issues = ai._validate_update({"title": "  "}, base, TZ, MEMBERS)
+    assert action is None and "empty event title" in issues[0]
+
+    action, _ = ai._validate_update({"description": None}, base, TZ, MEMBERS)
+    assert action is not None and action["changes"] == {"description": ""}
+
+    action, _ = ai._validate_update({"description": "Bring the card"}, base, TZ, MEMBERS)
+    assert action is not None and action["changes"]["description"] == "Bring the card"
+
+    action, issues = ai._validate_update({"description": 5}, base, TZ, MEMBERS)
+    assert action is None and "invalid event description" in issues[0]
+
+    action, issues = ai._validate_update({"start_at": "nope"}, base, TZ, MEMBERS)
+    assert action is None and "unreadable start time" in issues[0]
+
+    action, issues = ai._validate_update({"all_day": "yes"}, base, TZ, MEMBERS)
+    assert action is None and "invalid all-day flag" in issues[0]
+
+    action, _ = ai._validate_update({"all_day": True}, base, TZ, MEMBERS)
+    assert action is not None
+    assert action["changes"]["all_day"] is True
+    assert action["changes"]["end_at"] is None
+
+    all_day_base = _update_base(
+        start_at="2027-01-05T00:00:00+00:00", end_at=None, all_day=True
+    )
+    action, _ = ai._validate_update({"all_day": False}, all_day_base, TZ, MEMBERS)
+    assert action is not None
+    assert action["changes"]["all_day"] is False
+    assert action["changes"]["end_at"] == "2027-01-05T01:00:00+00:00"
+
+    action, _ = ai._validate_update(
+        {"end_at": "2027-01-05T11:00:00Z"}, base, TZ, MEMBERS
+    )
+    assert action is not None
+    assert action["changes"]["end_at"] == "2027-01-05T11:00:00+00:00"
+
+    action, _ = ai._validate_update({"recurrence": None}, base, TZ, MEMBERS)
+    assert action is not None and action["changes"] == {"recurrence": None}
+
+    action, issues = ai._validate_update(
+        {"recurrence": {"freq": "hourly"}}, base, TZ, MEMBERS
+    )
+    assert action is None and "invalid repeat rule" in issues[0]
+
+    action, _ = ai._validate_update(
+        {"recurrence": {"freq": "daily"}}, base, TZ, MEMBERS
+    )
+    assert action is not None and action["changes"]["recurrence"]["freq"] == "daily"
+
+    action, issues = ai._validate_update({"reminder_minutes": 99999}, base, TZ, MEMBERS)
+    assert action is None and "invalid reminder time" in issues[0]
+
+    action, _ = ai._validate_update({"reminder_minutes": 60}, base, TZ, MEMBERS)
+    assert action is not None and action["changes"]["reminder_minutes"] == 60
+
+    action, _ = ai._validate_update({"assignee": "Alice Smith"}, base, TZ, MEMBERS)
+    assert action is not None and action["changes"]["assignee_id"] == "m-alice"
+
+    action, issues = ai._validate_update({"assignee": "Ghost"}, base, TZ, MEMBERS)
+    assert action is None and "isn't a household member" in issues[0]
+
+    action, issues = ai._validate_update({"assignee": 5}, base, TZ, MEMBERS)
+    assert action is None and "invalid assignee" in issues[0]
+
+    action, issues = ai._validate_update({"unknown": True}, base, TZ, MEMBERS)
+    assert action is None and issues == []
+
+    assert ai._validate_delete("nope", base) is None
+
+
+def test_busy_line_covers_all_day_multiday_notes_reminder_and_external():
+    line = ai._busy_line(
+        {
+            "title": "Holiday",
+            "start_at": "2027-01-06T00:00:00Z",
+            "all_day": True,
+            "description": "School closed",
+            "reminder_minutes": 30,
+            "external": True,
+        },
+        TZ,
+    )
+    assert "all day" in line
+    assert "notes: School closed" in line
+    assert "reminder 30m" in line
+    assert "external calendar" in line
+
+    trip = ai._busy_line(
+        {
+            "title": "Trip",
+            "start_at": "2027-01-05T09:00:00Z",
+            "end_at": "2027-01-06T10:00:00Z",
+        },
+        TZ,
+    )
+    assert " to " in trip
+
+
+def test_validate_actions_duplicate_refs_and_missing_events_list():
+    _, _, warnings = ai.validate_actions(
+        {
+            "deletes": [{"ref": 1}, {"ref": 1}],
+            "updates": [{"ref": 2, "title": "One"}, {"ref": 2, "title": "Two"}],
+        },
+        CATALOG,
+        TZ,
+        MEMBERS,
+    )
+    assert any("duplicate change" in note for note in warnings)
+
+    drafts, skipped, warnings, questions, conflicts = ai.validate_payload_ex(
+        {"updates": [{"ref": 1, "title": "Dentist"}]},
+        TZ,
+        MEMBERS,
+    )
+    assert drafts == []
+    assert skipped == 0
+    assert warnings == []
+    assert questions == []
+    assert conflicts == []
+
+
 def test_validate_actions_clears_fields_and_rejects_bad_refs():
     updates, deletes, warnings = ai.validate_actions(
         {
