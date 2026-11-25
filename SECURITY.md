@@ -65,9 +65,11 @@ Consequences that are accepted by design:
   that is playing. Turn them off in **Settings > Music** to keep listening
   data on the device.
 - Smart import sends the pasted message or screenshot, the household member
-  names, and a short list of nearby calendar entries (title, time and assigned
-  member) to OpenCode when an AI key is configured. Removing the key in
-  **Settings > Smart import** turns the feature off.
+  names, and the household calendar entries (title, time, reminder, assigned
+  member and a per-request reference number) to OpenCode when an AI key is
+  configured. The model can propose creating, changing or deleting events, but
+  nothing is written until a household member reviews and applies the changes.
+  Removing the key in **Settings > Smart import** turns the feature off.
 
 Out of scope for this model:
 

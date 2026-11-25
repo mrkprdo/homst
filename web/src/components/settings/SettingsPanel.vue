@@ -1476,7 +1476,7 @@ watch(searchTokens, applySearch, { flush: "post" })
         <header class="card-header">
           <div class="card-heading">
             <h3 class="card-title">Smart import</h3>
-            <p class="card-desc">Turn emails and screenshots into calendar events</p>
+            <p class="card-desc">Turn emails and screenshots into events, or change and cancel existing ones</p>
           </div>
         </header>
 

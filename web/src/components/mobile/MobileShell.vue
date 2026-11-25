@@ -130,7 +130,7 @@ watch(
     } else if (type === "task-detail") {
       showTaskDetail.value = true
     } else if (type === "quick-add" && ui.drawer.value.aiEventId) {
-      // Event detail's "Update with chat" opens in the desktop drawer. The
+      // Event detail's "Smart edit" opens in the desktop drawer. The
       // mobile shell has its own detail sheets, so translate that request into
       // its Smart quick-add sheet instead.
       aiResume.value = {

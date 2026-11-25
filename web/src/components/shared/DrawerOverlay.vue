@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onUnmounted } from "vue"
 import { useUi } from "@/composables/useUi"
 import { PhX } from "@phosphor-icons/vue"
 import QuickAddForm from "@/components/shared/QuickAddForm.vue"
-import { animate, springs, ease } from "@/lib/motion"
+import { animate, ease } from "@/lib/motion"
 
 const ui = useUi()
 
@@ -94,16 +94,20 @@ watch(() => ui.isDrawerOpen.value, async (open) => {
     lastFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
     document.addEventListener("keydown", onDocumentKeydown, true)
 
-    // The spring overshoots past its target. Driving a progress variable lets
-    // CSS turn that overshoot into a stretch anchored to the right edge,
+    // The open bounce overshoots past its target. Driving a progress variable
+    // lets CSS turn that overshoot into a stretch anchored to the right edge,
     // instead of sliding the panel further left and revealing the page behind.
+    // `outBack` overshoots once and settles monotonically (a physical spring
+    // also dips below 1 after the overshoot, which would pull the panel away
+    // from the edge and show a strip of the page during the bounce).
     drawerEl.value.style.removeProperty("transform")
     if (!drawerEl.value.style.getPropertyValue("--drawer-p")) {
       drawerEl.value.style.setProperty("--drawer-p", "0")
     }
     animate(drawerEl.value, {
       "--drawer-p": 1,
-      ease: springs.overlay,
+      duration: 420,
+      ease: "outBack",
     })
 
     await nextTick()

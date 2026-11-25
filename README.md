@@ -9,7 +9,7 @@ HOMST is a self-hosted dashboard for a shared household. It runs on a wall-mount
 ## Features
 
 - **Shared calendar**: Month, week, and day views. Create events, assign persons, and set recurrence. Includes public holidays.
-- **Smart import**: Paste an email or drop a screenshot in the add panel and OpenCode turns it into reviewed calendar events, including recurring series and multiple dates. It assigns each event to the right household member, asks a short follow-up when a date, time or person is genuinely ambiguous, and flags schedule conflicts before anything is saved. Watch the model's streamed reasoning/output before applying, pick the model in Settings with a refreshable catalog, and keep the triggering message on every event.
+- **Smart import**: Paste an email or drop a screenshot in the add panel and OpenCode turns it into reviewed calendar events, including recurring series and multiple dates. Ask it to change or cancel something you already have and it proposes the update or deletion against your real calendar. It assigns each event to the right household member, asks a short follow-up when a date, time or person is genuinely ambiguous, and flags schedule conflicts before anything is saved. Review a whole batch at once or apply changes one by one; nothing is written until you apply it. Watch the model's streamed reasoning/output before applying, pick the model in Settings with a refreshable catalog, and keep the triggering message on every event.
 - **Task board**: To Do, Doing, and Done columns. Tasks have priorities, due dates, and assignees.
 - **Today**: Daily schedule, current weather, and upcoming tasks.
 - **Indoor temperatures**: Nest thermostat and Temperature Sensors in one card, with per-room readings and humidity.

@@ -19,6 +19,8 @@ import {
   type AiConflict,
   type AiConversationTurn,
   type AiDraft,
+  type AiEventDelete,
+  type AiEventUpdate,
   type AiParseResult,
   type AiQuestion,
   type AiStatus,
@@ -73,6 +75,10 @@ interface Turn {
   reply: string
   drafts: AiDraft[]
   selected: boolean[]
+  updates: AiEventUpdate[]
+  updateSelected: boolean[]
+  deletes: AiEventDelete[]
+  deleteSelected: boolean[]
   warnings: string[]
   questions: AiQuestion[]
   conflicts: AiConflict[]
@@ -83,6 +89,9 @@ interface Turn {
   error: string
   reasoning: string
   rawResponse: string
+  documentKind: string
+  actions: string[]
+  actionsDeclared: boolean
   clarifications: AiClarification[]
   requestText: string
   requestImage: Attachment | null
@@ -102,6 +111,10 @@ function userTurn(text: string, image: Attachment | null): Turn {
     reply: "",
     drafts: [],
     selected: [],
+    updates: [],
+    updateSelected: [],
+    deletes: [],
+    deleteSelected: [],
     warnings: [],
     questions: [],
     conflicts: [],
@@ -112,6 +125,9 @@ function userTurn(text: string, image: Attachment | null): Turn {
     error: "",
     reasoning: "",
     rawResponse: "",
+    documentKind: "other",
+    actions: [],
+    actionsDeclared: false,
     clarifications: [],
     requestText: "",
     requestImage: null,
@@ -130,6 +146,10 @@ function assistantTurn(text = "", image: Attachment | null = null): Turn {
     reply: "",
     drafts: [],
     selected: [],
+    updates: [],
+    updateSelected: [],
+    deletes: [],
+    deleteSelected: [],
     warnings: [],
     questions: [],
     conflicts: [],
@@ -140,6 +160,9 @@ function assistantTurn(text = "", image: Attachment | null = null): Turn {
     error: "",
     reasoning: "",
     rawResponse: "",
+    documentKind: "other",
+    actions: [],
+    actionsDeclared: false,
     clarifications: [],
     requestText: text,
     requestImage: image,
@@ -213,7 +236,19 @@ function isActive(turn: Turn): boolean {
 }
 
 function selectedCount(turn: Turn): number {
-  return turn.selected.filter(Boolean).length
+  return (
+    turn.selected.filter(Boolean).length +
+    turn.updateSelected.filter(Boolean).length +
+    turn.deleteSelected.filter(Boolean).length
+  )
+}
+
+function actionCount(turn: Turn): number {
+  return turn.drafts.length + turn.updates.length + turn.deletes.length
+}
+
+function hasExistingChanges(turn: Turn): boolean {
+  return turn.updates.length > 0 || turn.deletes.length > 0
 }
 
 function blockingConflicts(turn: Turn): AiConflict[] {
@@ -222,13 +257,13 @@ function blockingConflicts(turn: Turn): AiConflict[] {
 
 const reviewTurn = computed<Turn | null>(() => {
   const turn = activeAssistant.value
-  return turn && turn.drafts.length > 0 ? turn : null
+  return turn && actionCount(turn) > 0 ? turn : null
 })
 
 function reviewNote(turn: Turn): string {
   if (blockingConflicts(turn).length > 0) return "Resolve the conflicts first."
   if (editingIndex.value !== null) return "Save or cancel your edit first."
-  return `${selectedCount(turn)} of ${turn.drafts.length} selected`
+  return `${selectedCount(turn)} of ${actionCount(turn)} selected`
 }
 
 function assistantText(turn: Turn): string {
@@ -236,12 +271,14 @@ function assistantText(turn: Turn): string {
   if (turn.status === "error") return "I couldn't finish that one."
   if (turn.applied) {
     if (turn.reply) return turn.reply
-    return props.focusEventId
-      ? "Done — the event is updated."
-      : `Done — ${turn.added.length === 1 ? "it's" : "they're"} on the calendar.`
+    if (props.focusEventId) return "Done — the event is updated."
+    if (turn.added.length > 0) {
+      return `Done — ${turn.added.length === 1 ? "it's" : "they're"} on the calendar.`
+    }
+    return "Done — the calendar is updated."
   }
-  if (turn.outcome === "partial" && turn.added.length > 0) {
-    return "Some events were added. The rest are still below."
+  if (turn.outcome === "partial" && (turn.added.length > 0 || actionCount(turn) > 0)) {
+    return "Some changes were applied. The rest are still below."
   }
   if (turn.questions.length > 0 && turn.drafts.length === 0) {
     return turn.questions.length === 1
@@ -250,11 +287,15 @@ function assistantText(turn: Turn): string {
   }
   if (turn.reply) return turn.reply
   const count = turn.drafts.length
+  const changes = turn.updates.length + turn.deletes.length
   if (count > 0) {
     if (props.focusEventId) {
       return "Here's the updated event. Check the changes, then save."
     }
     return `I found ${count} event${count === 1 ? "" : "s"}. Check the details, then add ${count === 1 ? "it" : "them"} when ready.`
+  }
+  if (changes > 0) {
+    return `I found ${changes} change${changes === 1 ? "" : "s"} to existing events. Review ${changes === 1 ? "it" : "them"}, then apply.`
   }
   return turn.status === "empty"
     ? "I couldn't find a dated event in that. Add a day or time and I'll try again."
@@ -263,25 +304,70 @@ function assistantText(turn: Turn): string {
 
 function turnNote(turn: Turn): string {
   if (turn.applied) return ""
-  if (!isActive(turn) && turn.drafts.length > 0) {
+  if (!isActive(turn) && actionCount(turn) > 0) {
     if (props.focusEventId) return "This change was not saved."
-    return turn.drafts.length === 1 ? "1 event was not added." : `${turn.drafts.length} events were not added.`
+    if (!hasExistingChanges(turn)) {
+      return turn.drafts.length === 1 ? "1 event was not added." : `${turn.drafts.length} events were not added.`
+    }
+    const total = actionCount(turn)
+    return total === 1 ? "1 change was not saved." : `${total} changes were not saved.`
   }
   return ""
 }
 
-function formatWhen(draft: AiDraft): string {
-  const date = new Date(draft.startAt)
+/**
+ * Offer manual entry only when the household actually tried to import
+ * something (an image, a document-like message, or rows the model could not
+ * turn into events). Used as a fallback for saved conversations from before
+ * the model started choosing the turn actions itself.
+ */
+function offersManualEntry(turn: Turn): boolean {
+  if (turn.status !== "empty" || turn.applied || turn.added.length > 0) return false
+  if (turn.requestImage) return true
+  if (turn.warnings.length > 0) return true
+  return turn.documentKind !== "" && turn.documentKind !== "other"
+}
+
+const TURN_ACTION_IDS = new Set(["add_manually", "add_another", "done"])
+
+function legacyActions(turn: Turn): string[] {
+  if (turn.applied) {
+    return turn.added.length > 0 ? ["done", "add_another"] : ["done"]
+  }
+  return offersManualEntry(turn) ? ["add_manually"] : []
+}
+
+/**
+ * The buttons the model chose for this turn, filtered against the live state.
+ * The model owns the choice; the harness only hides actions that cannot work
+ * yet (for example "add_another" before anything was saved).
+ */
+function visibleActions(turn: Turn): string[] {
+  const source = turn.actionsDeclared ? turn.actions : legacyActions(turn)
+  const visible: string[] = []
+  for (const action of source) {
+    if (!TURN_ACTION_IDS.has(action) || visible.includes(action)) continue
+    if (props.focusEventId && action !== "done") continue
+    if (action === "done" && !turn.applied) continue
+    if (action === "add_another" && (!turn.applied || turn.added.length === 0)) continue
+    if (action === "add_manually" && (turn.applied || actionCount(turn) > 0)) continue
+    visible.push(action)
+  }
+  return visible
+}
+
+function formatSpan(startAt: string, endAt: string | null, allDay: boolean): string {
+  const date = new Date(startAt)
   if (Number.isNaN(date.getTime())) return "Date unknown"
   const day = date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
-  const end = draft.endAt ? new Date(draft.endAt) : null
+  const end = endAt ? new Date(endAt) : null
   const validEnd = end && !Number.isNaN(end.getTime()) ? end : null
   const endDay = validEnd
     ? validEnd.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
     : ""
-  const spansDays = !!validEnd && dateInputValue(validEnd.toISOString()) !== dateInputValue(draft.startAt)
+  const spansDays = !!validEnd && dateInputValue(validEnd.toISOString()) !== dateInputValue(startAt)
 
-  if (draft.allDay) {
+  if (allDay) {
     return spansDays ? `${day} – ${endDay} · All day` : `${day} · All day`
   }
 
@@ -293,6 +379,52 @@ function formatWhen(draft: AiDraft): string {
   return spansDays
     ? `${day}, ${time} – ${endDay}, ${endTime}`
     : `${day} · ${time} – ${endTime}`
+}
+
+function formatWhen(draft: AiDraft): string {
+  return formatSpan(draft.startAt, draft.endAt, draft.allDay)
+}
+
+function whenChanged(update: AiEventUpdate): boolean {
+  const changes = update.changes
+  return (
+    changes.start_at !== undefined ||
+    changes.end_at !== undefined ||
+    changes.all_day !== undefined
+  )
+}
+
+function updateDiff(update: AiEventUpdate): string[] {
+  const changes = update.changes
+  const lines: string[] = []
+  if (changes.title !== undefined) {
+    lines.push(`Title: ${update.before.title} → ${changes.title}`)
+  }
+  if (whenChanged(update)) {
+    lines.push(
+      `When: ${formatSpan(update.before.start_at, update.before.end_at, update.before.all_day)} → `
+      + formatSpan(update.after.start_at, update.after.end_at, update.after.all_day),
+    )
+  }
+  if (changes.reminder_minutes !== undefined) {
+    lines.push(
+      changes.reminder_minutes == null
+        ? "Reminder removed"
+        : `Reminder ${reminderLabel(changes.reminder_minutes)?.toLowerCase() ?? "changed"}`,
+    )
+  }
+  if (changes.recurrence !== undefined) {
+    const label = changes.recurrence?.freq
+      ? RECUR_LABELS[changes.recurrence.freq] ?? changes.recurrence.freq
+      : null
+    lines.push(label ? `Repeats ${label}` : "No longer repeats")
+  }
+  if (changes.assignee_id !== undefined) {
+    const name = changes.assignee_id ? props.memberNames?.[changes.assignee_id] : ""
+    lines.push(name ? `Assigned to ${name}` : "Unassigned")
+  }
+  if (changes.description !== undefined) lines.push("Notes updated")
+  return lines
 }
 
 const RECUR_LABELS: Record<string, string> = {
@@ -370,14 +502,21 @@ function restoredTurn(stored: AiConversationTurn): Turn {
   const turn = assistantTurn()
   turn.reply = stored.reply
   turn.rawResponse = stored.rawResponse
+  turn.documentKind = stored.documentKind
+  turn.actions = stored.actions
+  turn.actionsDeclared = stored.actionsDeclared
   turn.drafts = props.focusEventId ? stored.drafts.slice(0, 1) : stored.drafts
   turn.selected = turn.drafts.map(() => true)
+  turn.updates = props.focusEventId ? [] : stored.updates ?? []
+  turn.updateSelected = turn.updates.map(() => true)
+  turn.deletes = props.focusEventId ? [] : stored.deletes ?? []
+  turn.deleteSelected = turn.deletes.map(() => true)
   turn.added = stored.added
   turn.questions = stored.questions
   turn.warnings = stored.warnings
   turn.applied = stored.applied
   turn.outcome = stored.outcome
-  turn.status = turn.drafts.length > 0 || turn.questions.length > 0 || turn.applied
+  turn.status = actionCount(turn) > 0 || turn.questions.length > 0 || turn.applied
     ? "ready"
     : "empty"
   return turn
@@ -429,10 +568,15 @@ function conversationTurns(): AiConversationTurn[] {
     reply: turn.reply,
     drafts: turn.drafts,
     added: turn.added,
+    updates: turn.updates,
+    deletes: turn.deletes,
     questions: turn.questions,
     warnings: turn.warnings,
     applied: turn.applied,
     outcome: turn.outcome,
+    documentKind: turn.documentKind,
+    actions: turn.actions,
+    actionsDeclared: turn.actionsDeclared,
   }))
 }
 
@@ -612,6 +756,10 @@ function applyParseResult(turn: Turn, result: AiParseResult): AiDraft[] {
   turn.reply = result.reply
   turn.drafts = resultEvents
   turn.selected = resultEvents.map(() => true)
+  turn.updates = props.focusEventId ? [] : result.updates
+  turn.updateSelected = turn.updates.map(() => true)
+  turn.deletes = props.focusEventId ? [] : result.deletes
+  turn.deleteSelected = turn.deletes.map(() => true)
   turn.warnings = result.skipped > 0
     ? [
         ...result.warnings,
@@ -622,13 +770,19 @@ function applyParseResult(turn: Turn, result: AiParseResult): AiDraft[] {
   turn.conflicts = result.conflicts
   turn.rawResponse = result.response
   turn.reasoning = turn.reasoning || result.reasoning || ""
-  turn.status = resultEvents.length > 0 || result.questions.length > 0 ? "ready" : "empty"
+  turn.documentKind = result.documentKind
+  turn.actions = result.actions
+  turn.actionsDeclared = true
+  turn.status = actionCount(turn) > 0 || result.questions.length > 0 ? "ready" : "empty"
   seedDatetimeAnswers(turn)
+  const changed = turn.updates.length + turn.deletes.length
   announcement.value = resultEvents.length > 0
     ? `${resultEvents.length} event${resultEvents.length === 1 ? "" : "s"} ready.`
-    : result.questions.length > 0
-      ? "I need one more detail."
-      : "No events found."
+    : changed > 0
+      ? `${changed} calendar change${changed === 1 ? "" : "s"} ready.`
+      : result.questions.length > 0
+        ? "I need one more detail."
+        : "No events found."
   return resultEvents
 }
 
@@ -813,8 +967,18 @@ function toggle(turn: Turn, index: number) {
 }
 
 function toggleAll(turn: Turn) {
-  const next = selectedCount(turn) !== turn.drafts.length
+  const next = selectedCount(turn) !== actionCount(turn)
   turn.selected = turn.drafts.map(() => next)
+  turn.updateSelected = turn.updates.map(() => next)
+  turn.deleteSelected = turn.deletes.map(() => next)
+}
+
+function toggleUpdate(turn: Turn, index: number) {
+  turn.updateSelected[index] = !turn.updateSelected[index]
+}
+
+function toggleDelete(turn: Turn, index: number) {
+  turn.deleteSelected[index] = !turn.deleteSelected[index]
 }
 
 async function applySelected() {
@@ -828,15 +992,21 @@ async function applySelected() {
   turn.conflicts = []
   const saved: AiDraft[] = []
   const failedDrafts: AiDraft[] = []
+  const savedUpdates = new Set<number>()
+  const savedDeletes = new Set<number>()
+  const hadExistingChanges = hasExistingChanges(turn)
+  let failedActions = 0
   const deletedEventIds = new Set<string>()
   const sourceMessage = conversationSource()
   try {
     let linkedConversationId = conversationId.value
-    try {
-      linkedConversationId = await ensureConversation()
-    } catch {
-      inputError.value = "Couldn't save this conversation. Try again before saving the event."
-      return
+    if (turn.selected.some(Boolean)) {
+      try {
+        linkedConversationId = await ensureConversation()
+      } catch {
+        inputError.value = "Couldn't save this conversation. Try again before saving the event."
+        return
+      }
     }
 
     if (props.focusEventId) {
@@ -865,7 +1035,9 @@ async function applySelected() {
         failedDrafts.push(draft)
       }
     } else {
-      const calendarId = await ensureDefaultCalendar()
+      const calendarId = turn.selected.some(Boolean)
+        ? await ensureDefaultCalendar()
+        : ""
       for (const [index, draft] of turn.drafts.entries()) {
         if (!turn.selected[index]) continue
         try {
@@ -890,37 +1062,134 @@ async function applySelected() {
         }
       }
     }
+
+    for (const [index, update] of turn.updates.entries()) {
+      if (props.focusEventId || !turn.updateSelected[index]) continue
+      if (deletedEventIds.has(update.eventId)) {
+        savedUpdates.add(update.ref)
+        continue
+      }
+      try {
+        const updated = await calendarApi.updateEvent(update.eventId, update.changes)
+        upsertEvent(updated)
+        savedUpdates.add(update.ref)
+      } catch {
+        failedActions += 1
+      }
+    }
+
+    for (const [index, removal] of turn.deletes.entries()) {
+      if (props.focusEventId || !turn.deleteSelected[index]) continue
+      try {
+        await calendarApi.deleteEvent(removal.eventId)
+        removeEvent(removal.eventId)
+        deletedEventIds.add(removal.eventId)
+        savedDeletes.add(removal.ref)
+      } catch {
+        failedActions += 1
+      }
+    }
   } finally {
     applying.value = false
   }
 
-  turn.failed = failedDrafts.length
+  const savedActions = savedUpdates.size + savedDeletes.size
+  turn.failed = failedDrafts.length + failedActions
   if (saved.length > 0) {
     turn.added = props.focusEventId ? saved : [...turn.added, ...saved]
   }
-  if (failedDrafts.length === 0) {
+  turn.updates = props.focusEventId
+    ? []
+    : turn.updates.filter(update => !savedUpdates.has(update.ref))
+  turn.updateSelected = turn.updates.map(() => true)
+  turn.deletes = props.focusEventId
+    ? []
+    : turn.deletes.filter(removal => !savedDeletes.has(removal.ref))
+  turn.deleteSelected = turn.deletes.map(() => true)
+
+  const failedTotal = failedDrafts.length + failedActions
+  if (failedTotal === 0) {
     turn.outcome = "success"
     turn.applied = true
     turn.reply = ""
     turn.drafts = []
     turn.selected = []
+    turn.updates = []
+    turn.updateSelected = []
+    turn.deletes = []
+    turn.deleteSelected = []
     turn.replacements = []
   } else {
-    turn.outcome = turn.added.length > 0 ? "partial" : "failed"
+    turn.outcome = saved.length > 0 || savedActions > 0 ? "partial" : "failed"
     turn.drafts = failedDrafts
     turn.selected = failedDrafts.map(() => true)
   }
   editingIndex.value = null
   editBuffer.value = null
-  announcement.value = saved.length > 0
+  const appliedTotal = saved.length + savedActions
+  announcement.value = appliedTotal > 0
     ? props.focusEventId
       ? "Event updated."
-      : `Added ${saved.length} event${saved.length === 1 ? "" : "s"}.`
+      : hadExistingChanges
+        ? `Applied ${appliedTotal} calendar change${appliedTotal === 1 ? "" : "s"}.`
+        : `Added ${saved.length} event${saved.length === 1 ? "" : "s"}.`
     : props.focusEventId
       ? "The event was not updated."
-      : "No events were added."
+      : hadExistingChanges
+        ? "No changes were applied."
+        : "No events were added."
   queueConversationSave()
   void revealLatestAssistant()
+}
+
+/** Apply one reviewed change without touching the rest of the batch. */
+async function applyUpdate(turn: Turn, index: number) {
+  const update = turn.updates[index]
+  if (!update || applying.value) return
+  applying.value = true
+  inputError.value = ""
+  try {
+    const updated = await calendarApi.updateEvent(update.eventId, update.changes)
+    upsertEvent(updated)
+    turn.updates.splice(index, 1)
+    turn.updateSelected.splice(index, 1)
+    announcement.value = `Updated ${update.title}.`
+    if (actionCount(turn) === 0) {
+      turn.outcome = "success"
+      turn.applied = true
+      turn.reply = ""
+    }
+    queueConversationSave()
+  } catch {
+    inputError.value = `Couldn't update "${update.title}". Try again.`
+  } finally {
+    applying.value = false
+  }
+}
+
+/** Delete one reviewed event without touching the rest of the batch. */
+async function applyDelete(turn: Turn, index: number) {
+  const removal = turn.deletes[index]
+  if (!removal || applying.value) return
+  applying.value = true
+  inputError.value = ""
+  try {
+    await calendarApi.deleteEvent(removal.eventId)
+    removeEvent(removal.eventId)
+    turn.deletes.splice(index, 1)
+    turn.deleteSelected.splice(index, 1)
+    announcement.value = `Deleted ${removal.title}.`
+    if (actionCount(turn) === 0) {
+      turn.outcome = "success"
+      turn.applied = true
+      turn.reply = ""
+    }
+    queueConversationSave()
+  } catch {
+    inputError.value = `Couldn't delete "${removal.title}". Try again.`
+  } finally {
+    applying.value = false
+  }
 }
 
 // ── Inline draft editing ──────────────────────────────────────────────────
@@ -1124,9 +1393,16 @@ function outcomeMessage(turn: Turn): string {
     return "Event updated."
   }
   if (turn.outcome === "partial") {
-    return `Added ${turn.added.length} event${turn.added.length === 1 ? "" : "s"}. ${turn.failed} couldn't be saved.`
+    const applied = turn.added.length
+    if (!hasExistingChanges(turn)) {
+      return `Added ${applied} event${applied === 1 ? "" : "s"}. ${turn.failed} couldn't be saved.`
+    }
+    if (applied > 0) {
+      return `Added ${applied} event${applied === 1 ? "" : "s"}. ${turn.failed} change${turn.failed === 1 ? "" : "s"} couldn't be saved.`
+    }
+    return `${turn.failed} change${turn.failed === 1 ? "" : "s"} couldn't be saved.`
   }
-  return "No events were added."
+  return hasExistingChanges(turn) ? "No changes were applied." : "No events were added."
 }
 </script>
 
@@ -1287,7 +1563,7 @@ function outcomeMessage(turn: Turn): string {
                 >
                   <div v-for="question in turn.questions" :key="question.id" class="ai-question">
                     <p
-                      v-if="turn.questions.length > 1 || turn.drafts.length > 0"
+                      v-if="turn.questions.length > 1 || actionCount(turn) > 0"
                       class="ai-question-text"
                     >
                       {{ question.question }}
@@ -1357,7 +1633,7 @@ function outcomeMessage(turn: Turn): string {
                 </div>
 
                 <div
-                  v-if="turn.warnings.length > 0 && turn.drafts.length === 0"
+                  v-if="turn.warnings.length > 0 && actionCount(turn) === 0"
                   class="ai-callout ai-callout--warning"
                 >
                   <PhWarning :size="18" weight="fill" class="ai-callout-icon" aria-hidden="true" />
@@ -1369,9 +1645,9 @@ function outcomeMessage(turn: Turn): string {
                   </div>
                 </div>
 
-                <!-- Generated drafts, confirmed before anything is written -->
+                <!-- Generated drafts and existing-event changes, confirmed before writing -->
                 <div
-                  v-if="isActive(turn) && turn.drafts.length > 0"
+                  v-if="isActive(turn) && actionCount(turn) > 0"
                   class="ai-confirm"
                 >
                   <div class="ai-confirm-head">
@@ -1379,12 +1655,12 @@ function outcomeMessage(turn: Turn): string {
                       <h4 class="ai-confirm-title">
                         {{ focusEventId
                           ? "Updated event ready"
-                          : `${turn.drafts.length} ${turn.drafts.length === 1 ? "event" : "events"} ready` }}
+                          : `${actionCount(turn)} ${actionCount(turn) === 1 ? "change" : "changes"} ready` }}
                       </h4>
                       <p class="ai-confirm-sub">
                         {{ focusEventId
                           ? "Check the changes, then save the event."
-                          : "Uncheck anything you don't want, then add." }}
+                          : "Uncheck anything you don't want, review each item, or apply all." }}
                       </p>
                     </div>
                     <button
@@ -1393,7 +1669,7 @@ function outcomeMessage(turn: Turn): string {
                       class="ai-select-all"
                       @click="toggleAll(turn)"
                     >
-                      {{ selectedCount(turn) === turn.drafts.length ? "Select none" : "Select all" }}
+                      {{ selectedCount(turn) === actionCount(turn) ? "Select none" : "Select all" }}
                     </button>
                   </div>
 
@@ -1575,6 +1851,90 @@ function outcomeMessage(turn: Turn): string {
                     </li>
                   </ul>
 
+                  <ul
+                    v-if="turn.updates.length"
+                    class="ai-actions"
+                    aria-label="Changes to existing events"
+                  >
+                    <li
+                      v-for="(update, index) in turn.updates"
+                      :key="`update-${update.ref}`"
+                      class="ai-action"
+                    >
+                      <input
+                        :id="`${uid}-update-${index}`"
+                        type="checkbox"
+                        class="ai-checkbox"
+                        :checked="turn.updateSelected[index]"
+                        :aria-label="`Apply the change to ${update.title}`"
+                        @change="toggleUpdate(turn, index)"
+                      />
+                      <label :for="`${uid}-update-${index}`" class="ai-action-copy">
+                        <span class="ai-action-head">
+                          <span class="ai-action-kind">Change</span>
+                          <span class="ai-action-title">{{ update.title }}</span>
+                          <span v-if="update.external" class="ai-action-badge">Imported</span>
+                        </span>
+                        <span v-if="!updateDiff(update).length" class="ai-action-sub">
+                          {{ formatSpan(update.after.start_at, update.after.end_at, update.after.all_day) }}
+                        </span>
+                        <span
+                          v-for="line in updateDiff(update)"
+                          :key="line"
+                          class="ai-action-sub"
+                        >{{ line }}</span>
+                      </label>
+                      <button
+                        type="button"
+                        class="ai-action-apply"
+                        :disabled="applying"
+                        @click="applyUpdate(turn, index)"
+                      >
+                        Apply
+                      </button>
+                    </li>
+                  </ul>
+
+                  <ul
+                    v-if="turn.deletes.length"
+                    class="ai-actions ai-actions--danger"
+                    aria-label="Events to delete"
+                  >
+                    <li
+                      v-for="(removal, index) in turn.deletes"
+                      :key="`delete-${removal.ref}`"
+                      class="ai-action"
+                    >
+                      <input
+                        :id="`${uid}-delete-${index}`"
+                        type="checkbox"
+                        class="ai-checkbox"
+                        :checked="turn.deleteSelected[index]"
+                        :aria-label="`Delete ${removal.title}`"
+                        @change="toggleDelete(turn, index)"
+                      />
+                      <label :for="`${uid}-delete-${index}`" class="ai-action-copy">
+                        <span class="ai-action-head">
+                          <span class="ai-action-kind ai-action-kind--danger">Delete</span>
+                          <span class="ai-action-title">{{ removal.title }}</span>
+                          <span v-if="removal.external" class="ai-action-badge">Imported</span>
+                        </span>
+                        <span class="ai-action-sub">
+                          {{ formatSpan(removal.startAt, removal.endAt, removal.allDay) }}
+                        </span>
+                        <span v-if="removal.reason" class="ai-action-sub">{{ removal.reason }}</span>
+                      </label>
+                      <button
+                        type="button"
+                        class="ai-action-apply ai-action-apply--danger"
+                        :disabled="applying"
+                        @click="applyDelete(turn, index)"
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  </ul>
+
                 </div>
 
                 <p v-else-if="turnNote(turn)" class="ai-msg-note">{{ turnNote(turn) }}</p>
@@ -1603,16 +1963,24 @@ function outcomeMessage(turn: Turn): string {
                   </ul>
                 </div>
 
-                <div v-if="isActive(turn) && turn.applied" class="ai-msg-actions">
-                  <UiButton @click="finish">Done</UiButton>
-                  <UiButton v-if="!focusEventId" variant="ghost" @click="startOver">Add another</UiButton>
-                </div>
-
-                <div
-                  v-if="isActive(turn) && !focusEventId && turn.status === 'empty' && !turn.added.length"
-                  class="ai-msg-actions"
-                >
-                  <UiButton variant="ghost" @click="emit('manual')">Add manually</UiButton>
+                <div v-if="isActive(turn) && visibleActions(turn).length > 0" class="ai-msg-actions">
+                  <template v-for="action in visibleActions(turn)" :key="action">
+                    <UiButton v-if="action === 'done'" @click="finish">Done</UiButton>
+                    <UiButton
+                      v-else-if="action === 'add_another'"
+                      variant="ghost"
+                      @click="startOver"
+                    >
+                      Add another
+                    </UiButton>
+                    <UiButton
+                      v-else-if="action === 'add_manually'"
+                      variant="ghost"
+                      @click="emit('manual')"
+                    >
+                      Add manually
+                    </UiButton>
+                  </template>
                 </div>
 
               </div>
@@ -1631,10 +1999,12 @@ function outcomeMessage(turn: Turn): string {
             @click="applySelected"
           >
             {{ applying
-              ? (focusEventId ? "Updating…" : "Adding…")
+              ? (focusEventId ? "Updating…" : "Applying…")
               : focusEventId
                 ? "Update event"
-                : `Add ${selectedCount(reviewTurn)} ${selectedCount(reviewTurn) === 1 ? "event" : "events"}` }}
+                : hasExistingChanges(reviewTurn)
+                  ? `Apply ${selectedCount(reviewTurn)} ${selectedCount(reviewTurn) === 1 ? "change" : "changes"}`
+                  : `Add ${selectedCount(reviewTurn)} ${selectedCount(reviewTurn) === 1 ? "event" : "events"}` }}
           </UiButton>
         </div>
 
@@ -2489,6 +2859,109 @@ function outcomeMessage(turn: Turn): string {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.ai-actions {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bgSurface);
+  overflow: hidden;
+}
+
+.ai-actions--danger {
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+}
+
+.ai-action {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.ai-action + .ai-action {
+  border-top: 1px solid var(--color-border);
+}
+
+.ai-action-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.ai-action-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ai-action-kind {
+  color: var(--color-textSecondary);
+  font-size: var(--text-micro-size);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ai-action-kind--danger {
+  color: var(--color-danger);
+}
+
+.ai-action-title {
+  color: var(--color-textPrimary);
+  font-size: var(--text-label-size);
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.ai-action-badge {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-textSecondary);
+  font-size: var(--text-micro-size);
+}
+
+.ai-action-sub {
+  color: var(--color-textSecondary);
+  font-size: var(--text-label-size);
+  overflow-wrap: anywhere;
+}
+
+.ai-action-apply {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-textPrimary);
+  font: inherit;
+  font-size: var(--text-label-size);
+  cursor: pointer;
+}
+
+.ai-action-apply:hover:not(:disabled) {
+  background: var(--color-bgSubtle);
+}
+
+.ai-action-apply--danger {
+  border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-border));
+  color: var(--color-danger);
+}
+
+.ai-action-apply:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .ai-replacements {

@@ -257,8 +257,6 @@ async def update_event(event_id: UUID, req: EventUpdate, db: AsyncSession = Depe
     ev = result.scalar_one_or_none()
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-    if ev.source == "external":
-        raise HTTPException(status_code=403, detail="External events are read-only")
     if req.end_at is not None and req.start_at is not None and req.end_at <= req.start_at:
         raise HTTPException(status_code=422, detail="end_at must be after start_at")
 
@@ -297,8 +295,8 @@ async def update_event(event_id: UUID, req: EventUpdate, db: AsyncSession = Depe
         )
     if "reminder_minutes" in req.model_fields_set:
         ev.reminder_minutes = req.reminder_minutes
-    if req.assignee_id is not None:
-        ev.assignee_id = str(req.assignee_id)
+    if "assignee_id" in req.model_fields_set:
+        ev.assignee_id = str(req.assignee_id) if req.assignee_id is not None else None
 
     await db.commit()
     response = _event_to_response(ev)
@@ -320,8 +318,6 @@ async def delete_event(event_id: UUID, db: AsyncSession = Depends(get_db)):
     ev = result.scalar_one_or_none()
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-    if ev.source == "external":
-        raise HTTPException(status_code=403, detail="External events are read-only")
     # Delete the reminder ledger first so this works even on an older database
     # where reminder_log_event_id_fkey has no ON DELETE CASCADE.
     await db.execute(delete(ReminderLog).where(ReminderLog.event_id == str(event_id)))

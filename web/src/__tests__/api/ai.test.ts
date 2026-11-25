@@ -220,6 +220,80 @@ describe("aiApi", () => {
       assigneeId: "m-1",
       confidence: 0.9,
     })
+
+    const appts = await (async () => {
+      fetchMock.mockResolvedValueOnce(
+        json({
+          events: [],
+          skipped: 0,
+          model: "m",
+          actions: ["done"],
+          updates: [
+            {
+              ref: 3,
+              event_id: "ev-3",
+              title: "Dentist",
+              start_at: "2026-05-04T09:30:00-04:00",
+              end_at: null,
+              all_day: false,
+              external: false,
+              before: {
+                title: "Dentist",
+                start_at: "2026-05-04T09:30:00-04:00",
+                end_at: "2026-05-04T10:00:00-04:00",
+                all_day: false,
+              },
+              after: {
+                title: "Dentist (moved)",
+                start_at: "2026-05-04T15:00:00-04:00",
+                end_at: "2026-05-04T16:00:00-04:00",
+                all_day: false,
+              },
+              changes: {
+                title: "Dentist (moved)",
+                start_at: "2026-05-04T15:00:00-04:00",
+                reminder_minutes: null,
+              },
+            },
+          ],
+          deletes: [
+            {
+              ref: 4,
+              event_id: "ev-4",
+              title: "Swim",
+              start_at: "2026-05-05T09:00:00-04:00",
+              end_at: null,
+              all_day: true,
+              external: true,
+              reason: "Cancelled",
+            },
+          ],
+        }),
+      )
+      return aiApi.parse({ text: "move it" })
+    })()
+    expect(appts.updates[0]).toMatchObject({
+      ref: 3,
+      eventId: "ev-3",
+      changes: {
+        title: "Dentist (moved)",
+        start_at: "2026-05-04T15:00:00-04:00",
+        reminder_minutes: null,
+      },
+      before: { title: "Dentist", all_day: false },
+      after: { title: "Dentist (moved)", all_day: false },
+    })
+    expect(appts.deletes[0]).toMatchObject({
+      ref: 4,
+      eventId: "ev-4",
+      title: "Swim",
+      allDay: true,
+      external: true,
+      reason: "Cancelled",
+    })
+    expect(appts.needsInput).toBe(false)
+    expect(appts.actions).toEqual(["done"])
+
     const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)
     expect(body).toEqual({
       text: "standup",
@@ -336,10 +410,15 @@ describe("aiApi conversations", () => {
           confidence: 0.9,
         }],
         added: [],
+        updates: [],
+        deletes: [],
         questions: [],
         warnings: [],
         applied: false,
         outcome: null,
+        documentKind: "other",
+        actions: [],
+        actionsDeclared: false,
       }],
     })
     expect(created.id).toBe("c1")

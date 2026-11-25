@@ -37,7 +37,12 @@ async def _load_busy(
     members: list[tuple[str, str]],
     exclude_event_id: str | None = None,
 ) -> list[dict]:
-    """Household events near the import window, for double-booking checks."""
+    """Household events the assistant may inspect or change, with refs.
+
+    Each row gets a per-request ``ref`` used by the model's updates/deletes so
+    an event id never appears in the prompt. The window is deliberately wide
+    (±5 years); the cap keeps the prompt bounded on very large calendars.
+    """
     cal_ids = (
         await db.execute(
             select(Calendar.id).where(
@@ -48,8 +53,8 @@ async def _load_busy(
     if not cal_ids:
         return []
     now = datetime.now(timezone.utc)
-    from_dt = now - timedelta(days=30)
-    to_dt = now + timedelta(days=730)
+    from_dt = now - timedelta(days=1825)
+    to_dt = now + timedelta(days=1825)
     rows = (
         await db.execute(
             select(Event)
@@ -73,14 +78,18 @@ async def _load_busy(
             continue
         busy.append(
             {
+                "ref": len(busy) + 1,
                 "id": getattr(event, "id", None),
                 "title": event.title,
+                "description": getattr(event, "description", "") or "",
                 "start_at": event.start_at.isoformat(),
                 "end_at": event.end_at.isoformat() if event.end_at else None,
                 "all_day": bool(event.all_day),
                 "assignee_id": event.assignee_id,
                 "assignee": names.get(event.assignee_id),
                 "recurrence": event.recurrence,
+                "reminder_minutes": getattr(event, "reminder_minutes", None),
+                "external": getattr(event, "source", "internal") == "external",
             }
         )
     return busy
@@ -110,8 +119,6 @@ async def _load_focus_event(
     event = result.scalar_one_or_none()
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    if event.source == "external":
-        raise HTTPException(status_code=403, detail="External events are read-only")
     names = {member_id: name for member_id, name in members}
     return {
         "title": event.title,

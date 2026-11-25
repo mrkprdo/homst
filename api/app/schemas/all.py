@@ -382,6 +382,34 @@ class AiEventDraft(BaseModel):
     confidence: float = 0.0
 
 
+class AiEventUpdate(BaseModel):
+    """A reviewed change to one existing event. ``changes`` is the PATCH body."""
+
+    ref: int
+    event_id: UUID
+    title: str
+    start_at: datetime
+    end_at: Optional[datetime] = None
+    all_day: bool = False
+    external: bool = False
+    before: dict
+    after: dict
+    changes: dict
+
+
+class AiEventDelete(BaseModel):
+    """A reviewed deletion of one existing event."""
+
+    ref: int
+    event_id: UUID
+    title: str
+    start_at: datetime
+    end_at: Optional[datetime] = None
+    all_day: bool = False
+    external: bool = False
+    reason: str = ""
+
+
 class AiQuestion(BaseModel):
     """A question the model wants answered before the import can finish."""
 
@@ -412,6 +440,8 @@ class AiConflict(BaseModel):
 
 class AiParseResponse(BaseModel):
     events: list[AiEventDraft]
+    updates: list[AiEventUpdate] = []
+    deletes: list[AiEventDelete] = []
     skipped: int = 0
     model: str
     # A short, model-authored sentence confirming what it found or asking for
@@ -426,6 +456,11 @@ class AiParseResponse(BaseModel):
     questions: list[AiQuestion] = []
     conflicts: list[AiConflict] = []
     needs_input: bool = False
+    # What the model thought the source was ("email", "calendar_grid", ...).
+    # The UI uses "other" to tell a normal chat reply from an import attempt.
+    document_kind: str = "other"
+    # Click-to-action ids chosen by the model ("add_manually", "done", ...).
+    actions: list[str] = []
 
 
 class AiConversationTurn(BaseModel):
@@ -436,8 +471,12 @@ class AiConversationTurn(BaseModel):
     image_name: Optional[str] = Field(None, max_length=255)
     raw_response: Optional[str] = Field(None, max_length=20_000)
     reply: Optional[str] = Field(None, max_length=600)
+    document_kind: str = Field("other", max_length=32)
+    actions: list[str] = Field(default_factory=list, max_length=3)
     drafts: list[dict] = Field(default_factory=list, max_length=60)
     added: list[dict] = Field(default_factory=list, max_length=60)
+    updates: list[dict] = Field(default_factory=list, max_length=40)
+    deletes: list[dict] = Field(default_factory=list, max_length=40)
     questions: list[dict] = Field(default_factory=list, max_length=6)
     warnings: list[str] = Field(default_factory=list, max_length=20)
     applied: bool = False

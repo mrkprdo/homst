@@ -53,7 +53,26 @@ def test_system_prompt_identifies_as_smart_event_assistant():
     assert prompt.startswith("I'm HOMST's Smart Event Assistant.")
     assert prompt.count("I'm HOMST's Smart Event Assistant.") >= 2
     assert "Do not repeat the introduction" in prompt
+    assert '"updates"' in prompt
+    assert '"deletes"' in prompt
+    assert '"actions"' in prompt
+    assert "Rules for actions" in prompt
+    assert "Rules for changing and deleting existing events" in prompt
     assert "__TZ__" not in prompt
+
+
+def test_turn_actions_are_validated_and_deduplicated():
+    assert ai._coerce_actions(None) == []
+    assert ai._coerce_actions("done") == []
+    assert ai._coerce_actions(["done", "bogus", "add_manually", "done"]) == [
+        "done",
+        "add_manually",
+    ]
+    assert ai._coerce_actions(["add_another", "done", "add_manually", "done"]) == [
+        "add_another",
+        "done",
+        "add_manually",
+    ]
 
 
 # ── Members ────────────────────────────────────────────────────────────────
@@ -494,9 +513,147 @@ def test_busy_intervals_and_prompt_lines():
     )
     assert "Dentist" in prompt
     assert "Alice" in prompt
-    assert "(repeats monthly)" in prompt
+    assert "repeats monthly" in prompt
     assert "household" in prompt
     assert "Untitled" in prompt
+
+
+CATALOG = [
+    {
+        "ref": 1,
+        "id": "11111111-1111-1111-1111-111111111111",
+        "title": "Dentist",
+        "start_at": "2027-01-05T09:00:00+00:00",
+        "end_at": "2027-01-05T10:00:00+00:00",
+        "all_day": False,
+        "assignee_id": "m1",
+        "assignee": "Alice",
+        "recurrence": None,
+        "reminder_minutes": 30,
+        "external": False,
+    },
+    {
+        "ref": 2,
+        "id": "22222222-2222-2222-2222-222222222222",
+        "title": "Swim",
+        "start_at": "2027-01-06T09:00:00+00:00",
+        "end_at": None,
+        "all_day": True,
+        "assignee_id": None,
+        "assignee": None,
+        "recurrence": {"freq": "weekly"},
+        "reminder_minutes": None,
+        "external": True,
+    },
+]
+
+
+def test_validate_actions_updates_and_deletes():
+    updates, deletes, warnings = ai.validate_actions(
+        {
+            "updates": [{"ref": 1, "start_at": "2027-01-05T15:00:00Z"}],
+            "deletes": [{"ref": 2, "reason": "Cancelled"}],
+        },
+        CATALOG,
+        TZ,
+        MEMBERS,
+    )
+    assert warnings == []
+    assert len(updates) == 1
+    update = updates[0]
+    assert update["event_id"] == CATALOG[0]["id"]
+    assert update["title"] == "Dentist"
+    # Moving an event without a new end keeps its one-hour duration.
+    assert update["changes"]["start_at"] == "2027-01-05T15:00:00+00:00"
+    assert update["changes"]["end_at"] == "2027-01-05T16:00:00+00:00"
+    assert "title" not in update["changes"]
+    assert len(deletes) == 1
+    assert deletes[0]["event_id"] == CATALOG[1]["id"]
+    assert deletes[0]["external"] is True
+
+
+def test_validate_actions_clears_fields_and_rejects_bad_refs():
+    updates, deletes, warnings = ai.validate_actions(
+        {
+            "updates": [
+                {
+                    "ref": 1,
+                    "reminder_minutes": None,
+                    "assignee": None,
+                    "recurrence": None,
+                },
+                {"ref": 99, "title": "Ghost"},
+                {"ref": 2, "title": "Renamed swim"},
+            ],
+            "deletes": [{"ref": 1}, {"ref": 98}],
+        },
+        CATALOG,
+        TZ,
+        MEMBERS,
+    )
+    assert [item["ref"] for item in deletes] == [1]
+    assert len(warnings) >= 2
+    # A ref cannot be updated and deleted in the same answer.
+    assert [item["ref"] for item in updates] == [2]
+    assert any("isn't in the calendar" in note for note in warnings)
+    assert any("also being deleted" in note for note in warnings)
+
+    updates, _, _ = ai.validate_actions(
+        {
+            "updates": [
+                {
+                    "ref": 1,
+                    "reminder_minutes": None,
+                    "assignee": None,
+                    "recurrence": None,
+                }
+            ]
+        },
+        CATALOG,
+        TZ,
+        MEMBERS,
+    )
+    assert updates[0]["changes"] == {
+        "reminder_minutes": None,
+        "assignee_id": None,
+    }
+
+
+def test_validate_actions_focus_mode_and_external():
+    _, _, warnings = ai.validate_actions(
+        {"updates": [{"ref": 1, "title": "Nope"}]},
+        CATALOG,
+        TZ,
+        MEMBERS,
+        allowed=False,
+    )
+    assert warnings
+
+    updates, _, warnings = ai.validate_actions(
+        {"updates": [{"ref": 2, "title": "Moved swim"}]},
+        CATALOG,
+        TZ,
+        MEMBERS,
+    )
+    assert warnings == []
+    assert updates[0]["external"] is True
+    assert updates[0]["changes"]["title"] == "Moved swim"
+
+
+def test_validate_payload_ex_accepts_a_pure_command():
+    drafts, skipped, warnings, questions, conflicts = ai.validate_payload_ex(
+        {
+            "events": [],
+            "updates": [{"ref": 1, "title": "Dentist"}],
+        },
+        TZ,
+        MEMBERS,
+    )
+    assert drafts == []
+    assert skipped == 0
+    assert warnings == []
+    assert questions == []
+    assert conflicts == []
 
 
 def test_recurrence_expansion_edges():
@@ -998,7 +1155,7 @@ def test_local_iso_handles_missing_and_naive_values():
 
 
 @pytest.mark.asyncio
-async def test_parse_rejects_unknown_or_external_focus_events(
+async def test_parse_rejects_unknown_focus_and_allows_external_events(
     client, db_session, monkeypatch
 ):
     from app.models.all import Event
@@ -1035,11 +1192,23 @@ async def test_parse_rejects_unknown_or_external_focus_events(
     row.source = "external"
     await db_session.commit()
 
+    content = json.dumps(
+        {
+            "events": [
+                {
+                    "title": "External dentist",
+                    "start_at": start.isoformat(),
+                    "end_at": (start + timedelta(hours=1)).isoformat(),
+                }
+            ]
+        }
+    )
+    fake_client(monkeypatch, response=completion(content))
     external = await client.post(
         "/api/v1/ai/parse",
         json={"text": "Move it", "focus_event_id": event["id"]},
     )
-    assert external.status_code == 403
+    assert external.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -1092,3 +1261,91 @@ async def test_parse_edits_the_focused_event(client, monkeypatch):
     # The event being edited is not treated as a conflict with itself.
     assert response.json()["conflicts"] == []
     assert response.json()["events"][0]["title"] == "Dentist"
+
+
+@pytest.mark.asyncio
+async def test_parse_returns_validated_updates_and_deletes(client, monkeypatch):
+    monkeypatch.setattr(settings, "opencode_api_key", "")
+    await configure(client)
+    calendar = (
+        await client.post(
+            "/api/v1/calendars", json={"name": "Home", "color": "sage"}
+        )
+    ).json()
+    dentist = (
+        await client.post(
+            "/api/v1/events",
+            json={
+                "calendar_id": calendar["id"],
+                "title": "Dentist",
+                "start_at": "2027-01-05T09:00:00Z",
+                "end_at": "2027-01-05T10:00:00Z",
+            },
+        )
+    ).json()
+    swim = (
+        await client.post(
+            "/api/v1/events",
+            json={
+                "calendar_id": calendar["id"],
+                "title": "Swim",
+                "start_at": "2027-01-06T09:00:00Z",
+                "end_at": "2027-01-06T10:00:00Z",
+            },
+        )
+    ).json()
+
+    content = json.dumps(
+        {
+            "reply": "Moved the dentist and cancelled swim.",
+            "document": {"kind": "email"},
+            "events": [],
+            "updates": [{"ref": 1, "title": "Dentist (moved)", "start_at": "2027-01-05T15:00:00Z"}],
+            "deletes": [{"ref": 2, "reason": "Cancelled"}],
+            "actions": ["add_another", "done", "bogus", "done"],
+        }
+    )
+    fake_client(monkeypatch, response=completion(content))
+    response = await client.post("/api/v1/ai/parse", json={"text": "reschedule"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document_kind"] == "email"
+    assert body["actions"] == ["add_another", "done"]
+    assert body["events"] == []
+    assert body["updates"][0]["event_id"] == dentist["id"]
+    assert body["updates"][0]["changes"]["title"] == "Dentist (moved)"
+    assert body["updates"][0]["changes"]["end_at"] == "2027-01-05T16:00:00+00:00"
+    assert body["deletes"][0]["event_id"] == swim["id"]
+    assert body["deletes"][0]["reason"] == "Cancelled"
+
+
+@pytest.mark.asyncio
+async def test_patching_an_external_event_is_allowed(client, db_session):
+    from app.models.all import Event
+
+    calendar = (
+        await client.post(
+            "/api/v1/calendars", json={"name": "Home", "color": "sage"}
+        )
+    ).json()
+    event = (
+        await client.post(
+            "/api/v1/events",
+            json={
+                "calendar_id": calendar["id"],
+                "title": "Synced",
+                "start_at": "2027-01-05T09:00:00Z",
+                "end_at": "2027-01-05T10:00:00Z",
+            },
+        )
+    ).json()
+    row = await db_session.get(Event, event["id"])
+    row.source = "external"
+    await db_session.commit()
+
+    response = await client.patch(
+        f"/api/v1/events/{event['id']}",
+        json={"title": "Synced (edited)"},
+    )
+    assert response.status_code == 200
+    assert response.json()["title"] == "Synced (edited)"

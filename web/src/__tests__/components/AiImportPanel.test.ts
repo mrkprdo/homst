@@ -74,6 +74,8 @@ const DRAFTS = [
 
 interface StreamOptions {
   drafts?: unknown[]
+  updates?: unknown[]
+  deletes?: unknown[]
   skipped?: number
   reply?: string
   reasoning?: string
@@ -81,10 +83,14 @@ interface StreamOptions {
   questions?: unknown[]
   conflicts?: unknown[]
   needsInput?: boolean
+  documentKind?: string
+  actions?: string[]
 }
 
 function streamed({
   drafts = DRAFTS,
+  updates = [],
+  deletes = [],
   skipped = 0,
   reply = "",
   reasoning = "Reading the message",
@@ -92,14 +98,19 @@ function streamed({
   questions = [],
   conflicts = [],
   needsInput = false,
+  documentKind = "other",
+  actions,
 }: StreamOptions = {}) {
   const response = JSON.stringify({ events: drafts })
+  const changeCount = drafts.length + updates.length + deletes.length
+  const turnActions = actions ?? (changeCount > 0 ? ["done", "add_another"] : [])
   const body = [
     `event: reasoning\ndata: ${JSON.stringify({ type: "reasoning", text: reasoning })}\n\n`,
     `event: content\ndata: ${JSON.stringify({ type: "content", text: response })}\n\n`,
     `event: result\ndata: ${JSON.stringify({
-      type: "result", events: drafts, skipped, model: "deepseek-v4.1-flash",
+      type: "result", events: drafts, updates, deletes, skipped, model: "deepseek-v4.1-flash",
       reply, response, reasoning, warnings, questions, conflicts, needs_input: needsInput,
+      document_kind: documentKind, actions: turnActions,
     })}\n\n`,
   ].join("")
   return new Response(body, {
@@ -276,6 +287,7 @@ describe("AiImportPanel", () => {
     expect(wrapper.emitted("done")).toBeUndefined()
     expect(wrapper.text()).toContain("Added 2 events")
     expect(wrapper.findAll(".ai-added-item")).toHaveLength(2)
+    expect(findButton(wrapper, "Add another")).toBeTruthy()
     expect(addedEvents()).toHaveLength(2)
     expect(addedEvents()[0]).toMatchObject({
       calendar_id: "cal-1",
@@ -286,6 +298,92 @@ describe("AiImportPanel", () => {
 
     await findButton(wrapper, "Done")!.trigger("click")
     expect(wrapper.emitted("done")).toEqual([[2]])
+  })
+
+  it("applies reviewed changes and deletions to existing events", async () => {
+    const updates = [
+      {
+        ref: 3,
+        event_id: "ev-3",
+        title: "Dentist",
+        start_at: "2026-05-04T09:30:00-04:00",
+        end_at: "2026-05-04T10:00:00-04:00",
+        all_day: false,
+        external: false,
+        before: {
+          title: "Dentist",
+          start_at: "2026-05-04T09:30:00-04:00",
+          end_at: "2026-05-04T10:00:00-04:00",
+          all_day: false,
+        },
+        after: {
+          title: "Dentist (moved)",
+          start_at: "2026-05-04T15:00:00-04:00",
+          end_at: "2026-05-04T16:00:00-04:00",
+          all_day: false,
+        },
+        changes: {
+          title: "Dentist (moved)",
+          start_at: "2026-05-04T15:00:00-04:00",
+          end_at: "2026-05-04T16:00:00-04:00",
+          reminder_minutes: null,
+        },
+      },
+    ]
+    const deletes = [
+      {
+        ref: 4,
+        event_id: "ev-4",
+        title: "Swim",
+        start_at: "2026-05-05T09:00:00-04:00",
+        end_at: null,
+        all_day: true,
+        external: true,
+        reason: "Cancelled",
+      },
+    ]
+    install((url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/ai/parse/stream")) return streamed({ drafts: [], updates, deletes })
+      if (url.includes("/ai")) return json(STATUS_ON)
+      if (url.includes("/events/ev-3") && method === "PATCH") {
+        return json(eventResponse({
+          title: "Dentist (moved)",
+          start_at: "2026-05-04T15:00:00-04:00",
+          end_at: "2026-05-04T16:00:00-04:00",
+        }))
+      }
+      if (url.includes("/events/ev-4") && method === "DELETE") return json({})
+      return json({})
+    })
+    const wrapper = await mountPanel()
+    await send(wrapper, "Move the dentist and cancel swim")
+
+    expect(wrapper.text()).toContain("2 changes ready")
+    expect(wrapper.text()).toContain("Dentist (moved)")
+    expect(wrapper.text()).toContain("Cancelled")
+    expect(findButton(wrapper, "Apply 2 changes")).toBeTruthy()
+
+    await findButton(wrapper, "Apply 2 changes")!.trigger("click")
+    await flushPromises()
+
+    const patchCall = fetchMock.mock.calls.find(
+      call => (call[1] as RequestInit)?.method === "PATCH",
+    )
+    expect(patchCall).toBeTruthy()
+    expect(String(patchCall![0])).toContain("/events/ev-3")
+    const patchBody = JSON.parse((patchCall![1] as RequestInit).body as string)
+    expect(patchBody).toMatchObject({
+      title: "Dentist (moved)",
+      reminder_minutes: null,
+    })
+    const deleteCall = fetchMock.mock.calls.find(
+      call => (call[1] as RequestInit)?.method === "DELETE",
+    )
+    expect(deleteCall).toBeTruthy()
+    expect(String(deleteCall![0])).toContain("/events/ev-4")
+    expect(wrapper.text()).toContain("calendar is updated")
+    expect(findButton(wrapper, "Add another")).toBeUndefined()
   })
 
   it("saves the conversation and links created events to it", async () => {
@@ -739,7 +837,12 @@ describe("AiImportPanel", () => {
   })
 
   it("reports empty results with skipped rows and offers manual entry", async () => {
-    install(handlerWith({ drafts: [], skipped: 2, reply: "I couldn't find a dated event." }))
+    install(handlerWith({
+      drafts: [],
+      skipped: 2,
+      reply: "I couldn't find a dated event.",
+      actions: ["add_manually"],
+    }))
     const wrapper = await mountPanel()
     await send(wrapper, "Newsletter")
 
@@ -749,6 +852,55 @@ describe("AiImportPanel", () => {
     expect(findButton(wrapper, "Add manually")).toBeTruthy()
     await findButton(wrapper, "Add manually")!.trigger("click")
     expect(wrapper.emitted("manual")).toHaveLength(1)
+  })
+
+  it("does not offer manual entry for a normal chat reply", async () => {
+    install(handlerWith({ drafts: [], reply: "I'm HOMST's Smart Event Assistant." }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "hello")
+
+    expect(wrapper.text()).toContain("I'm HOMST's Smart Event Assistant.")
+    expect(findButton(wrapper, "Add manually")).toBeUndefined()
+    expect(findButton(wrapper, "Add another")).toBeUndefined()
+  })
+
+  it("offers manual entry when a pasted document yields no events", async () => {
+    install(handlerWith({
+      drafts: [],
+      reply: "No dated rows found.",
+      documentKind: "email",
+      actions: ["add_manually"],
+    }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Paste the newsletter")
+
+    expect(findButton(wrapper, "Add manually")).toBeTruthy()
+  })
+
+  it("uses the model's chosen actions for a plain reply", async () => {
+    install(handlerWith({
+      drafts: [],
+      reply: "I couldn't read that one.",
+      actions: ["add_manually"],
+    }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "some pasted text")
+
+    expect(findButton(wrapper, "Add manually")).toBeTruthy()
+    expect(findButton(wrapper, "Add another")).toBeUndefined()
+  })
+
+  it("does not add default buttons when the model chooses none", async () => {
+    install(handlerWith({ drafts: [DRAFTS[0]], actions: [] }))
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup every Monday")
+
+    await findButton(wrapper, "Add 1 event")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Added 1 event")
+    expect(findButton(wrapper, "Done")).toBeUndefined()
+    expect(findButton(wrapper, "Add another")).toBeUndefined()
   })
 
   it("renders repeat fallbacks and a plain empty response", async () => {

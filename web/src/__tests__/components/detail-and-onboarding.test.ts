@@ -37,7 +37,7 @@ describe("EventDetailPanel", () => {
     await nextTick()
 
     const w = mount(EventDetailPanel)
-    const button = w.findAll("button").find(item => item.text().includes("Update with chat"))!
+    const button = w.findAll("button").find(item => item.text().includes("Smart edit"))!
     expect(button).toBeTruthy()
     await button.trigger("click")
 
@@ -61,7 +61,7 @@ describe("EventDetailPanel", () => {
     await nextTick()
 
     const w = mount(EventDetailPanel)
-    const button = w.findAll("button").find(item => item.text().includes("Update with chat"))!
+    const button = w.findAll("button").find(item => item.text().includes("Smart edit"))!
     expect(button).toBeTruthy()
     await button.trigger("click")
 

@@ -178,7 +178,7 @@ async function saveEdit() {
 
 function continueWithSmart() {
   const ev = event.value
-  if (!ev || ev.source !== "internal") return
+  if (!ev) return
   if (ev.aiConversationId) {
     ui.openAiConversation(ev.aiConversationId, ev.id, ev.title, ev.sourceMessage)
   } else {
@@ -221,8 +221,6 @@ const reminderText = computed(() => {
   const label = reminderLabel(event.value?.reminderMinutes)
   return label ? `Reminder ${label.toLowerCase()}` : null
 })
-
-const isExternal = computed(() => event.value?.source !== "internal")
 </script>
 
 <template>
@@ -273,16 +271,15 @@ const isExternal = computed(() => event.value?.source !== "internal")
       </div>
 
       <div v-else class="edp-actions">
-        <UiButton v-if="!isExternal" size="sm" @click="startEdit">
-          <PhPencil :size="14" />Edit
+        <UiButton size="sm" @click="continueWithSmart">
+          <PhChatCircleDots :size="14" />Smart edit
         </UiButton>
         <UiButton
-          v-if="!isExternal"
           variant="ghost"
           size="sm"
-          @click="continueWithSmart"
+          @click="startEdit"
         >
-          <PhChatCircleDots :size="14" />Update with chat
+          <PhPencil :size="14" />Edit
         </UiButton>
         <span class="edp-actions-spacer" />
         <button
@@ -295,7 +292,6 @@ const isExternal = computed(() => event.value?.source !== "internal")
           <PhDownloadSimple :size="18" />
         </button>
         <button
-          v-if="!isExternal"
           type="button"
           class="edp-icon-btn edp-icon-btn--danger"
           aria-label="Delete event"

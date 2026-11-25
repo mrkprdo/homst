@@ -559,17 +559,18 @@ async def test_update_event_can_clear_end_at_and_assignee(client):
 
 
 @pytest.mark.asyncio
-async def test_external_event_is_read_only(client, db_session):
+async def test_external_event_can_be_edited_and_deleted(client, db_session):
     cal, ev = await _seed_external_event(db_session)
 
     r = await client.get("/api/v1/events")
     assert any(e["id"] == ev.id and e["source"] == "external" for e in r.json())
 
-    r = await client.patch(f"/api/v1/events/{ev.id}", json={"title": "Nope"})
-    assert r.status_code == 403
+    r = await client.patch(f"/api/v1/events/{ev.id}", json={"title": "Edited"})
+    assert r.status_code == 200
+    assert r.json()["title"] == "Edited"
 
     r = await client.delete(f"/api/v1/events/{ev.id}")
-    assert r.status_code == 403
+    assert r.status_code == 200
 
 
 @pytest.mark.asyncio

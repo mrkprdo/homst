@@ -94,7 +94,7 @@ describe("MobileShell", () => {
     expect(useUi().announcementsOpen.value).toBe(false)
   })
 
-  it("translates Update with chat into the mobile Smart sheet", async () => {
+  it("translates Smart edit into the mobile Smart sheet", async () => {
     const ev = useEvents()
     ev.upsertEvent({
       id: "e-chat", calendarId: "c1", title: "Dentist", description: "",
@@ -113,7 +113,7 @@ describe("MobileShell", () => {
     await nextTick()
     expect(w.find(".ms-detail-overlay").exists()).toBe(true)
 
-    const chat = w.findAll("button").find(item => item.text().includes("Update with chat"))
+    const chat = w.findAll("button").find(item => item.text().includes("Smart edit"))
     expect(chat).toBeTruthy()
     await chat!.trigger("click")
     await nextTick()

@@ -27,6 +27,42 @@ export interface AiDraft {
   confidence: number
 }
 
+/** Only the fields a Smart change actually touches; sent as the PATCH body. */
+export interface AiEventChangeSet {
+  title?: string
+  description?: string
+  start_at?: string
+  end_at?: string | null
+  all_day?: boolean
+  recurrence?: AiRecurrence | null
+  reminder_minutes?: number | null
+  assignee_id?: string | null
+}
+
+export interface AiEventUpdate {
+  ref: number
+  eventId: string
+  title: string
+  startAt: string
+  endAt: string | null
+  allDay: boolean
+  external: boolean
+  before: { title: string; start_at: string; end_at: string | null; all_day: boolean }
+  after: { title: string; start_at: string; end_at: string | null; all_day: boolean }
+  changes: AiEventChangeSet
+}
+
+export interface AiEventDelete {
+  ref: number
+  eventId: string
+  title: string
+  startAt: string
+  endAt: string | null
+  allDay: boolean
+  external: boolean
+  reason: string
+}
+
 export interface AiClarification {
   question: string
   answer: string
@@ -71,10 +107,16 @@ export interface AiConversationTurn {
   reply: string
   drafts: AiDraft[]
   added: AiDraft[]
+  updates: AiEventUpdate[]
+  deletes: AiEventDelete[]
   questions: AiQuestion[]
   warnings: string[]
   applied: boolean
   outcome: "success" | "partial" | "failed" | null
+  documentKind: string
+  actions: string[]
+  /** False for conversations saved before model-chosen actions existed. */
+  actionsDeclared: boolean
 }
 
 export interface AiConversation {
@@ -92,6 +134,8 @@ export interface AiConversationWrite {
 
 export interface AiParseResult {
   events: AiDraft[]
+  updates: AiEventUpdate[]
+  deletes: AiEventDelete[]
   skipped: number
   model: string
   reply: string
@@ -101,6 +145,8 @@ export interface AiParseResult {
   questions: AiQuestion[]
   conflicts: AiConflict[]
   needsInput: boolean
+  documentKind: string
+  actions: string[]
 }
 
 export interface AiStreamHandlers {
@@ -144,6 +190,40 @@ interface ApiDraft {
   confidence: number
 }
 
+interface ApiEventUpdate {
+  ref: number
+  event_id: string
+  title: string
+  start_at: string
+  end_at: string | null
+  all_day: boolean
+  external?: boolean
+  before?: {
+    title?: string
+    start_at?: string
+    end_at?: string | null
+    all_day?: boolean
+  }
+  after?: {
+    title?: string
+    start_at?: string
+    end_at?: string | null
+    all_day?: boolean
+  }
+  changes?: AiEventChangeSet
+}
+
+interface ApiEventDelete {
+  ref: number
+  event_id: string
+  title: string
+  start_at: string
+  end_at: string | null
+  all_day: boolean
+  external?: boolean
+  reason?: string
+}
+
 interface ApiQuestion {
   id?: string
   kind?: string
@@ -170,6 +250,8 @@ interface ApiConflict {
 
 interface ApiParseResult {
   events: ApiDraft[]
+  updates?: ApiEventUpdate[]
+  deletes?: ApiEventDelete[]
   skipped: number
   model: string
   reply?: string
@@ -179,6 +261,8 @@ interface ApiParseResult {
   questions?: ApiQuestion[]
   conflicts?: ApiConflict[]
   needs_input?: boolean
+  document_kind?: string
+  actions?: string[]
 }
 
 interface ApiConversationTurn {
@@ -189,10 +273,14 @@ interface ApiConversationTurn {
   reply?: string | null
   drafts?: ApiDraft[]
   added?: ApiDraft[]
+  updates?: ApiEventUpdate[]
+  deletes?: ApiEventDelete[]
   questions?: ApiQuestion[]
   warnings?: string[]
   applied?: boolean
   outcome?: "success" | "partial" | "failed" | null
+  document_kind?: string
+  actions?: string[]
 }
 
 interface ApiConversation {
@@ -259,11 +347,81 @@ function mapDraft(d: ApiDraft): AiDraft {
   }
 }
 
+function mapUpdate(u: ApiEventUpdate): AiEventUpdate {
+  const before = u.before ?? {}
+  const after = u.after ?? {}
+  return {
+    ref: u.ref,
+    eventId: u.event_id,
+    title: u.title,
+    startAt: u.start_at,
+    endAt: u.end_at ?? null,
+    allDay: u.all_day === true,
+    external: u.external === true,
+    before: {
+      title: before.title ?? u.title,
+      start_at: before.start_at ?? u.start_at,
+      end_at: before.end_at ?? null,
+      all_day: before.all_day === true,
+    },
+    after: {
+      title: after.title ?? u.title,
+      start_at: after.start_at ?? u.start_at,
+      end_at: after.end_at ?? null,
+      all_day: after.all_day === true,
+    },
+    changes: u.changes ?? {},
+  }
+}
+
+function mapDelete(d: ApiEventDelete): AiEventDelete {
+  return {
+    ref: d.ref,
+    eventId: d.event_id,
+    title: d.title,
+    startAt: d.start_at,
+    endAt: d.end_at ?? null,
+    allDay: d.all_day === true,
+    external: d.external === true,
+    reason: d.reason ?? "",
+  }
+}
+
+function updatePayload(u: AiEventUpdate) {
+  return {
+    ref: u.ref,
+    event_id: u.eventId,
+    title: u.title,
+    start_at: u.startAt,
+    end_at: u.endAt,
+    all_day: u.allDay,
+    external: u.external,
+    before: u.before,
+    after: u.after,
+    changes: u.changes,
+  }
+}
+
+function deletePayload(d: AiEventDelete) {
+  return {
+    ref: d.ref,
+    event_id: d.eventId,
+    title: d.title,
+    start_at: d.startAt,
+    end_at: d.endAt,
+    all_day: d.allDay,
+    external: d.external,
+    reason: d.reason,
+  }
+}
+
 function mapParseResult(r: ApiParseResult): AiParseResult {
   const questions = Array.isArray(r.questions) ? r.questions : []
   const conflicts = Array.isArray(r.conflicts) ? r.conflicts : []
   return {
     events: (Array.isArray(r.events) ? r.events : []).map(mapDraft),
+    updates: (Array.isArray(r.updates) ? r.updates : []).map(mapUpdate),
+    deletes: (Array.isArray(r.deletes) ? r.deletes : []).map(mapDelete),
     skipped: r.skipped ?? 0,
     model: r.model,
     reply: typeof r.reply === "string" ? r.reply : "",
@@ -293,6 +451,10 @@ function mapParseResult(r: ApiParseResult): AiParseResult {
         message: c.message!,
       })),
     needsInput: r.needs_input === true,
+    documentKind: typeof r.document_kind === "string" ? r.document_kind : "other",
+    actions: Array.isArray(r.actions)
+      ? r.actions.filter((action): action is string => typeof action === "string")
+      : [],
   }
 }
 
@@ -305,6 +467,8 @@ function mapConversationTurn(turn: ApiConversationTurn): AiConversationTurn {
     reply: typeof turn.reply === "string" ? turn.reply : "",
     drafts: (Array.isArray(turn.drafts) ? turn.drafts : []).map(mapDraft),
     added: (Array.isArray(turn.added) ? turn.added : []).map(mapDraft),
+    updates: (Array.isArray(turn.updates) ? turn.updates : []).map(mapUpdate),
+    deletes: (Array.isArray(turn.deletes) ? turn.deletes : []).map(mapDelete),
     questions: (Array.isArray(turn.questions) ? turn.questions : [])
       .filter(q => typeof q.question === "string" && q.question.trim().length > 0)
       .map(mapQuestion),
@@ -315,6 +479,11 @@ function mapConversationTurn(turn: ApiConversationTurn): AiConversationTurn {
     outcome: turn.outcome === "success" || turn.outcome === "partial" || turn.outcome === "failed"
       ? turn.outcome
       : null,
+    documentKind: typeof turn.document_kind === "string" ? turn.document_kind : "other",
+    actions: Array.isArray(turn.actions)
+      ? turn.actions.filter((action): action is string => typeof action === "string")
+      : [],
+    actionsDeclared: Array.isArray(turn.actions),
   }
 }
 
@@ -353,10 +522,14 @@ function conversationPayload(payload: AiConversationWrite) {
       reply: turn.reply || null,
       drafts: turn.drafts.map(draftPayload),
       added: turn.added.map(draftPayload),
+      updates: turn.updates.map(updatePayload),
+      deletes: turn.deletes.map(deletePayload),
       questions: turn.questions,
       warnings: turn.warnings,
       applied: turn.applied,
       outcome: turn.outcome,
+      document_kind: turn.documentKind,
+      ...(turn.actionsDeclared ? { actions: turn.actions } : {}),
     })),
   }
 }
