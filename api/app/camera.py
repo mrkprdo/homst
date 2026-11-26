@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 import hashlib
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -30,8 +31,15 @@ from app.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
+# The public playlist path is stable; the file it serves is resolved through
+# the ``current`` pointer so a restart can publish a new run atomically.
 PLAYLIST_NAME = "index.m3u8"
-SEGMENT_PATTERN = re.compile(r"^seg_\d+\.ts$")
+CURRENT_RUN_FILE = "current"
+RUN_ID_PATTERN = re.compile(r"^[a-f0-9]{8}$")
+# Each run prefixes its segments with its run id. Restarting ffmpeg must never
+# reuse a filename while a slow client may still be fetching the old one.
+SEGMENT_PATTERN = re.compile(r"^seg_[a-f0-9]{8}_\d{6,}\.ts$")
+LEGACY_SEGMENT_PATTERN = re.compile(r"^seg_\d+\.ts$")
 TOKEN_PATTERN = re.compile(r"^[a-f0-9]{16}$")
 
 START_TIMEOUT = 10.0
@@ -80,6 +88,11 @@ VIDEO_BUFSIZE = "2400k"
 HLS_SEGMENT_SECONDS = 2
 HLS_LIST_SIZE = 60
 HLS_DELETE_THRESHOLD = 8
+
+# A restarted run leaves its old segments on disk so a client that is still
+# behind the live edge can finish downloading them. They are pruned once that
+# grace window has passed.
+RUN_RETENTION_SECONDS = 300
 
 
 class CameraError(RuntimeError):
@@ -212,8 +225,87 @@ def output_dir(token: str) -> Path:
     return CAMERA_ROOT / token
 
 
+def run_playlist_path(token: str, run_id: str) -> Path:
+    return output_dir(token) / f"run_{run_id}.m3u8"
+
+
+def current_run(token: str) -> str | None:
+    """The run id clients should be watching, if one has been published."""
+    try:
+        value = (output_dir(token) / CURRENT_RUN_FILE).read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        return None
+    value = value.strip()
+    return value if RUN_ID_PATTERN.fullmatch(value) else None
+
+
 def playlist_path(token: str) -> Path:
+    """The playlist file the API should serve for this source.
+
+    A published run is preferred. The fixed ``index.m3u8`` path is kept as a
+    fallback so a directory left behind by an older build is still readable.
+    """
+    run_id = current_run(token)
+    if run_id:
+        return run_playlist_path(token, run_id)
     return output_dir(token) / PLAYLIST_NAME
+
+
+def _playlist_ready(path: Path) -> bool:
+    """True once ``path`` is a playlist with at least one segment listed."""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            return "#EXTINF" in handle.read(4096)
+    except OSError:
+        return False
+
+
+def _publish_run(token: str, run_id: str) -> None:
+    """Atomically point the public playlist at ``run_id``.
+
+    ffmpeg continues writing into the same directory and with the same
+    filenames; only this pointer moves. The previous run is deliberately left
+    in place so a client mid-download is not cut off.
+    """
+    directory = output_dir(token)
+    pointer = directory / f".{CURRENT_RUN_FILE}.{run_id}.tmp"
+    pointer.write_text(f"{run_id}\n", encoding="utf-8")
+    os.replace(pointer, directory / CURRENT_RUN_FILE)
+
+
+def _remove_run(token: str, run_id: str) -> None:
+    """Remove the files of a run that never became visible to clients."""
+    directory = output_dir(token)
+    for path in directory.glob(f"seg_{run_id}_*.ts"):
+        with contextlib.suppress(OSError):
+            path.unlink()
+    with contextlib.suppress(OSError):
+        run_playlist_path(token, run_id).unlink()
+
+
+def _prune_runs(token: str, keep_run: str) -> None:
+    """Delete files from earlier runs once the grace window has elapsed."""
+    directory = output_dir(token)
+    cutoff = time.time() - RUN_RETENTION_SECONDS
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return
+    for path in entries:
+        if path.name in {CURRENT_RUN_FILE, "ffmpeg.log"}:
+            continue
+        if path.name.startswith(f"seg_{keep_run}_"):
+            continue
+        if path.name == run_playlist_path(token, keep_run).name:
+            continue
+        try:
+            if path.is_file() and path.stat().st_mtime < cutoff:
+                path.unlink()
+        except OSError:
+            # A concurrent reader or cleanup pass is harmless.
+            continue
 
 
 def _as_text(value: object) -> str | None:
@@ -383,12 +475,17 @@ class CameraStream:
                 if owner == WORKER_ID:
                     await self._lease_restart(redis)
 
+                previous_token = self._token
                 await self._stop_locked(keep_owner=True)
                 try:
                     await self._start_locked(source, token)
                 except Exception:
                     await self._stop_locked()
                     raise
+                if previous_token and previous_token != token:
+                    # The old source's published run is no longer reachable
+                    # through the API, so nothing needs it any more.
+                    shutil.rmtree(output_dir(previous_token), ignore_errors=True)
                 try:
                     await redis.set(OWNER_KEY, WORKER_ID, ex=LOCK_TTL_SECONDS)
                 except Exception as exc:
@@ -436,21 +533,25 @@ class CameraStream:
         self,
         token: str,
         process: asyncio.subprocess.Process | None = None,
-        directory: Path | None = None,
+        path: Path | None = None,
     ) -> None:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + START_TIMEOUT
-        path = playlist_path(token) if directory is None else directory / PLAYLIST_NAME
         while loop.time() < deadline:
-            try:
-                if path.is_file() and path.stat().st_size > 0:
-                    return
-            except OSError:
-                pass
+            # Re-resolve the published playlist on every poll: another worker
+            # may publish a new run while this worker is waiting.
+            target = path if path is not None else playlist_path(token)
+            if _playlist_ready(target):
+                return
             if process is not None and process.returncode is not None:
                 raise CameraError("The camera stream could not be opened.")
             await asyncio.sleep(POLL_INTERVAL)
         raise CameraError("The camera stream did not start in time.")
+
+    def _cleanup_stale_runs(self, token: str) -> None:
+        """Drop staging directories left by the previous swap-based layout."""
+        for suffix in (".staging", ".old"):
+            shutil.rmtree(CAMERA_ROOT / f"{token}{suffix}", ignore_errors=True)
 
     async def _start_locked(
         self, source: str, token: str, keep_monitor: bool = False
@@ -462,13 +563,17 @@ class CameraStream:
             )
 
         directory = output_dir(token)
-        # Build the replacement stream in a staging directory and swap it in
-        # only once ffmpeg is producing output. Viewers keep downloading the
-        # old playlist and segments for the whole restart instead of hitting
-        # 404s while the camera connection is reopened.
-        staging = CAMERA_ROOT / f"{token}.staging"
-        shutil.rmtree(staging, ignore_errors=True)
-        staging.mkdir(parents=True, exist_ok=True)
+        directory.mkdir(parents=True, exist_ok=True)
+        self._cleanup_stale_runs(token)
+
+        # Every run gets its own segment names and playlist inside the same
+        # stable directory. ffmpeg keeps writing there for its whole lifetime;
+        # publishing the run only flips the ``current`` pointer, so viewers
+        # keep playing the previous run until the replacement is live. Renaming
+        # the directory ffmpeg is writing into (the old approach) makes ffmpeg
+        # fail on the very next segment with ENOENT.
+        run_id = uuid.uuid4().hex[:8]
+        playlist = run_playlist_path(token, run_id)
 
         args = [
             ffmpeg,
@@ -520,11 +625,11 @@ class CameraStream:
             # re-probe it instead of appending new frames at the old offsets.
             "delete_segments+omit_endlist+independent_segments+discont_start",
             "-hls_segment_filename",
-            str(staging / "seg_%06d.ts"),
-            str(staging / PLAYLIST_NAME),
+            str(directory / f"seg_{run_id}_%06d.ts"),
+            str(playlist),
         ]
 
-        log_path = staging / "ffmpeg.log"
+        log_path = directory / "ffmpeg.log"
         try:
             log_file = open(log_path, "wb")
             try:
@@ -536,10 +641,10 @@ class CameraStream:
             finally:
                 log_file.close()
         except OSError as exc:
-            detail = _read_ffmpeg_log(staging, source)
+            detail = _read_ffmpeg_log(directory, source)
             if detail:
                 logger.warning("Camera ffmpeg failed to start: %s", detail)
-            shutil.rmtree(staging, ignore_errors=True)
+            _remove_run(token, run_id)
             message = f"Could not start the camera stream. {detail}".strip()
             raise CameraError(message, 503) from exc
 
@@ -547,35 +652,23 @@ class CameraStream:
         self._source = source
         self._token = token
         try:
-            await self._wait_for_playlist(token, process, directory=staging)
+            await self._wait_for_playlist(token, process, path=playlist)
         except CameraError as exc:
-            detail = _read_ffmpeg_log(staging, source)
+            detail = _read_ffmpeg_log(directory, source)
             if detail:
                 logger.warning("Camera ffmpeg failed: %s", detail)
-            shutil.rmtree(staging, ignore_errors=True)
-            await self._stop_locked(keep_monitor=keep_monitor)
+            _remove_run(token, run_id)
+            # The published run is still on disk and remains playable; only
+            # this worker's failed attempt and its election are discarded.
+            await self._stop_locked(keep_monitor=keep_monitor, keep_output=True)
             if detail:
                 raise CameraError(f"{exc} ffmpeg: {detail}") from exc
             raise
 
-        # The new stream is producing output. Swap it in for the old one in two
-        # renames; the live path is only absent for the instant between them.
-        # Non-owner workers keep serving the old playlist throughout the restart
-        # and poll for the file if it is briefly missing, and the owner
-        # serializes on the stream lock, so the gap is not observable in
-        # practice. A failed swap rolls back to the old stream.
-        retired = CAMERA_ROOT / f"{token}.old"
-        shutil.rmtree(retired, ignore_errors=True)
-        try:
-            if directory.exists():
-                directory.rename(retired)
-            staging.rename(directory)
-        except OSError:
-            if retired.exists() and not directory.exists():
-                retired.rename(directory)
-            shutil.rmtree(staging, ignore_errors=True)
-            raise
-        shutil.rmtree(retired, ignore_errors=True)
+        # The run is producing segments. Point clients at it without touching
+        # the files the previous run is still serving.
+        _publish_run(token, run_id)
+        _prune_runs(token, run_id)
 
     async def restart(self) -> None:
         """Restart ffmpeg for the current source, keeping the health monitor."""
@@ -616,7 +709,7 @@ class CameraStream:
             try:
                 await self._start_locked(source, token, keep_monitor=True)
             except Exception:
-                await self._stop_locked(keep_monitor=True)
+                await self._stop_locked(keep_monitor=True, keep_output=True)
                 raise
             self._health_monitor.mark_started()
             if redis is not None:
@@ -653,13 +746,18 @@ class CameraStream:
             await self._stop_locked()
 
     async def _stop_locked(
-        self, keep_monitor: bool = False, keep_owner: bool = False
+        self,
+        keep_monitor: bool = False,
+        keep_owner: bool = False,
+        keep_output: bool = False,
     ) -> None:
         """Stop this worker's ffmpeg.
 
         ``keep_owner`` leaves the shared output directory and the Redis
         election key untouched, so a restart can rebuild the stream without
         opening a window where another worker starts a competing ffmpeg.
+        ``keep_output`` leaves the published run on disk so clients can keep
+        playing it when a replacement failed to start.
         """
         task = self._refresh_task
         self._refresh_task = None
@@ -694,16 +792,25 @@ class CameraStream:
         if keep_owner:
             return
 
-        if token:
-            shutil.rmtree(output_dir(token), ignore_errors=True)
-
         try:
             redis = await get_redis()
             owner = _as_text(await redis.get(OWNER_KEY))
-            if owner == WORKER_ID:
-                await redis.delete(OWNER_KEY)
         except Exception:
+            # Without Redis this worker cannot prove it still owns the output.
+            # Leave it alone: pruning removes stale runs later, while deleting a
+            # live owner's directory would kill its ffmpeg mid-stream.
             logger.warning("Could not release camera stream ownership", exc_info=True)
+            return
+
+        if token and not keep_output and owner in (None, WORKER_ID):
+            shutil.rmtree(output_dir(token), ignore_errors=True)
+            self._cleanup_stale_runs(token)
+
+        if owner == WORKER_ID:
+            try:
+                await redis.delete(OWNER_KEY)
+            except Exception:
+                logger.warning("Could not release camera stream ownership", exc_info=True)
 
 
 camera_stream = CameraStream()

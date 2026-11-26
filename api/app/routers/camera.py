@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.camera import (
-    PLAYLIST_NAME,
+    LEGACY_SEGMENT_PATTERN,
     SEGMENT_PATTERN,
     TOKEN_PATTERN,
     CameraError,
@@ -13,6 +13,7 @@ from app.camera import (
     camera_stream,
     camera_token,
     output_dir,
+    playlist_path,
 )
 from app.db import get_db
 from app.models.all import Household
@@ -50,11 +51,13 @@ async def camera_playlist(token: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(404, "Camera stream not found.")
 
     try:
-        directory = await camera_stream.ensure(camera)
+        await camera_stream.ensure(camera)
     except CameraError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc
 
-    path = directory / PLAYLIST_NAME
+    # Resolve the run that is currently published rather than a fixed file: a
+    # restart flips the pointer atomically while the old run stays readable.
+    path = playlist_path(token)
     if not path.is_file():
         raise HTTPException(404, "Camera stream not found.")
     return FileResponse(
@@ -70,7 +73,9 @@ async def camera_segment(
     segment: str,
     db: AsyncSession = Depends(get_db),
 ):
-    if not TOKEN_PATTERN.fullmatch(token) or not SEGMENT_PATTERN.fullmatch(segment):
+    if not TOKEN_PATTERN.fullmatch(token) or not (
+        SEGMENT_PATTERN.fullmatch(segment) or LEGACY_SEGMENT_PATTERN.fullmatch(segment)
+    ):
         raise HTTPException(404, "Camera segment not found.")
     camera = await _camera_settings(db)
     if _check_token(camera, token) is None:

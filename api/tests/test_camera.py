@@ -110,7 +110,10 @@ def ffmpeg(monkeypatch):
     monkeypatch.setattr(camera.shutil, "which", lambda name: "/usr/bin/ffmpeg")
 
 
-def _write_playlist(token: str, text: str = "#EXTM3U\n") -> Path:
+PLAYLIST_TEXT = "#EXTM3U\n#EXTINF:2.000000,\nseg_000001.ts\n"
+
+
+def _write_playlist(token: str, text: str = PLAYLIST_TEXT) -> Path:
     directory = camera.output_dir(token)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / camera.PLAYLIST_NAME
@@ -118,12 +121,12 @@ def _write_playlist(token: str, text: str = "#EXTM3U\n") -> Path:
     return path
 
 
-def _fake_process_factory(process, *, write_playlist=True):
+def _fake_process_factory(process, *, write_playlist=True, text=PLAYLIST_TEXT):
     async def create(*args, **kwargs):
         if write_playlist:
             playlist = Path(args[-1])
             playlist.parent.mkdir(parents=True, exist_ok=True)
-            playlist.write_text("#EXTM3U\n", encoding="utf-8")
+            playlist.write_text(text, encoding="utf-8")
         return process
 
     return create
@@ -272,6 +275,134 @@ def test_read_ffmpeg_log_returns_empty_for_blank_output(tmp_path):
     assert camera._read_ffmpeg_log(tmp_path, "source") == ""
 
 
+# ── Published runs ───────────────────────────────────────────────────────────
+
+
+def test_current_run_and_playlist_path(camera_root):
+    token = "0123456789abcdef"
+    directory = camera.output_dir(token)
+
+    assert camera.current_run(token) is None
+    assert camera.playlist_path(token) == directory / camera.PLAYLIST_NAME
+
+    directory.mkdir(parents=True)
+    (directory / camera.CURRENT_RUN_FILE).write_text("not-a-run\n", encoding="utf-8")
+    assert camera.current_run(token) is None
+    assert camera.playlist_path(token) == directory / camera.PLAYLIST_NAME
+
+    (directory / camera.CURRENT_RUN_FILE).write_text("deadbeef\n", encoding="utf-8")
+    assert camera.current_run(token) == "deadbeef"
+    assert camera.playlist_path(token) == camera.run_playlist_path(token, "deadbeef")
+
+
+def test_playlist_ready_requires_a_listed_segment(tmp_path):
+    path = tmp_path / "index.m3u8"
+    assert camera._playlist_ready(path) is False
+
+    path.write_text("#EXTM3U\n", encoding="utf-8")
+    assert camera._playlist_ready(path) is False
+
+    path.write_text(PLAYLIST_TEXT, encoding="utf-8")
+    assert camera._playlist_ready(path) is True
+
+
+def test_publish_and_remove_run(camera_root):
+    token = "0123456789abcdef"
+    directory = camera.output_dir(token)
+    directory.mkdir(parents=True)
+    unrelated = directory / "seg_00000000_000001.ts"
+    unrelated.write_bytes(b"keep")
+    playlist = camera.run_playlist_path(token, "deadbeef")
+    playlist.write_text(PLAYLIST_TEXT, encoding="utf-8")
+    segment = directory / "seg_deadbeef_000001.ts"
+    segment.write_bytes(b"segment")
+
+    camera._publish_run(token, "deadbeef")
+    assert (directory / camera.CURRENT_RUN_FILE).read_text(encoding="utf-8").strip() == "deadbeef"
+
+    camera._remove_run(token, "deadbeef")
+    assert not segment.exists()
+    assert not playlist.exists()
+    assert unrelated.exists()
+
+
+def test_prune_runs_keeps_the_current_run_and_recent_files(camera_root):
+    token = "0123456789abcdef"
+    directory = camera.output_dir(token)
+    directory.mkdir(parents=True)
+
+    keep_playlist = camera.run_playlist_path(token, "deadbeef")
+    keep_playlist.write_text(PLAYLIST_TEXT, encoding="utf-8")
+    keep_segment = directory / "seg_deadbeef_000001.ts"
+    keep_segment.write_bytes(b"segment")
+    old_segment = directory / "seg_cafebabe_000001.ts"
+    old_segment.write_bytes(b"segment")
+    old_playlist = camera.run_playlist_path(token, "cafebabe")
+    old_playlist.write_text(PLAYLIST_TEXT, encoding="utf-8")
+    legacy_segment = directory / "seg_000007.ts"
+    legacy_segment.write_bytes(b"segment")
+    current = directory / camera.CURRENT_RUN_FILE
+    current.write_text("deadbeef\n", encoding="utf-8")
+    log = directory / "ffmpeg.log"
+    log.write_text("", encoding="utf-8")
+    # A directory whose name looks like a segment is never unlinked.
+    fake_directory = directory / "seg_cafebabe_999999.ts"
+    fake_directory.mkdir()
+
+    old_time = time.time() - camera.RUN_RETENTION_SECONDS - 10
+    for path in (keep_segment, old_segment, old_playlist, legacy_segment):
+        os.utime(path, (old_time, old_time))
+
+    camera._prune_runs(token, "deadbeef")
+
+    assert keep_segment.exists()
+    assert keep_playlist.exists()
+    assert current.exists()
+    assert log.exists()
+    assert fake_directory.exists()
+    assert not old_segment.exists()
+    assert not old_playlist.exists()
+    assert not legacy_segment.exists()
+
+
+def test_prune_runs_ignores_filesystem_errors(camera_root, monkeypatch):
+    class BrokenDir:
+        def iterdir(self):
+            raise OSError("gone")
+
+    monkeypatch.setattr(camera, "output_dir", lambda token: BrokenDir())
+    camera._prune_runs("token", "deadbeef")
+
+
+def test_prune_runs_skips_a_file_it_cannot_stat(camera_root, monkeypatch):
+    class BadPath:
+        name = "seg_cafebabe_000001.ts"
+
+        def is_file(self):
+            return True
+
+        def stat(self):
+            raise OSError("gone")
+
+    token = "0123456789abcdef"
+    camera.output_dir(token).mkdir(parents=True)
+    monkeypatch.setattr(camera.Path, "iterdir", lambda self: [BadPath()])
+    camera._prune_runs(token, "deadbeef")
+
+
+def test_cleanup_stale_runs_removes_legacy_directories(camera_root):
+    token = "0123456789abcdef"
+    for suffix in (".staging", ".old"):
+        stale = camera.CAMERA_ROOT / f"{token}{suffix}"
+        stale.mkdir(parents=True)
+        (stale / "seg_000001.ts").write_bytes(b"segment")
+
+    camera.camera_stream._cleanup_stale_runs(token)
+
+    for suffix in (".staging", ".old"):
+        assert not (camera.CAMERA_ROOT / f"{token}{suffix}").exists()
+
+
 # ── CameraStream ─────────────────────────────────────────────────────────────
 
 
@@ -314,7 +445,7 @@ async def test_ensure_starts_stream_and_stop_cleans_up(
     directory = await camera.camera_stream.ensure(CAMERA)
     token = camera.camera_token(camera.build_stream_url(CAMERA))
     assert directory == camera.output_dir(token)
-    assert (directory / camera.PLAYLIST_NAME).is_file()
+    assert camera.playlist_path(token).is_file()
     assert redis.data[camera.OWNER_KEY] == camera.WORKER_ID
     assert camera.camera_stream._refresh_task is not None
     assert camera.camera_stream._health_monitor.running is True
@@ -359,7 +490,7 @@ async def test_wait_for_playlist_ignores_a_racing_stat_error(camera_root, monkey
     monkeypatch.setattr(camera, "POLL_INTERVAL", 0.001)
 
     class BrokenPath:
-        def is_file(self):
+        def open(self, *args, **kwargs):
             raise OSError("gone")
 
     monkeypatch.setattr(camera, "playlist_path", lambda token: BrokenPath())
@@ -443,6 +574,7 @@ async def test_ensure_restarts_when_source_changes(camera_root, redis, ffmpeg, m
         _fake_process_factory(processes[0]),
     )
     await camera.camera_stream.ensure(CAMERA)
+    old_token = camera.camera_token(camera.build_stream_url(CAMERA))
 
     monkeypatch.setattr(
         camera.asyncio,
@@ -452,6 +584,9 @@ async def test_ensure_restarts_when_source_changes(camera_root, redis, ffmpeg, m
     await camera.camera_stream.ensure({**CAMERA, "url": "rtsp://camera/other"})
     assert processes[0].terminated is True
     assert processes[1].terminated is False
+    # The old source's token is unreachable through the API, so its files are
+    # removed instead of accumulating in the temp directory.
+    assert not camera.output_dir(old_token).exists()
 
 
 @pytest.mark.asyncio
@@ -466,7 +601,7 @@ async def test_ensure_keeps_ownership_while_restarting(
             seen.append(redis.data.get(camera.OWNER_KEY))
             playlist = Path(args[-1])
             playlist.parent.mkdir(parents=True, exist_ok=True)
-            playlist.write_text("#EXTM3U\n", encoding="utf-8")
+            playlist.write_text(PLAYLIST_TEXT, encoding="utf-8")
             return process
 
         return create
@@ -642,6 +777,35 @@ async def test_stop_ignores_process_lookup_errors(camera_root, redis, monkeypatc
 async def test_stop_logs_redis_failures(camera_root, redis):
     redis.fail_get = True
     await camera.camera_stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_stop_keeps_output_owned_by_another_worker(camera_root, redis):
+    token = camera.camera_token(camera.build_stream_url(CAMERA))
+    _write_playlist(token)
+    camera.camera_stream._token = token
+    camera.camera_stream._source = "source"
+    redis.data[camera.OWNER_KEY] = "other-worker"
+
+    await camera.camera_stream.stop()
+
+    # The new owner is still writing into the shared directory; this worker
+    # leaving must not take its playlist and segments away.
+    assert camera.output_dir(token).is_dir()
+    assert redis.data[camera.OWNER_KEY] == "other-worker"
+
+
+@pytest.mark.asyncio
+async def test_stop_keeps_output_when_redis_is_unavailable(camera_root, redis):
+    token = camera.camera_token(camera.build_stream_url(CAMERA))
+    _write_playlist(token)
+    camera.camera_stream._token = token
+    camera.camera_stream._source = "source"
+    redis.fail_get = True
+
+    await camera.camera_stream.stop()
+
+    assert camera.output_dir(token).is_dir()
 
 
 @pytest.mark.asyncio
@@ -891,6 +1055,38 @@ async def test_segment_serves_the_file(client, db_session, camera_root):
     assert r.status_code == 200
     assert r.headers["content-type"] == "video/mp2t"
     assert r.content == b"segment"
+
+
+@pytest.mark.asyncio
+async def test_segment_serves_a_run_prefixed_file(client, db_session, camera_root):
+    await _seed_camera(db_session, CAMERA)
+    token = camera.camera_token(camera.build_stream_url(CAMERA))
+    directory = camera.output_dir(token)
+    directory.mkdir(parents=True)
+    (directory / "seg_deadbeef_000001.ts").write_bytes(b"run segment")
+    r = await client.get(f"/api/v1/camera/hls/{token}/seg_deadbeef_000001.ts")
+    assert r.status_code == 200
+    assert r.content == b"run segment"
+
+
+@pytest.mark.asyncio
+async def test_playlist_serves_the_published_run(client, db_session, camera_root, monkeypatch):
+    await _seed_camera(db_session, CAMERA)
+    token = camera.camera_token(camera.build_stream_url(CAMERA))
+    directory = camera.output_dir(token)
+    directory.mkdir(parents=True)
+    (directory / camera.CURRENT_RUN_FILE).write_text("deadbeef\n", encoding="utf-8")
+    camera.run_playlist_path(token, "deadbeef").write_text(
+        "#EXTM3U\n#EXTINF:2.000000,\nseg_deadbeef_000001.ts\n", encoding="utf-8"
+    )
+
+    async def ensure(settings):
+        return directory
+
+    monkeypatch.setattr(camera.camera_stream, "ensure", ensure)
+    r = await client.get(f"/api/v1/camera/hls/{token}/index.m3u8")
+    assert r.status_code == 200
+    assert "seg_deadbeef_000001.ts" in r.text
 
 
 @pytest.mark.asyncio
@@ -1173,29 +1369,39 @@ async def test_restart_keeps_serving_the_old_stream_until_the_new_one_is_ready(
     token = camera.camera_token(camera.build_stream_url(CAMERA))
     directory = camera.output_dir(token)
     (directory / "seg_000001.ts").write_bytes(b"old segment")
-    old_playlist = (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8")
+    old_path = camera.playlist_path(token)
+    old_playlist = old_path.read_text(encoding="utf-8")
 
     # The replacement ffmpeg needs a moment to reopen the camera. Until it
     # produces output, viewers must still see the old playlist and segments —
     # a 404 window here is what used to kill kiosk clients for good.
     started = asyncio.Event()
+    new_text = "#EXTM3U\n#EXTINF:2.000000,\nseg_000002.ts\n"
 
     async def slow_create(*args, **kwargs):
         started.set()
         await asyncio.sleep(0.05)
         playlist = Path(args[-1])
         playlist.parent.mkdir(parents=True, exist_ok=True)
-        playlist.write_text("#EXTM3U\n# new run\n", encoding="utf-8")
+        playlist.write_text(new_text, encoding="utf-8")
         return second
 
     monkeypatch.setattr(camera.asyncio, "create_subprocess_exec", slow_create)
     restart_task = asyncio.create_task(camera.camera_stream.restart())
     await started.wait()
-    assert (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8") == old_playlist
+    assert camera.playlist_path(token) == old_path
+    assert old_path.read_text(encoding="utf-8") == old_playlist
     assert (directory / "seg_000001.ts").read_bytes() == b"old segment"
+
     await restart_task
 
-    assert (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8") == "#EXTM3U\n# new run\n"
+    # The pointer moved to the new run, but the old run stays on disk for
+    # clients that are still a few segments behind.
+    assert camera.playlist_path(token) != old_path
+    assert camera.playlist_path(token).read_text(encoding="utf-8") == new_text
+    assert old_path.read_text(encoding="utf-8") == old_playlist
+    assert (directory / "seg_000001.ts").read_bytes() == b"old segment"
+    assert (directory / camera.CURRENT_RUN_FILE).is_file()
     assert camera.camera_stream._process is second
     assert not (camera.CAMERA_ROOT / f"{token}.staging").exists()
     assert not (camera.CAMERA_ROOT / f"{token}.old").exists()
@@ -1211,7 +1417,7 @@ async def test_stream_marks_each_run_as_a_discontinuity(
         captured.append(args)
         playlist = Path(args[-1])
         playlist.parent.mkdir(parents=True, exist_ok=True)
-        playlist.write_text("#EXTM3U\n", encoding="utf-8")
+        playlist.write_text(PLAYLIST_TEXT, encoding="utf-8")
         return FakeProcess()
 
     monkeypatch.setattr(camera.asyncio, "create_subprocess_exec", create)
@@ -1223,10 +1429,51 @@ async def test_stream_marks_each_run_as_a_discontinuity(
 
 
 @pytest.mark.asyncio
-async def test_start_rolls_back_when_the_swap_fails(
+async def test_start_keeps_ffmpeg_output_paths_stable(
     camera_root, redis, ffmpeg, monkeypatch
 ):
-    first, second = FakeProcess(), FakeProcess()
+    """Publishing a run must never move the files ffmpeg is still writing.
+
+    The previous implementation renamed the directory ffmpeg had opened, so
+    ffmpeg failed to create its next segment and the stream died seconds after
+    every (re)start.
+    """
+    captured: list[tuple] = []
+
+    async def create(*args, **kwargs):
+        captured.append(args)
+        playlist = Path(args[-1])
+        playlist.parent.mkdir(parents=True, exist_ok=True)
+        playlist.write_text(PLAYLIST_TEXT, encoding="utf-8")
+        return FakeProcess()
+
+    monkeypatch.setattr(camera.asyncio, "create_subprocess_exec", create)
+    source = camera.build_stream_url(CAMERA)
+    token = camera.camera_token(source)
+    await camera.camera_stream.ensure(CAMERA)
+
+    args = captured[0]
+    directory = camera.output_dir(token)
+    segment_arg = Path(args[args.index("-hls_segment_filename") + 1])
+    playlist_arg = Path(args[-1])
+
+    assert segment_arg.parent == directory
+    assert playlist_arg.parent == directory
+    # The path handed to ffmpeg is still present after the run is published,
+    # so the next segment can be opened there.
+    assert playlist_arg.is_file()
+    run_id = playlist_arg.stem.removeprefix("run_")
+    next_segment = directory / f"seg_{run_id}_000002.ts"
+    next_segment.write_bytes(b"still writable")
+    assert next_segment.is_file()
+    assert camera.current_run(token) == run_id
+
+
+@pytest.mark.asyncio
+async def test_start_failure_keeps_the_published_run(
+    camera_root, redis, ffmpeg, monkeypatch
+):
+    first = FakeProcess()
     monkeypatch.setattr(
         camera.asyncio, "create_subprocess_exec", _fake_process_factory(first)
     )
@@ -1234,24 +1481,22 @@ async def test_start_rolls_back_when_the_swap_fails(
     source = camera.build_stream_url(CAMERA)
     token = camera.camera_token(source)
     directory = camera.output_dir(token)
-    old_playlist = (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8")
+    old_path = camera.playlist_path(token)
+    old_playlist = old_path.read_text(encoding="utf-8")
 
+    failed = FakeProcess(returncode=1)
     monkeypatch.setattr(
-        camera.asyncio, "create_subprocess_exec", _fake_process_factory(second)
+        camera.asyncio,
+        "create_subprocess_exec",
+        _fake_process_factory(failed, write_playlist=False),
     )
-    real_rename = Path.rename
-
-    def fail_swap(self, target):
-        if self.name == f"{token}.staging":
-            raise OSError("disk full")
-        return real_rename(self, target)
-
-    monkeypatch.setattr(Path, "rename", fail_swap)
-    with pytest.raises(OSError, match="disk full"):
+    with pytest.raises(camera.CameraError):
         await camera.camera_stream._start_locked(source, token)
 
-    # The old stream is back in place and no staging litter remains.
-    assert (directory / camera.PLAYLIST_NAME).read_text(encoding="utf-8") == old_playlist
+    # A replacement that never produced output must not take the old run away.
+    assert camera.playlist_path(token) == old_path
+    assert old_path.read_text(encoding="utf-8") == old_playlist
+    assert sorted(p.name for p in directory.glob("run_*.m3u8")) == [old_path.name]
     assert not (camera.CAMERA_ROOT / f"{token}.staging").exists()
     assert not (camera.CAMERA_ROOT / f"{token}.old").exists()
 
