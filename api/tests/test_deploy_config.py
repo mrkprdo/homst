@@ -105,6 +105,24 @@ def test_uploads_location_is_isolated(path: Path):
     assert 'add_header Referrer-Policy "no-referrer" always;' in uploads
 
 
+@pytest.mark.parametrize("path", PROD_CONFIGS, ids=lambda p: p.name)
+def test_prod_config_redirects_plain_http_to_https(path: Path):
+    config = _read(path)
+
+    # A plain http:// request to the TLS port would otherwise get a bare 400
+    # ("The plain HTTP request was sent to an HTTPS port"). nginx exposes that
+    # as the internal 497 status, which should become a redirect instead.
+    assert "error_page 497 =301 https://" in config
+
+
+def test_dev_config_redirects_plain_http_to_https():
+    config = _read(DEV_CONFIG)
+
+    # Dev is published on 8999 but listens on 8443, so the redirect has to
+    # keep the host:port the browser asked for rather than $server_port.
+    assert 'error_page 497 =301 https://$http_host$request_uri;' in config
+
+
 def test_dev_config_allows_vite_hmr_but_keeps_headers():
     config = _read(DEV_CONFIG)
 
