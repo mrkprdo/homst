@@ -16,6 +16,7 @@ from PIL import Image
 
 from app import ai
 from app.config import settings
+from app.routers.ai import _default_reminder
 
 
 class FakeResponse:
@@ -1184,6 +1185,19 @@ def test_validate_event_applies_or_skips_the_default_reminder():
         {**base, "reminder_minutes": -1}, tz, [], default_reminder=30
     )
     assert event["reminder_minutes"] is None
+
+
+def test_default_reminder_accepts_only_usable_values():
+    assert _default_reminder({}) is None
+    assert _default_reminder({"notifications": None}) is None
+    assert _default_reminder({"notifications": {}}) is None
+    assert _default_reminder({"notifications": {"defaultReminderMinutes": True}}) is None
+    assert _default_reminder({"notifications": {"defaultReminderMinutes": -1}}) is None
+    assert _default_reminder(
+        {"notifications": {"defaultReminderMinutes": 10_000_000}}
+    ) is None
+    assert _default_reminder({"notifications": {"defaultReminderMinutes": 0}}) == 0
+    assert _default_reminder({"notifications": {"defaultReminderMinutes": 30}}) == 30
 
 
 def test_result_payload_defaults_new_events_and_keeps_a_focused_reminder():
