@@ -103,6 +103,8 @@ export interface AiConversationTurn {
   role: "user" | "assistant"
   text: string
   imageName: string
+  /** Stored copy of the attached screenshot, served from /uploads. */
+  imageUrl: string
   rawResponse: string
   reply: string
   drafts: AiDraft[]
@@ -130,6 +132,12 @@ export interface AiConversation {
 export interface AiConversationWrite {
   title: string
   turns: AiConversationTurn[]
+}
+
+/** A screenshot kept beside a conversation, so a reopened chat can show it. */
+export interface AiStoredImage {
+  name: string
+  url: string
 }
 
 export interface AiParseResult {
@@ -269,6 +277,7 @@ interface ApiConversationTurn {
   role: "user" | "assistant"
   text?: string
   image_name?: string | null
+  image_url?: string | null
   raw_response?: string | null
   reply?: string | null
   drafts?: ApiDraft[]
@@ -463,6 +472,7 @@ function mapConversationTurn(turn: ApiConversationTurn): AiConversationTurn {
     role: turn.role === "assistant" ? "assistant" : "user",
     text: typeof turn.text === "string" ? turn.text : "",
     imageName: typeof turn.image_name === "string" ? turn.image_name : "",
+    imageUrl: typeof turn.image_url === "string" ? turn.image_url : "",
     rawResponse: typeof turn.raw_response === "string" ? turn.raw_response : "",
     reply: typeof turn.reply === "string" ? turn.reply : "",
     drafts: (Array.isArray(turn.drafts) ? turn.drafts : []).map(mapDraft),
@@ -518,6 +528,7 @@ function conversationPayload(payload: AiConversationWrite) {
       role: turn.role,
       text: turn.text,
       image_name: turn.imageName || null,
+      image_url: turn.imageUrl || null,
       raw_response: turn.rawResponse || null,
       reply: turn.reply || null,
       drafts: turn.drafts.map(draftPayload),
@@ -674,6 +685,16 @@ export const aiApi = {
       history: payload.history ?? [],
       focus_event_id: payload.focusEventId ?? null,
     }).then(mapParseResult),
+
+  /** Keep a chat screenshot beside its conversation. */
+  uploadImage: (payload: { image: string; name?: string }) =>
+    api.post<{ name?: string; url?: string }>("/ai/images", {
+      image: payload.image,
+      name: payload.name ?? "",
+    }).then<AiStoredImage>(stored => ({
+      name: typeof stored.name === "string" ? stored.name : "",
+      url: typeof stored.url === "string" ? stored.url : "",
+    })),
 
   createConversation: (payload: AiConversationWrite) =>
     api.post<ApiConversation>("/ai/conversations", conversationPayload(payload))

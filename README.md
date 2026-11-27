@@ -185,7 +185,7 @@ It can also change existing events:
 - A repeat rule is only applied when the source states one. A table of dated rows is imported row by row, not as a recurring series.
 - Change the model any time under **Settings > Smart import**. **Refresh** reloads the provider's catalog. Text-only models work for messages but not screenshots.
 
-Requests go only to OpenCode's two fixed gateways. The key stays on the server and is never returned to a browser, and screenshots are re-encoded before upload to strip metadata. Remove the key under **Settings > Smart import** to turn the feature off. See [SECURITY.md](SECURITY.md) for the full threat model.
+Requests go only to OpenCode's two fixed gateways. The key stays on the server and is never returned to a browser, and screenshots are re-encoded before upload to strip metadata. The re-encoded copy stays on your own server with the saved chat, so reopening an event's conversation shows the picture again. Remove the key under **Settings > Smart import** to turn the feature off. See [SECURITY.md](SECURITY.md) for the full threat model.
 
 For appliance installs, set `OPENCODE_API_KEY` in `.env` instead, with optional `OPENCODE_PROVIDER` and `OPENCODE_MODEL`. A key saved in Settings wins.
 
@@ -237,7 +237,7 @@ The updater pulls anonymously, so the GitHub repo and GHCR package must be publi
 Data lives in four volumes:
 
 - `pg_data`: database
-- `photo_uploads`: photos
+- `photo_uploads`: photos and Smart import screenshots
 - `homst_ssl`: certificates
 - `homst_secrets`: database password
 

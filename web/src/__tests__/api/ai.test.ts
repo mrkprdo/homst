@@ -369,6 +369,7 @@ describe("aiApi conversations", () => {
       role: "assistant",
       text: "",
       image_name: null,
+      image_url: "/uploads/chats/shot-1.png",
       raw_response: '{"events":[]}',
       reply: "Found the appointment.",
       drafts: [apiDraft],
@@ -397,6 +398,7 @@ describe("aiApi conversations", () => {
         role: "assistant",
         text: "",
         imageName: "",
+        imageUrl: "/uploads/chats/shot-1.png",
         rawResponse: '{"events":[]}',
         reply: "Found the appointment.",
         drafts: [{
@@ -428,6 +430,7 @@ describe("aiApi conversations", () => {
     expect(created.turns[0]!.warnings).toEqual(["Check the time"])
     expect(created.turns[0]!.actions).toEqual(["done"])
     expect(created.turns[0]!.actionsDeclared).toBe(true)
+    expect(created.turns[0]!.imageUrl).toBe("/uploads/chats/shot-1.png")
 
     const postBody = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)
     expect(postBody.turns[0].drafts[0]).toMatchObject({
@@ -435,6 +438,7 @@ describe("aiApi conversations", () => {
       reminder_minutes: 30,
       assignee_id: "m1",
     })
+    expect(postBody.turns[0].image_url).toBe("/uploads/chats/shot-1.png")
     expect(String(fetchMock.mock.calls[0]![0])).toContain("/ai/conversations")
 
     fetchMock.mockResolvedValueOnce(json(apiConversation))
@@ -446,6 +450,26 @@ describe("aiApi conversations", () => {
     const loaded = await aiApi.getConversation("c1")
     expect(loaded.turns[0]!.reply).toBe("Found the appointment.")
     expect(loaded.turns[0]!.drafts[0]!.assigneeId).toBe("m1")
+    expect(loaded.turns[0]!.imageUrl).toBe("/uploads/chats/shot-1.png")
+  })
+
+  it("stores a screenshot and returns its url", async () => {
+    fetchMock.mockResolvedValueOnce(json({ name: "shot.png", url: "/uploads/chats/a1.png" }))
+    const stored = await aiApi.uploadImage({
+      image: "data:image/png;base64,abc",
+      name: "shot.png",
+    })
+    expect(stored).toEqual({ name: "shot.png", url: "/uploads/chats/a1.png" })
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/ai/images")
+    expect(JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)).toEqual({
+      image: "data:image/png;base64,abc",
+      name: "shot.png",
+    })
+
+    // A server that answers without a url must not break the transcript.
+    fetchMock.mockResolvedValueOnce(json({}))
+    expect(await aiApi.uploadImage({ image: "data:image/png;base64,abc" }))
+      .toEqual({ name: "", url: "" })
   })
 })
 

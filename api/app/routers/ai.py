@@ -1,6 +1,8 @@
 """HOMST's Smart Event Assistant: turn messages or screenshots into event drafts."""
 
 import json
+import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -16,6 +18,8 @@ from app.schemas.all import (
     AiConfigUpdate,
     AiConversationResponse,
     AiConversationWrite,
+    AiImageRequest,
+    AiImageResponse,
     AiModelsResponse,
     AiParseRequest,
     AiParseResponse,
@@ -26,6 +30,14 @@ from app.schemas.all import (
 router = APIRouter()
 
 DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
+
+# Chat attachments are kept on the same persistent uploads volume as photos,
+# under a UUID filename, and referenced from the saved conversation by URL.
+# Keeping the bytes out of the transcript row matters: that JSON is rewritten
+# in full on every turn. One directory per feature (chats, photos, ...) leaves
+# room for other upload kinds to land beside them later.
+CHAT_IMAGE_DIR = "uploads/chats"
+os.makedirs(CHAT_IMAGE_DIR, exist_ok=True)
 
 
 def _http_error(exc: ai.AiError) -> HTTPException:
@@ -158,6 +170,25 @@ async def _require_config(db: AsyncSession) -> dict:
     if config is None:
         raise HTTPException(status_code=503, detail="Smart import needs an OpenCode API key")
     return config
+
+
+@router.post("/images", response_model=AiImageResponse, status_code=201)
+async def store_chat_image(req: AiImageRequest):
+    """Keep a screenshot so a saved conversation can show it again.
+
+    The picture is re-encoded exactly like the copy sent to the model, so EXIF
+    and GPS metadata never reach the disk. Only the label keeps the original
+    filename; the file on disk is named after a fresh UUID.
+    """
+    try:
+        data = ai.normalized_image_bytes(req.image)
+    except ai.AiImageError as exc:
+        raise _http_error(exc) from exc
+    filename = f"{uuid.uuid4()}.png"
+    with open(os.path.join(CHAT_IMAGE_DIR, filename), "wb") as handle:
+        handle.write(data)
+    label = " ".join(req.name.split())[:255] or "Image"
+    return {"name": label, "url": f"/uploads/chats/{filename}"}
 
 
 @router.get("", response_model=AiStatusResponse)

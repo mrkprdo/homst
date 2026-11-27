@@ -69,6 +69,9 @@ Consequences that are accepted by design:
   member and a per-request reference number) to OpenCode when an AI key is
   configured. The model can propose creating, changing or deleting events, but
   nothing is written until a household member reviews and applies the changes.
+  An attached screenshot is re-encoded (stripping EXIF/GPS) and kept on the
+  household server beside the saved chat, so an event's conversation can show
+  it again; those copies live in `uploads/chats` on the `photo_uploads` volume.
   Removing the key in **Settings > Smart import** turns the feature off.
 
 Out of scope for this model:
@@ -89,9 +92,10 @@ radius of a mistake; they do not replace network isolation.
 - **Same-origin writes.** State-changing API requests are only accepted from
   the dashboard's own origin, so another site cannot silently drive a HOMST
   instance through the browser.
-- **Image-only uploads.** The photo endpoint accepts image payloads (and
-  re-encodes/resizes them) instead of storing arbitrary files, and nginx caps
-  request bodies at 12 MB (the API applies its own 10 MB image limit).
+- **Image-only uploads.** The photo and Smart import screenshot endpoints
+  accept image payloads (and re-encode them, which also strips EXIF/GPS)
+  instead of storing arbitrary files, and nginx caps request bodies at 12 MB
+  (the API applies its own 8-10 MB image limits).
 - **Content-Security-Policy and hardening headers.** Responses carry a CSP
   that restricts scripts, styles, frames, and connections, plus
   `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and

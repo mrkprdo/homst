@@ -3,7 +3,7 @@
 # (supervisord). Runs on every start; only does work when something is missing.
 set -eu
 
-mkdir -p /app/uploads/photos /etc/ssl/homst
+mkdir -p /app/uploads/photos /app/uploads/chats /etc/ssl/homst
 chown -R homst:homst /app/uploads
 
 if [ ! -s /etc/ssl/homst/cert.pem ] || [ ! -s /etc/ssl/homst/key.pem ]; then

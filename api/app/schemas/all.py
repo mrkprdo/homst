@@ -463,12 +463,29 @@ class AiParseResponse(BaseModel):
     actions: list[str] = []
 
 
+class AiImageRequest(BaseModel):
+    """A screenshot to keep beside a saved chat, sent as a data URL."""
+
+    image: str = Field(max_length=16_000_000)
+    name: str = Field("", max_length=255)
+
+
+class AiImageResponse(BaseModel):
+    """Where the stored screenshot can be read back from."""
+
+    name: str
+    url: str
+
+
 class AiConversationTurn(BaseModel):
     """One saved chat turn, retained verbatim for reopening the conversation."""
 
     role: Literal["user", "assistant"]
     text: str = Field("", max_length=20_000)
     image_name: Optional[str] = Field(None, max_length=255)
+    # Stored copy of the screenshot, served from /uploads. Only the URL is kept
+    # here: the bytes live on the uploads volume, never inside this record.
+    image_url: Optional[str] = Field(None, max_length=512)
     raw_response: Optional[str] = Field(None, max_length=20_000)
     reply: Optional[str] = Field(None, max_length=600)
     document_kind: str = Field("other", max_length=32)

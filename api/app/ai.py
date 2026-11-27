@@ -1194,6 +1194,17 @@ def _normalize_image(data_url: str) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
+def normalized_image_bytes(data_url: str) -> bytes:
+    """The same normalized image as raw PNG bytes.
+
+    Used to keep a copy of a chat screenshot next to its conversation, so the
+    bytes written to disk come from the identical decode/re-encode path as the
+    copy sent to the model: metadata stripped, edge cap applied.
+    """
+    encoded = _normalize_image(data_url).split(",", 1)[1]
+    return base64.b64decode(encoded)
+
+
 def resolve_timezone(name: str | None) -> tuple[Any, str]:
     """Return ``(tzinfo, label)``, falling back to UTC for unknown names."""
     candidate = (name or "").strip() or "UTC"

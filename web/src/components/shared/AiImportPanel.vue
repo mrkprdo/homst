@@ -71,6 +71,8 @@ interface Turn {
   text: string
   image: Attachment | null
   imageName: string
+  /** Stored copy of this turn's screenshot, so a reopened chat shows it. */
+  imageUrl: string
   status: TurnStatus
   reply: string
   drafts: AiDraft[]
@@ -107,6 +109,7 @@ function userTurn(text: string, image: Attachment | null): Turn {
     text,
     image,
     imageName: image?.name ?? "",
+    imageUrl: "",
     status: "ready",
     reply: "",
     drafts: [],
@@ -142,6 +145,7 @@ function assistantTurn(text = "", image: Attachment | null = null): Turn {
     text: "",
     image: null,
     imageName: "",
+    imageUrl: "",
     status: "reading",
     reply: "",
     drafts: [],
@@ -497,6 +501,7 @@ function restoredTurn(stored: AiConversationTurn): Turn {
   if (stored.role === "user") {
     const turn = userTurn(stored.text, null)
     turn.imageName = stored.imageName
+    turn.imageUrl = stored.imageUrl
     return turn
   }
   const turn = assistantTurn()
@@ -564,6 +569,7 @@ function conversationTurns(): AiConversationTurn[] {
     role: turn.role,
     text: turn.role === "user" ? turn.text : turn.reply,
     imageName: turn.imageName,
+    imageUrl: turn.imageUrl,
     rawResponse: turn.rawResponse,
     reply: turn.reply,
     drafts: turn.drafts,
@@ -612,6 +618,22 @@ async function ensureConversation(): Promise<string> {
     // Fall through and retry with the latest turns.
   }
   return persistConversation()
+}
+
+/**
+ * Keep the attached screenshot with the saved conversation.
+ *
+ * The server re-encodes it and hands back a URL, which is all the transcript
+ * stores. A failure here only costs the saved chat its picture (the filename
+ * still shows), so it never interrupts the import.
+ */
+async function storeImage(turn: Turn, image: Attachment) {
+  try {
+    const stored = await aiApi.uploadImage({ image: image.dataUrl, name: image.name })
+    if (stored.url) turn.imageUrl = stored.url
+  } catch {
+    // Best effort: the chat still saves, without the picture.
+  }
 }
 
 // ── Composer and attachments ──────────────────────────────────────────────
@@ -803,6 +825,9 @@ async function sendMessage(
   // Push then read back the reactive proxy: mutating the raw object would
   // update the state without triggering the transcript to re-render.
   const liveAssistant = turns.value[turns.value.length - 1]!
+  const liveUser = turns.value[turns.value.length - 2]!
+  // Runs alongside the parse, so storing the picture never delays the reply.
+  const storedImage = image ? storeImage(liveUser, image) : null
   composerText.value = ""
   pendingImage.value = null
   inputError.value = ""
@@ -832,6 +857,7 @@ async function sendMessage(
       },
     )
     applyParseResult(liveAssistant, result)
+    if (storedImage) await storedImage
     queueConversationSave()
   } catch (error) {
     liveAssistant.status = "error"
@@ -1530,6 +1556,14 @@ function outcomeMessage(turn: Turn): string {
                   :src="turn.image.dataUrl"
                   :alt="turn.image.name || 'Attached image'"
                   class="ai-bubble-image"
+                />
+                <img
+                  v-else-if="turn.imageUrl"
+                  :src="turn.imageUrl"
+                  :alt="turn.imageName || 'Attached image'"
+                  class="ai-bubble-image"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <p v-if="turn.imageName" class="ai-bubble-file">{{ turn.imageName }}</p>
               </div>

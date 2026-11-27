@@ -205,6 +205,9 @@ function progressiveStream(drafts: unknown[] = DRAFTS) {
 function handlerWith(options: StreamOptions = {}) {
   return (url: string, init?: RequestInit): Response => {
     const method = init?.method ?? "GET"
+    if (url.includes("/ai/images")) {
+      return json({ name: "shot.png", url: "/uploads/chats/shot-1.png" })
+    }
     if (url.includes("/ai/conversations")) {
       return json({
         id: "conv-1",
@@ -1025,6 +1028,96 @@ describe("AiImportPanel", () => {
     const source = addedEvents()[0]!.source_message as string
     expect(source).toContain("Dinner Friday")
     expect(source).toContain("[Image: shot.png]")
+  })
+
+  it("keeps the attached screenshot with the saved conversation", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel()
+
+    const input = wrapper.find('input[type="file"]')
+    const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "image/png" })
+    Object.defineProperty(input.element, "files", { value: [file], configurable: true })
+    await input.trigger("change")
+    await vi.waitFor(() => expect(wrapper.text()).toContain("shot.png"))
+
+    await send(wrapper, "Dinner Friday")
+
+    const upload = fetchMock.mock.calls.find(call => String(call[0]).includes("/ai/images"))
+    expect(upload).toBeTruthy()
+    const uploadBody = JSON.parse(String((upload![1] as RequestInit).body))
+    expect(uploadBody.name).toBe("shot.png")
+    expect(uploadBody.image).toContain("data:image/png;base64,")
+
+    // The transcript stores the URL, never the bytes.
+    const saved = fetchMock.mock.calls
+      .filter(call => String(call[0]).endsWith("/ai/conversations"))
+      .map(call => JSON.parse(String((call[1] as RequestInit).body)))[0]!
+    expect(saved.turns[0].image_url).toBe("/uploads/chats/shot-1.png")
+    expect(saved.turns[0].image_name).toBe("shot.png")
+  })
+
+  it("still saves the chat when the screenshot cannot be stored", async () => {
+    install((url, init) => {
+      if (url.includes("/ai/images")) return json({ detail: "No space left" }, 500)
+      return handlerWith()(url, init)
+    })
+    const wrapper = await mountPanel()
+
+    const input = wrapper.find('input[type="file"]')
+    const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "image/png" })
+    Object.defineProperty(input.element, "files", { value: [file], configurable: true })
+    await input.trigger("change")
+    await vi.waitFor(() => expect(wrapper.text()).toContain("shot.png"))
+
+    await send(wrapper, "Dinner Friday")
+
+    // The import is unaffected: the picture is simply not kept.
+    expect(wrapper.text()).toContain("2 events ready")
+    const saved = fetchMock.mock.calls
+      .filter(call => String(call[0]).endsWith("/ai/conversations"))
+      .map(call => JSON.parse(String((call[1] as RequestInit).body)))[0]!
+    expect(saved.turns[0].image_name).toBe("shot.png")
+    expect(saved.turns[0].image_url).toBeNull()
+  })
+
+  it("shows the stored screenshot when a saved chat is reopened", async () => {
+    install(url => {
+      if (url.includes("/ai/conversations/conv-1")) {
+        return json({
+          id: "conv-1",
+          title: "School letter",
+          turns: [
+            {
+              role: "user",
+              text: "Here's the letter",
+              image_name: "letter.png",
+              image_url: "/uploads/chats/letter-1.png",
+            },
+            {
+              role: "assistant",
+              text: "",
+              reply: "Found the trip.",
+              drafts: [DRAFTS[0]],
+              applied: false,
+              actions: ["done"],
+            },
+          ],
+          created_at: "2026-05-01T00:00:00Z",
+          updated_at: "2026-05-01T00:00:00Z",
+        })
+      }
+      if (url.includes("/ai")) return json(STATUS_ON)
+      return json({})
+    })
+    const wrapper = await mountPanel({
+      memberNames: { m1: "Alice" },
+      conversationId: "conv-1",
+    })
+
+    const image = wrapper.find(".ai-bubble-image")
+    expect(image.exists()).toBe(true)
+    expect(image.attributes("src")).toBe("/uploads/chats/letter-1.png")
+    expect(wrapper.text()).toContain("letter.png")
   })
 
   it("ignores unusable files", async () => {
