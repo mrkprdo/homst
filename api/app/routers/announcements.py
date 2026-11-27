@@ -62,13 +62,7 @@ async def _author_names(db: AsyncSession, announcements: list[Announcement]) -> 
     return {member.id: member.name for member in result.scalars().all()}
 
 
-@router.get("/announcements", response_model=list[AnnouncementResponse])
-async def list_announcements(db: AsyncSession = Depends(get_db)):
-    """Active announcements, newest first.
-
-    Expiry is evaluated in Python so the endpoint behaves the same on SQLite
-    (tests) and PostgreSQL (production), where datetime storage differs.
-    """
+async def active_announcements(db: AsyncSession) -> list[AnnouncementResponse]:
     result = await db.execute(
         select(Announcement)
         .where(Announcement.household_id == DEFAULT_HOUSEHOLD_ID)
@@ -79,6 +73,16 @@ async def list_announcements(db: AsyncSession = Depends(get_db)):
     active = [a for a in result.scalars().all() if _is_active(a, now)]
     names = await _author_names(db, active)
     return [_to_response(a, names.get(a.created_by or "")) for a in active]
+
+
+@router.get("/announcements", response_model=list[AnnouncementResponse])
+async def list_announcements(db: AsyncSession = Depends(get_db)):
+    """Active announcements, newest first.
+
+    Expiry is evaluated in Python so the endpoint behaves the same on SQLite
+    (tests) and PostgreSQL (production), where datetime storage differs.
+    """
+    return await active_announcements(db)
 
 
 @router.post("/announcements", response_model=AnnouncementResponse, status_code=201)

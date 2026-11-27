@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.events.publisher import publish_event
-from app.models.all import AiConversation, Calendar, Event, Household, ReminderLog
+from app.household import DEFAULT_HOUSEHOLD_ID, get_or_create_household
+from app.models.all import AiConversation, Calendar, Event, ReminderLog
 from app.schemas.all import (
     CalendarCreate,
     CalendarResponse,
@@ -20,29 +21,23 @@ from app.schemas.all import (
 
 router = APIRouter()
 
-DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 
-
-async def _ensure_household(db: AsyncSession) -> None:
-    result = await db.execute(select(Household).where(Household.id == DEFAULT_HOUSEHOLD_ID))
-    if result.scalar_one_or_none():
-        return
-    db.add(Household(id=DEFAULT_HOUSEHOLD_ID, name="Home", settings={}))
-    await db.commit()
-
-
-@router.get("/calendars", response_model=list[CalendarResponse])
-async def list_calendars(db: AsyncSession = Depends(get_db)):
-    await _ensure_household(db)
+async def household_calendars(db: AsyncSession) -> list[Calendar]:
     result = await db.execute(
         select(Calendar).where(Calendar.household_id == DEFAULT_HOUSEHOLD_ID)
     )
     return result.scalars().all()
 
 
+@router.get("/calendars", response_model=list[CalendarResponse])
+async def list_calendars(db: AsyncSession = Depends(get_db)):
+    await get_or_create_household(db)
+    return await household_calendars(db)
+
+
 @router.post("/calendars", response_model=CalendarResponse, status_code=201)
 async def create_calendar(req: CalendarCreate, db: AsyncSession = Depends(get_db)):
-    await _ensure_household(db)
+    await get_or_create_household(db)
     cal = Calendar(
         household_id=DEFAULT_HOUSEHOLD_ID,
         name=req.name,
@@ -59,7 +54,7 @@ async def create_calendar(req: CalendarCreate, db: AsyncSession = Depends(get_db
 
 @router.post("/calendars/subscribe", response_model=CalendarResponse, status_code=201)
 async def subscribe_calendar(req: SubscribeCalendarRequest, db: AsyncSession = Depends(get_db)):
-    await _ensure_household(db)
+    await get_or_create_household(db)
     cal = Calendar(
         household_id=DEFAULT_HOUSEHOLD_ID,
         name=req.name or "Subscribed Calendar",
@@ -144,21 +139,17 @@ def _event_to_response(ev: Event) -> EventResponse:
     )
 
 
-@router.get("/events", response_model=list[EventResponse])
-async def list_events(
-    from_date: str | None = Query(None, alias="from"),
-    to_date: str | None = Query(None, alias="to"),
-    calendar_ids: str | None = Query(None),
-    db: AsyncSession = Depends(get_db),
-):
-    cal_result = await db.execute(
-        select(Calendar.id).where(Calendar.household_id == DEFAULT_HOUSEHOLD_ID)
+async def household_events(
+    db: AsyncSession,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    calendar_ids: str | None = None,
+) -> list[Event]:
+    query = (
+        select(Event)
+        .join(Calendar, Event.calendar_id == Calendar.id)
+        .where(Calendar.household_id == DEFAULT_HOUSEHOLD_ID)
     )
-    household_cal_ids = [row[0] for row in cal_result.all()]
-    if not household_cal_ids:
-        return []
-
-    query = select(Event).where(Event.calendar_id.in_(household_cal_ids))
     if calendar_ids:
         ids = [cid.strip() for cid in calendar_ids.split(",") if cid.strip()]
         if ids:
@@ -176,7 +167,17 @@ async def list_events(
         query = query.where(Event.start_at <= dt_to)
     query = query.order_by(Event.start_at)
     result = await db.execute(query)
-    return [_event_to_response(ev) for ev in result.scalars().all()]
+    return result.scalars().all()
+
+
+@router.get("/events", response_model=list[EventResponse])
+async def list_events(
+    from_date: str | None = Query(None, alias="from"),
+    to_date: str | None = Query(None, alias="to"),
+    calendar_ids: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    return await household_events(db, from_date, to_date, calendar_ids)
 
 
 @router.post("/events", response_model=EventResponse, status_code=201)

@@ -1,18 +1,18 @@
 import { api } from "./client"
 import type { TaskList, Task } from "@/composables/useTasks"
 
-interface ApiTaskList {
+export interface ApiTaskList {
   id: string; household_id: string; name: string; color: string; position: number
 }
 
-interface ApiTask {
+export interface ApiTask {
   id: string; list_id: string; title: string; description: string
   assignee_id: string | null; start_at: string | null; end_at: string | null
   status: string; priority: string; position: number
   created_by: string | null; created_at: string; updated_at: string
 }
 
-function mapTaskList(tl: ApiTaskList): TaskList {
+export function mapTaskList(tl: ApiTaskList): TaskList {
   return {
     id: tl.id, householdId: tl.household_id, name: tl.name,
     color: tl.color as TaskList["color"], position: tl.position,

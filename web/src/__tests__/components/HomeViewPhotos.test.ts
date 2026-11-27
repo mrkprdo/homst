@@ -89,17 +89,26 @@ describe("HomeView photo backdrops", () => {
     wrapper.unmount()
   })
 
-  it("renders one plain photo on a software compositor", async () => {
+  it("keeps the blurred backdrop and dissolve on a software compositor", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(Math.floor(Date.now() / 15_000) * 15_000)
     setCheapCompositor(true)
+    stubImage()
     const drawImage = stubCanvasCover()
-    seedPhotos()
+    seedPhotos(2)
 
     const wrapper = mount(HomeView)
     await settle()
 
-    expect(wrapper.findAll(".photos-img")).toHaveLength(1)
-    expect(wrapper.find(".photos-backdrop").exists()).toBe(false)
-    expect(drawImage).not.toHaveBeenCalled()
+    const backdrop = wrapper.find(".photos-backdrop")
+    expect(backdrop.exists()).toBe(true)
+    expect(backdrop.attributes("src")).toBe("data:image/jpeg;base64,cover")
+    expect(drawImage).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(5000)
+    await settle()
+    expect(wrapper.findAll(".photos-img")).toHaveLength(2)
+    expect(wrapper.findAll(".photos-img")[1]!.classes()).toContain("photos-img--dissolve")
 
     wrapper.unmount()
   })

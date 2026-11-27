@@ -1,6 +1,6 @@
 import { nextTick, ref } from "vue"
 import { householdApi } from "@/api/household"
-import type { CameraSettings, HouseholdSettings, WifiEncryption, WifiSettings } from "@/api/household"
+import type { CameraSettings, HouseholdSettings, WidgetDef, WifiEncryption, WifiSettings } from "@/api/household"
 import { photosApi } from "@/api/photos"
 import { HOME_LAYOUT_EVENT } from "@/lib/homeLayout"
 
@@ -77,6 +77,12 @@ const carouselEnabled = ref(false)
 const returnHomeEnabled = ref(true)
 const navAutoHide = ref(false)
 const houseName = ref("")
+const widgetLayout = ref<WidgetDef[]>([])
+const address = ref("")
+const holidayCountry = ref("")
+const holidayProvince = ref("")
+const lat = ref<number | null>(null)
+const lon = ref<number | null>(null)
 const photos = ref<PhotoEntry[]>([])
 const cameraUrl = ref("")
 const cameraUsername = ref("")
@@ -108,7 +114,7 @@ function applyAccentToDOM(color: AccentColor) {
   const darkHover = p.onAccent === "#fffdf4" || p.onAccent === "#fafafa"
   root.style.setProperty("--color-actionHover", darkHover ? p.dark : p.light)
   if (themePreset.value === "futur") {
-    root.style.setProperty("--shadow-accent-lip", "var(--color-ink)")
+    root.style.setProperty("--shadow-accent-lip", "var(--color-outline)")
     root.style.setProperty("--shadow-accent-drop", "transparent")
     root.style.setProperty("--shadow-accent-inner", "transparent")
     return
@@ -218,6 +224,13 @@ function updateHouseName(name: string) {
   houseName.value = name
 }
 
+function updateWidgetLayout(layout: WidgetDef[]) {
+  widgetLayout.value = layout
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(HOME_LAYOUT_EVENT, { detail: layout }))
+  }
+}
+
 function applyCameraSettings(camera: CameraSettings | null) {
   cameraUrl.value = camera?.url ?? ""
   cameraUsername.value = camera?.username ?? ""
@@ -257,6 +270,12 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
     if (s.autoSunrise !== undefined) autoSunrise.value = s.autoSunrise ?? null
     if (s.autoSunset !== undefined) autoSunset.value = s.autoSunset ?? null
     if (s.houseName !== undefined) updateHouseName(s.houseName)
+    if (s.address !== undefined) address.value = s.address ?? ""
+    if (s.holidayCountry !== undefined) holidayCountry.value = s.holidayCountry ?? ""
+    if (s.holidayProvince !== undefined) holidayProvince.value = s.holidayProvince ?? ""
+    if (s.lat !== undefined) lat.value = s.lat ?? null
+    if (s.lon !== undefined) lon.value = s.lon ?? null
+    if (s.widgetLayout) updateWidgetLayout(s.widgetLayout)
     if (s.camera !== undefined) applyCameraSettings(s.camera)
     if (s.wifi !== undefined) applyWifiSettings(s.wifi)
     if (s.notifications) {
@@ -295,15 +314,13 @@ export async function refreshPhotos() {
 export async function refreshFromServer() {
   const s = await householdApi.getSettings()
   applyHouseholdSettings(s)
-  if (s.widgetLayout) {
-    window.dispatchEvent(new CustomEvent(HOME_LAYOUT_EVENT, { detail: s.widgetLayout }))
-  }
   await refreshPhotos()
 }
 
 export function useSettings() {
   return {
     theme, themePreset, accentColor, fontSize, warm, hudEnabled, houseName, photos,
+    widgetLayout, address, holidayCountry, holidayProvince, lat, lon,
     lyricsEnabled, lyricsOffsetMs, musicBackground, musicBackgroundSpin, musicCardSpin,
     carouselEnabled, returnHomeEnabled,
     navAutoHide,
@@ -318,7 +335,7 @@ export function useSettings() {
     updateCarouselEnabled, updateReturnHomeEnabled,
     updateNavAutoHide,
     updateHouseName, updateDefaultReminderMinutes, applyCameraSettings,
-    applyWifiSettings,
+    applyWifiSettings, updateWidgetLayout,
     applyHouseholdSettings, refreshFromServer, refreshPhotos,
   }
 }
@@ -343,6 +360,12 @@ export function _resetSettings() {
   navAutoHide.value = false
   houseName.value = ""
   photos.value = []
+  widgetLayout.value = []
+  address.value = ""
+  holidayCountry.value = ""
+  holidayProvince.value = ""
+  lat.value = null
+  lon.value = null
   cameraUrl.value = ""
   cameraUsername.value = ""
   cameraPasswordSet.value = false

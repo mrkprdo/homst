@@ -286,7 +286,7 @@ describe("useStream (full)", () => {
     expect(fetchMock).toHaveBeenCalled()
 
     const urls = fetchMock.mock.calls.map((c) => String(c[0]))
-    expect(urls.some((u) => u.includes("/household/settings"))).toBe(true)
+    expect(urls.some((u) => u.includes("/bootstrap"))).toBe(true)
   })
 
   it("does not refresh on the initial connection's sync.required", () => {

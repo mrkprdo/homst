@@ -4,8 +4,8 @@ import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
 import { useAnnouncements } from "@/composables/useAnnouncements"
 import { useNotifications } from "@/composables/useNotifications"
-import { useSettings, applyHouseholdSettings, refreshPhotos } from "@/composables/useSettings"
-import { HOME_LAYOUT_EVENT } from "@/lib/homeLayout"
+import { applyHouseholdSettings, refreshPhotos } from "@/composables/useSettings"
+import { loadHousehold } from "@/lib/hydrate"
 import {
   offerUpdatePrompt,
   refreshUpdatePrompt,
@@ -35,17 +35,8 @@ let opens = 0
 let syncFrames = 0
 
 async function refreshAllStores() {
-  const { refresh: refreshEvents } = useEvents()
-  const { refresh: refreshTasks } = useTasks()
-  const { refresh: refreshMembers } = useMembers()
-  const { refresh: refreshAnnouncements } = useAnnouncements()
-  const { refreshFromServer: refreshSettings } = useSettings()
   await Promise.allSettled([
-    refreshEvents(),
-    refreshTasks(),
-    refreshMembers(),
-    refreshAnnouncements(),
-    refreshSettings(),
+    loadHousehold(),
     isDisplayClient ? refreshUpdatePrompt() : Promise.resolve(),
   ])
 }
@@ -123,9 +114,6 @@ function connect() {
       const settings = data.settings
       if (!settings || typeof settings !== "object") return
       applyHouseholdSettings(settings)
-      if (settings.widgetLayout) {
-        window.dispatchEvent(new CustomEvent(HOME_LAYOUT_EVENT, { detail: settings.widgetLayout }))
-      }
       if (settings.updates) {
         notifyUpdateChanged()
         const autoInstall = settings.updates.autoInstall

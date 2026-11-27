@@ -1,7 +1,7 @@
 import { api } from "./client"
 import type { Member } from "@/composables/useMembers"
 
-interface ApiMember {
+export interface ApiMember {
   id: string
   household_id: string
   name: string

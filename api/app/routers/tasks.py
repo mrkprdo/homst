@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.events.publisher import publish_event
-from app.models.all import Household, Task, TaskList
+from app.household import DEFAULT_HOUSEHOLD_ID, get_or_create_household
+from app.models.all import Task, TaskList
 from app.schemas.all import (
     TaskCreate,
     TaskListCreate,
@@ -18,16 +19,6 @@ from app.schemas.all import (
 )
 
 router = APIRouter()
-
-DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
-
-
-async def _ensure_household(db: AsyncSession) -> None:
-    result = await db.execute(select(Household).where(Household.id == DEFAULT_HOUSEHOLD_ID))
-    if result.scalar_one_or_none():
-        return
-    db.add(Household(id=DEFAULT_HOUSEHOLD_ID, name="Home", settings={}))
-    await db.commit()
 
 
 def _task_to_response(t: Task) -> TaskResponse:
@@ -52,8 +43,7 @@ def _task_list_dict(lst: TaskList) -> dict:
     }
 
 
-@router.get("/task-lists", response_model=list[TaskListResponse])
-async def list_task_lists(db: AsyncSession = Depends(get_db)):
+async def household_task_lists(db: AsyncSession) -> list[TaskList]:
     result = await db.execute(
         select(TaskList)
         .where(TaskList.household_id == DEFAULT_HOUSEHOLD_ID)
@@ -62,9 +52,14 @@ async def list_task_lists(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
+@router.get("/task-lists", response_model=list[TaskListResponse])
+async def list_task_lists(db: AsyncSession = Depends(get_db)):
+    return await household_task_lists(db)
+
+
 @router.post("/task-lists", response_model=TaskListResponse, status_code=201)
 async def create_task_list(req: TaskListCreate, db: AsyncSession = Depends(get_db)):
-    await _ensure_household(db)
+    await get_or_create_household(db)
     lst = TaskList(
         household_id=DEFAULT_HOUSEHOLD_ID, name=req.name, color=req.color, position=req.position
     )
@@ -120,24 +115,25 @@ async def delete_task_list(list_id: UUID, db: AsyncSession = Depends(get_db)):
     return {"message": "Task list deleted"}
 
 
+async def household_tasks(db: AsyncSession, list_id: UUID | None = None) -> list[Task]:
+    query = (
+        select(Task)
+        .join(TaskList, Task.list_id == TaskList.id)
+        .where(TaskList.household_id == DEFAULT_HOUSEHOLD_ID)
+    )
+    if list_id:
+        query = query.where(Task.list_id == str(list_id))
+    query = query.order_by(Task.position)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
 @router.get("/tasks", response_model=list[TaskResponse])
 async def list_tasks(
     list_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    lists_result = await db.execute(
-        select(TaskList.id).where(TaskList.household_id == DEFAULT_HOUSEHOLD_ID)
-    )
-    household_list_ids = [row[0] for row in lists_result.all()]
-    if not household_list_ids:
-        return []
-
-    query = select(Task).where(Task.list_id.in_(household_list_ids))
-    if list_id:
-        query = query.where(Task.list_id == str(list_id))
-    query = query.order_by(Task.position)
-    result = await db.execute(query)
-    return [_task_to_response(t) for t in result.scalars().all()]
+    return await household_tasks(db, list_id)
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=201)

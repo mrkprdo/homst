@@ -113,6 +113,13 @@ async function refresh() {
   await ensureLoaded()
 }
 
+function hydrate(items: Announcement[]) {
+  announcements.value = sorted(items)
+  loading.value = false
+  initialized.value = true
+  error.value = ""
+}
+
 async function send(input: SendAnnouncementInput) {
   const created = await announcementsApi.create({
     message: input.message,
@@ -143,6 +150,7 @@ export function useAnnouncements() {
     dismiss,
     upsertAnnouncement,
     removeAnnouncement,
+    hydrate,
   }
 }
 

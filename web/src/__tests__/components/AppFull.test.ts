@@ -19,6 +19,19 @@ const json = (body: unknown) =>
 function mockApi(settingsBody: unknown = {}) {
   vi.mocked(fetch).mockImplementation(((input: any) => {
     const url = String(input)
+    if (url.includes("/bootstrap")) {
+      return Promise.resolve(json({
+        settings: settingsBody,
+        members: [],
+        photos: [],
+        calendars: [],
+        events: [],
+        task_lists: [],
+        tasks: [],
+        holidays: [],
+        announcements: [],
+      }))
+    }
     if (url.includes("/household/settings")) return Promise.resolve(json(settingsBody))
     return Promise.resolve(json([]))
   }) as any)

@@ -14,6 +14,7 @@ import type { Event as CalendarEvent } from "@/composables/useEvents"
 import type { Task } from "@/composables/useTasks"
 import { memberColorHex, type MemberColor } from "@/types/household"
 import { wifiQrPayload } from "@/lib/wifiQr"
+import { loadHousehold, ensureHouseholdLoaded } from "@/lib/hydrate"
 import { householdApi } from "@/api/household"
 import { PhArrowRight, PhCircle, PhCheckCircle, PhCalendarBlank, PhCaretLeft, PhCaretRight, PhLock, PhLockOpen, PhDotsSix, PhSun, PhWind, PhDropHalf, PhMusicNote, PhImage, PhHouse, PhListChecks, PhPlus, PhX } from "@phosphor-icons/vue"
 import UiCard from "@/components/ui/UiCard.vue"
@@ -23,7 +24,7 @@ import CameraCard from "@/components/home/CameraCard.vue"
 import WifiQr from "@/components/home/WifiQr.vue"
 import TemperatureCard from "@/components/home/TemperatureCard.vue"
 import WeatherScene from "@/components/home/WeatherScene.vue"
-import { animate, stagger, springs, ease, isPerformanceMode, isCheapCompositor } from "@/lib/motion"
+import { animate, stagger, springs, ease } from "@/lib/motion"
 import { syncVinyl } from "@/lib/vinyl"
 import {
   DEFAULT_LAYOUT,
@@ -660,7 +661,6 @@ interface PhotoSlide {
   dissolving: boolean
 }
 
-const heavyPhotoEffects = isPerformanceMode() || isCheapCompositor()
 const PHOTO_DISSOLVE_MS = 2000
 
 const PHOTO_BACKDROP_SIZE = 128
@@ -712,11 +712,6 @@ watch(() => currentPhoto.value?.url ?? null, async (url) => {
 
   if (!url) {
     photoSlides.value = []
-    return
-  }
-
-  if (heavyPhotoEffects) {
-    photoSlides.value = [{ key: ++photoSlideSeq, url, backdrop: "", dissolving: false }]
     return
   }
 
@@ -910,22 +905,24 @@ function onLayoutUpdated(e: Event) {
 }
 
 onMounted(async () => {
-  const stored = await householdApi.getSettings().catch(() => null)
-  if (stored?.houseName !== undefined) settings.houseName.value = stored.houseName
-  if (stored?.wifi) settings.applyWifiSettings(stored.wifi)
-  if (stored?.widgetLayout) {
-    applyLayout(stored.widgetLayout)
+  const hydrated = await ensureHouseholdLoaded().catch(() => null)
+  if (!hydrated) {
+    const stored = await householdApi.getSettings().catch(() => null)
+    if (stored) settings.applyHouseholdSettings(stored)
+  }
+  if (settings.widgetLayout.value.length) {
+    applyLayout(settings.widgetLayout.value)
   }
   layoutReady.value = true
 
   window.addEventListener(HOME_LAYOUT_EVENT, onLayoutUpdated)
 
   const weatherOpts = {
-    address: stored?.address,
-    country: stored?.holidayCountry,
-    province: stored?.holidayProvince,
-    lat: stored?.lat,
-    lon: stored?.lon,
+    address: settings.address.value,
+    country: settings.holidayCountry.value,
+    province: settings.holidayProvince.value,
+    lat: settings.lat.value ?? undefined,
+    lon: settings.lon.value ?? undefined,
   }
   refreshWeather(weatherOpts)
   startAutoRefresh(weatherOpts)
@@ -1292,23 +1289,21 @@ function onCanvasDoubleClick(e: MouseEvent) {
             <span class="block-title"><PhImage :size="18" /><span class="block-title-text">Photos</span></span>
           </div>
           <div v-if="activePhotos.length" class="photos-body">
-            <template v-if="!heavyPhotoEffects">
-              <img
-                v-for="(slide, index) in photoSlides"
-                :key="`bg-${slide.key}`"
-                :src="slide.backdrop || slide.url"
-                class="photos-backdrop"
-                :class="{
-                  'photos-backdrop--fallback': !slide.backdrop,
-                  'photos-img--dissolve': slide.dissolving,
-                  'photos-img--outgoing': index < photoSlides.length - 1,
-                }"
-                decoding="async"
-                draggable="false"
-                alt=""
-                aria-hidden="true"
-              />
-            </template>
+            <img
+              v-for="(slide, index) in photoSlides"
+              :key="`bg-${slide.key}`"
+              :src="slide.backdrop || slide.url"
+              class="photos-backdrop"
+              :class="{
+                'photos-backdrop--fallback': !slide.backdrop,
+                'photos-img--dissolve': slide.dissolving,
+                'photos-img--outgoing': index < photoSlides.length - 1,
+              }"
+              decoding="async"
+              draggable="false"
+              alt=""
+              aria-hidden="true"
+            />
             <img
               v-for="(slide, index) in photoSlides"
               :key="slide.key"
@@ -1820,14 +1815,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
 .photos-img--dissolve {
   animation: photo-dissolve 2s ease-in-out both;
   will-change: opacity;
-}
-
-:global(html.cheap-compositor) .photos-img--dissolve {
-  animation: none !important;
-}
-
-:global(html.cheap-compositor) .photos-img--outgoing {
-  display: none !important;
 }
 
 .photos-img--outgoing {
@@ -3559,7 +3546,7 @@ function onCanvasDoubleClick(e: MouseEvent) {
   flex: 1;
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border: 2px solid var(--color-ink, var(--color-borderStrong));
+  border: 2px solid var(--color-outline, var(--color-borderStrong));
   border-radius: var(--radius-sm);
   background: var(--color-bgElevated);
   color: var(--color-textPrimary);
@@ -3576,7 +3563,7 @@ function onCanvasDoubleClick(e: MouseEvent) {
 
 .spotify-connect-btn {
   padding: var(--space-2) var(--space-4);
-  border: 2px solid var(--color-ink, var(--color-primaryDark));
+  border: 2px solid var(--color-outline, var(--color-primaryDark));
   border-radius: var(--radius-sm);
   background: var(--color-action, var(--color-primary));
   color: var(--color-on-accent, var(--color-textInverse));
@@ -3586,7 +3573,7 @@ function onCanvasDoubleClick(e: MouseEvent) {
   letter-spacing: 0.04em;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 3px 0 0 var(--color-ink, color-mix(in srgb, var(--color-primaryDark) 60%, transparent));
+  box-shadow: 0 3px 0 0 var(--color-outline, color-mix(in srgb, var(--color-primaryDark) 60%, transparent));
   transition:
     background var(--duration-fast),
     box-shadow var(--duration-fast),
@@ -3798,7 +3785,7 @@ function onCanvasDoubleClick(e: MouseEvent) {
     min-height: 0;
     padding: var(--space-1) var(--space-2);
     border-width: 1.5px;
-    box-shadow: 0 2px 0 0 var(--color-ink, color-mix(in srgb, var(--color-primaryDark) 60%, transparent));
+    box-shadow: 0 2px 0 0 var(--color-outline, color-mix(in srgb, var(--color-primaryDark) 60%, transparent));
     font-size: var(--text-micro-size);
   }
 

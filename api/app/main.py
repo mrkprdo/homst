@@ -22,6 +22,7 @@ from app.redis_client import close_redis, get_redis
 from app.routers import calendar, holidays, stream, tasks, users
 from app.routers.ai import router as ai_router
 from app.routers.announcements import router as announcements_router
+from app.routers.bootstrap import router as bootstrap_router
 from app.routers.camera import router as camera_router
 from app.routers.nest import router as nest_router
 from app.routers.notifications import router as notifications_router
@@ -97,6 +98,16 @@ _SAFE_MIGRATIONS = [
         END IF;
     END $$;
     """,
+    "CREATE INDEX IF NOT EXISTS ix_members_household ON members (household_id)",
+    "CREATE INDEX IF NOT EXISTS ix_calendars_household ON calendars (household_id)",
+    "CREATE INDEX IF NOT EXISTS ix_events_calendar_start ON events (calendar_id, start_at)",
+    "CREATE INDEX IF NOT EXISTS ix_task_lists_household_position "
+    "ON task_lists (household_id, position)",
+    "CREATE INDEX IF NOT EXISTS ix_tasks_list_position ON tasks (list_id, position)",
+    "CREATE INDEX IF NOT EXISTS ix_photos_household_created ON photos (household_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_holidays_household_date ON holidays (household_id, date)",
+    "CREATE INDEX IF NOT EXISTS ix_push_subscriptions_household "
+    "ON push_subscriptions (household_id)",
 ]
 
 _DB_RETRY_MAX = 15
@@ -228,6 +239,7 @@ app.add_middleware(
 )
 
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
+app.include_router(bootstrap_router, prefix="/api/v1", tags=["bootstrap"])
 app.include_router(calendar.router, prefix="/api/v1", tags=["calendar"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])

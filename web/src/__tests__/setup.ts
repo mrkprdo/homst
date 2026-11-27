@@ -16,6 +16,7 @@ import { _resetOfflineNotifications } from "@/composables/useOfflineNotification
 import { _resetLyrics } from "@/composables/useLyrics"
 import { _resetNest } from "@/composables/useNest"
 import { _resetPushStore } from "@/lib/pushStore"
+import { _resetHouseholdBootstrap } from "@/lib/hydrate"
 import { HOUSEHOLD_COMPLETE_KEY } from "@/lib/householdCache"
 
 globalThis.ResizeObserver = class ResizeObserver {
@@ -144,6 +145,7 @@ beforeEach(() => {
   _resetLyrics()
   _resetNest()
   _resetPushStore()
+  _resetHouseholdBootstrap()
   localStorage.removeItem(HOUSEHOLD_COMPLETE_KEY)
   vi.clearAllMocks()
 })

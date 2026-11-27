@@ -1,6 +1,5 @@
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auto_theme import auto_theme_state
@@ -12,25 +11,19 @@ from app.camera import (
 )
 from app.db import get_db
 from app.events.publisher import publish_event
+from app.household import DEFAULT_HOUSEHOLD_ID, get_or_create_household
 from app.models.all import Household
 from app.schemas.all import HouseholdSettingsUpdate
 
 router = APIRouter()
 
-DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
-
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
 
-async def _get_or_create_household(db: AsyncSession) -> Household:
-    result = await db.execute(select(Household).where(Household.id == DEFAULT_HOUSEHOLD_ID))
-    hh = result.scalar_one_or_none()
-    if hh:
-        return hh
-    hh = Household(id=DEFAULT_HOUSEHOLD_ID, name="Home", settings={})
-    db.add(hh)
-    await db.flush()
-    return hh
+def public_household_settings(household: Household) -> dict:
+    settings = dict(household.settings or {})
+    settings.update(auto_theme_state(settings))
+    return _public_settings(settings)
 
 
 def _country_code(country: str | None) -> str | None:
@@ -81,7 +74,7 @@ async def update_settings(
     req: HouseholdSettingsUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    hh = await _get_or_create_household(db)
+    hh = await get_or_create_household(db)
     if req.name is not None:
         hh.name = req.name
     merged = {**(hh.settings or {})}
@@ -143,7 +136,4 @@ def _public_settings(settings: dict) -> dict:
 
 @router.get("/settings")
 async def get_settings(db: AsyncSession = Depends(get_db)):
-    hh = await _get_or_create_household(db)
-    settings = dict(hh.settings or {})
-    settings.update(auto_theme_state(settings))
-    return _public_settings(settings)
+    return public_household_settings(await get_or_create_household(db))

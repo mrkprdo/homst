@@ -45,6 +45,7 @@ class Household(Base):
 
 class Member(Base):
     __tablename__ = "members"
+    __table_args__ = (Index("ix_members_household", "household_id"),)
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)
@@ -59,6 +60,7 @@ class Member(Base):
 
 class Calendar(Base):
     __tablename__ = "calendars"
+    __table_args__ = (Index("ix_calendars_household", "household_id"),)
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)
@@ -91,6 +93,7 @@ class AiConversation(Base):
 
 class Event(Base):
     __tablename__ = "events"
+    __table_args__ = (Index("ix_events_calendar_start", "calendar_id", "start_at"),)
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     calendar_id = Column(Uuid(as_uuid=False), ForeignKey("calendars.id"), nullable=False)
@@ -130,6 +133,7 @@ class PushSubscription(Base):
     """
 
     __tablename__ = "push_subscriptions"
+    __table_args__ = (Index("ix_push_subscriptions_household", "household_id"),)
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)
@@ -206,6 +210,7 @@ class ReminderLog(Base):
 
 class TaskList(Base):
     __tablename__ = "task_lists"
+    __table_args__ = (Index("ix_task_lists_household_position", "household_id", "position"),)
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)
@@ -219,6 +224,7 @@ class TaskList(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
+    __table_args__ = (Index("ix_tasks_list_position", "list_id", "position"),)
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     list_id = Column(Uuid(as_uuid=False), ForeignKey("task_lists.id"), nullable=False)
@@ -245,6 +251,7 @@ class Task(Base):
 
 class Photo(Base):
     __tablename__ = "photos"
+    __table_args__ = (Index("ix_photos_household_created", "household_id", "created_at"),)
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)
@@ -257,6 +264,7 @@ class Photo(Base):
 
 class Holiday(Base):
     __tablename__ = "holidays"
+    __table_args__ = (Index("ix_holidays_household_date", "household_id", "date"),)
 
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)

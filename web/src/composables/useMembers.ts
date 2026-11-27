@@ -47,8 +47,15 @@ async function refresh() {
   await ensureLoaded()
 }
 
+function hydrate(items: Member[]) {
+  members.value = []
+  for (const member of items) upsertMember(member)
+  loading.value = false
+  initialized.value = true
+}
+
 export function useMembers() {
-  return { members, loading, upsertMember, removeMember, ensureLoaded, refresh }
+  return { members, loading, upsertMember, removeMember, ensureLoaded, refresh, hydrate }
 }
 
 export function _resetMembers() {

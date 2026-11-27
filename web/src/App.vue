@@ -5,7 +5,7 @@ import { PhCloudSlash } from "@phosphor-icons/vue"
 import { useUi } from "@/composables/useUi"
 import type { PanelView } from "@/composables/useUi"
 import { readHouseholdComplete, writeHouseholdComplete } from "@/lib/householdCache"
-import { useSettings, applyHouseholdSettings, isApplyingRemoteSettings, accentPalette } from "@/composables/useSettings"
+import { useSettings, isApplyingRemoteSettings, accentPalette } from "@/composables/useSettings"
 import { useStream } from "@/composables/useStream"
 import { useEvents } from "@/composables/useEvents"
 import { useAnnouncements } from "@/composables/useAnnouncements"
@@ -19,8 +19,6 @@ import {
   useServerReachability,
 } from "@/composables/useServerReachability"
 import { api } from "@/api/client"
-import { householdApi } from "@/api/household"
-import { photosApi } from "@/api/photos"
 import AppNav from "@/components/shared/AppNav.vue"
 import AnnouncementBanner from "@/components/shared/AnnouncementBanner.vue"
 import HudAlert from "@/components/shared/HudAlert.vue"
@@ -39,6 +37,7 @@ import MobileOnboardingGate from "@/components/mobile/MobileOnboardingGate.vue"
 import OfflineNotifications from "@/components/shared/OfflineNotifications.vue"
 import { panelLoaders, prefetchPanels } from "@/lib/panelPrefetch"
 import { scheduleIdle } from "@/lib/idle"
+import { loadHousehold } from "@/lib/hydrate"
 
 const PanelFallback: Component = () => h("div", { class: "panel-fallback", role: "status" }, [h(UiLoader, { size: "lg" })])
 const asyncPanel = (loader: () => Promise<Component>) =>
@@ -172,11 +171,6 @@ onMounted(() => {
     window.addEventListener("mousemove", onMouseMove)
   }
   void loadOfflineNotifications()
-  void checkServerReachable().then((reachable) => {
-    if (reachable) return
-    appReady.value = true
-    void openNotificationIntent()
-  })
   window.addEventListener("online", onOnline)
   window.addEventListener("offline", onOffline)
   document.addEventListener("visibilitychange", onVisibilityChange)
@@ -335,13 +329,12 @@ onMounted(() => {
   readyFallback = setTimeout(() => { appReady.value = true }, 2000)
   if (!isTestEnv) cancelPrefetch = scheduleIdle(prefetchPanels)
   void initSpotify()
-  householdApi.getSettings()
+  loadHousehold()
     .then(s => {
-      householdComplete.value = s.isComplete ?? false
+      householdComplete.value = s.settings.isComplete ?? false
       writeHouseholdComplete(householdComplete.value)
-      applyHouseholdSettings(s)
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-      if (!s.timezone && tz) {
+      if (!s.settings.timezone && tz) {
         api.patch("/household/settings", { settings: { timezone: tz } }).catch(() => {})
       }
     })
@@ -351,7 +344,6 @@ onMounted(() => {
         clearTimeout(readyFallback)
         readyFallback = null
       }
-      photosApi.list().then(photos => { settings.photos.value = Array.isArray(photos) ? photos : [] }).catch(() => {})
       appReady.value = true
       void openNotificationIntent()
     })

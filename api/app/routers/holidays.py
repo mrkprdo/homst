@@ -6,24 +6,21 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.models.all import Holiday, Household
+from app.household import DEFAULT_HOUSEHOLD_ID, get_or_create_household
+from app.models.all import Holiday
 from app.schemas.all import HolidayResponse, HolidaySyncRequest
 
 router = APIRouter()
-
-DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 NAGER_BASE = "https://date.nager.at/api/v3"
 
 
-async def _get_or_create_household(db: AsyncSession) -> Household:
-    result = await db.execute(select(Household).where(Household.id == DEFAULT_HOUSEHOLD_ID))
-    hh = result.scalar_one_or_none()
-    if hh:
-        return hh
-    hh = Household(id=DEFAULT_HOUSEHOLD_ID, name="Home", settings={})
-    db.add(hh)
-    await db.flush()
-    return hh
+async def household_holidays(db: AsyncSession) -> list[Holiday]:
+    result = await db.execute(
+        select(Holiday)
+        .where(Holiday.household_id == DEFAULT_HOUSEHOLD_ID)
+        .order_by(Holiday.date)
+    )
+    return result.scalars().all()
 
 
 async def _fetch_nager_holidays(year: int, country_code: str) -> list[dict]:
@@ -46,7 +43,7 @@ async def sync_holidays(
     req: HolidaySyncRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    hh = await _get_or_create_household(db)
+    hh = await get_or_create_household(db)
     current_year = date.today().year
     years = [current_year, current_year + 1]
     country_code = req.country_code.upper()
@@ -89,8 +86,5 @@ async def sync_holidays(
 async def list_holidays(
     db: AsyncSession = Depends(get_db),
 ):
-    hh = await _get_or_create_household(db)
-    result = await db.execute(
-        select(Holiday).where(Holiday.household_id == hh.id).order_by(Holiday.date)
-    )
-    return result.scalars().all()
+    await get_or_create_household(db)
+    return await household_holidays(db)

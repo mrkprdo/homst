@@ -1,6 +1,7 @@
 import { ref } from "vue"
 import { calendarApi } from "@/api/calendar"
-import { holidaysApi } from "@/api/holidays"
+import { holidaysApi, type Holiday } from "@/api/holidays"
+import { adjacentMonth, monthKey } from "@/lib/householdRange"
 
 export interface Event {
   id: string
@@ -45,10 +46,6 @@ const loadedMonths     = new Set<string>()
 const holidaysFetched  = ref(false)
 const calendarsFetched = ref(false)
 
-function monthKey(year: number, month: number): string {
-  return `${year}-${month}`
-}
-
 function upsertEvent(ev: Event) {
   const idx = events.value.findIndex(e => e.id === ev.id)
   if (idx >= 0) events.value[idx] = ev
@@ -89,10 +86,7 @@ async function ensureDefaultCalendar(): Promise<string> {
   return "default"
 }
 
-async function ensureHolidays() {
-  if (holidaysFetched.value) return
-  holidaysFetched.value = true
-  const hols = await holidaysApi.list().catch(() => [])
+function applyHolidays(hols: Holiday[]) {
   if (hols.length === 0) return
   upsertCalendar({
     id: HOLIDAYS_CAL_ID, householdId: "default", name: "Holidays",
@@ -107,6 +101,13 @@ async function ensureHolidays() {
       createdAt: h.created_at, updatedAt: h.created_at,
     })
   }
+}
+
+async function ensureHolidays() {
+  if (holidaysFetched.value) return
+  holidaysFetched.value = true
+  const hols = await holidaysApi.list().catch(() => [])
+  applyHolidays(hols)
 }
 
 async function ensureMonth(year: number, month: number) {
@@ -125,21 +126,31 @@ function isMonthLoaded(year: number, month: number): boolean {
 }
 
 function adjMonth(year: number, month: number, delta: -1 | 1) {
-  if (delta === -1) return month === 0  ? { year: year - 1, month: 11 } : { year, month: month - 1 }
-  return month === 11 ? { year: year + 1, month: 0  } : { year, month: month + 1 }
+  return adjacentMonth(year, month, delta)
 }
 
 async function prefetchAround(year: number, month: number) {
   loading.value = true
   const prev = adjMonth(year, month, -1)
   const next = adjMonth(year, month,  1)
-  await Promise.all([
-    ensureCalendars(),
-    ensureHolidays(),
-    ensureMonth(year, month),
-    ensureMonth(prev.year, prev.month),
-    ensureMonth(next.year, next.month),
-  ])
+  const current = { year, month }
+  const keys = [prev, current, next].map(m => monthKey(m.year, m.month))
+
+  if (keys.some(key => !fetchedMonths.has(key))) {
+    const from = new Date(prev.year, prev.month, 1).toISOString()
+    const to   = new Date(next.year, next.month + 1, 0, 23, 59, 59).toISOString()
+    for (const key of keys) fetchedMonths.add(key)
+    const [evs] = await Promise.all([
+      calendarApi.getEvents({ from, to }).catch(() => []),
+      ensureCalendars(),
+      ensureHolidays(),
+    ])
+    for (const ev of evs) upsertEvent(ev)
+    for (const key of keys) loadedMonths.add(key)
+  } else {
+    await Promise.all([ensureCalendars(), ensureHolidays()])
+  }
+
   loading.value = false
   initialized.value = true
 }
@@ -153,6 +164,26 @@ async function refresh() {
   await prefetchAround(n.getFullYear(), n.getMonth())
 }
 
+function hydrate(
+  nextCalendars: Calendar[],
+  nextEvents: Event[],
+  hols: Holiday[],
+  months: string[],
+) {
+  calendars.value = [...nextCalendars]
+  calendarsFetched.value = true
+  events.value = []
+  for (const ev of nextEvents) upsertEvent(ev)
+  holidaysFetched.value = true
+  applyHolidays(hols)
+  for (const key of months) {
+    fetchedMonths.add(key)
+    loadedMonths.add(key)
+  }
+  loading.value = false
+  initialized.value = true
+}
+
 export function useEvents() {
   return {
     events, calendars, loading, initialized,
@@ -160,7 +191,7 @@ export function useEvents() {
     upsertCalendar, removeCalendar,
     ensureCalendars, ensureHolidays,
     ensureMonth, ensureDefaultCalendar, isMonthLoaded,
-    prefetchAround, refresh,
+    prefetchAround, refresh, hydrate,
   }
 }
 

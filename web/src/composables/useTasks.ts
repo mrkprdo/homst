@@ -74,13 +74,20 @@ async function refresh() {
   await ensureLoaded()
 }
 
+function hydrate(nextLists: TaskList[], nextTasks: Task[]) {
+  lists.value = [...nextLists]
+  tasks.value = [...nextTasks]
+  loading.value = false
+  initialized.value = true
+}
+
 export function useTasks() {
   return {
     tasks, lists, loading,
     todos, doing, done, sortedLists,
     upsertTask, removeTask,
     upsertList, removeList,
-    ensureLoaded, refresh,
+    ensureLoaded, refresh, hydrate,
   }
 }
 

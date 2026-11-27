@@ -28,12 +28,12 @@ export interface UpdateEventPayload {
   assignee_id?: string | null
 }
 
-interface ApiCalendar {
+export interface ApiCalendar {
   id: string; household_id: string; name: string; color: string
   source: string; feed_url: string | null; is_visible: boolean; created_by: string | null
 }
 
-interface ApiEvent {
+export interface ApiEvent {
   id: string; calendar_id: string; title: string; description: string
   source_message?: string | null
   ai_conversation_id?: string | null
@@ -43,7 +43,7 @@ interface ApiEvent {
   created_at: string; updated_at: string; assignee_id?: string | null
 }
 
-function mapCalendar(c: ApiCalendar): Calendar {
+export function mapCalendar(c: ApiCalendar): Calendar {
   return { ...c, householdId: c.household_id, feedUrl: c.feed_url, isVisible: c.is_visible, createdBy: c.created_by }
 }
 

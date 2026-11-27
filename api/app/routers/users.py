@@ -6,37 +6,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.events.publisher import publish_event
-from app.models.all import Announcement, Calendar, Event, Household, Member, Task
+from app.household import DEFAULT_HOUSEHOLD_ID, get_or_create_household
+from app.models.all import Announcement, Calendar, Event, Member, Task
 from app.schemas.all import MemberCreate, MemberResponse, MemberUpdate
 
 router = APIRouter()
 
-DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 
-
-async def _get_or_create_household(db: AsyncSession) -> Household:
-    result = await db.execute(select(Household).where(Household.id == DEFAULT_HOUSEHOLD_ID))
-    hh = result.scalar_one_or_none()
-    if hh:
-        return hh
-    hh = Household(id=DEFAULT_HOUSEHOLD_ID, name="Home", settings={})
-    db.add(hh)
-    await db.flush()
-    return hh
-
-
-@router.get("/household/members", response_model=list[MemberResponse])
-async def list_members(db: AsyncSession = Depends(get_db)):
-    await _get_or_create_household(db)
+async def household_members(db: AsyncSession) -> list[Member]:
     result = await db.execute(
         select(Member).where(Member.household_id == DEFAULT_HOUSEHOLD_ID)
     )
     return result.scalars().all()
 
 
+@router.get("/household/members", response_model=list[MemberResponse])
+async def list_members(db: AsyncSession = Depends(get_db)):
+    await get_or_create_household(db)
+    return await household_members(db)
+
+
 @router.post("/household/members", response_model=MemberResponse, status_code=201)
 async def create_member(req: MemberCreate, db: AsyncSession = Depends(get_db)):
-    await _get_or_create_household(db)
+    await get_or_create_household(db)
     member = Member(
         household_id=DEFAULT_HOUSEHOLD_ID,
         name=req.name,

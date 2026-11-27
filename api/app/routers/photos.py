@@ -9,11 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.events.publisher import publish_event
-from app.models.all import Household, Photo, new_uuid
+from app.household import DEFAULT_HOUSEHOLD_ID, get_or_create_household
+from app.models.all import Photo, new_uuid
 from app.schemas.all import PhotoResponse, PhotoUpdate
 
 router = APIRouter()
-DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 UPLOAD_DIR = "uploads/photos"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -80,17 +80,6 @@ def _resize_image(data: bytes) -> bytes:
     return _normalize_image(data)[0]
 
 
-async def _get_or_create_household(db: AsyncSession) -> Household:
-    result = await db.execute(select(Household).where(Household.id == DEFAULT_HOUSEHOLD_ID))
-    hh = result.scalar_one_or_none()
-    if hh:
-        return hh
-    hh = Household(id=DEFAULT_HOUSEHOLD_ID, name="Home", settings={})
-    db.add(hh)
-    await db.flush()
-    return hh
-
-
 def _photo_response(photo: Photo) -> PhotoResponse:
     return PhotoResponse(
         id=photo.id,
@@ -110,7 +99,7 @@ async def _publish_photos_updated() -> None:
 
 @router.post("/photos", response_model=PhotoResponse, status_code=201)
 async def upload_photo(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
-    hh = await _get_or_create_household(db)
+    hh = await get_or_create_household(db)
     photo_count = await db.scalar(
         select(func.count()).select_from(Photo).where(Photo.household_id == hh.id)
     )
@@ -137,13 +126,17 @@ async def upload_photo(file: UploadFile = File(...), db: AsyncSession = Depends(
     return _photo_response(photo)
 
 
-@router.get("/photos", response_model=list[PhotoResponse])
-async def list_photos(db: AsyncSession = Depends(get_db)):
+async def household_photos(db: AsyncSession) -> list[PhotoResponse]:
     result = await db.execute(
         select(Photo).where(Photo.household_id == DEFAULT_HOUSEHOLD_ID).order_by(Photo.created_at)
     )
     photos = result.scalars().all()
     return [_photo_response(p) for p in photos]
+
+
+@router.get("/photos", response_model=list[PhotoResponse])
+async def list_photos(db: AsyncSession = Depends(get_db)):
+    return await household_photos(db)
 
 
 @router.patch("/photos/{photo_id}", response_model=PhotoResponse)

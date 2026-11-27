@@ -1,7 +1,7 @@
 import { api } from "./client"
 import type { Announcement } from "@/composables/useAnnouncements"
 
-interface ApiAnnouncement {
+export interface ApiAnnouncement {
   id: string
   household_id: string
   message: string
