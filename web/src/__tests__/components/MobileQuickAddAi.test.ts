@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { nextTick } from "vue"
 import { mount } from "@vue/test-utils"
 import MobileQuickAdd from "@/components/mobile/MobileQuickAdd.vue"
 
@@ -16,6 +17,7 @@ const AiImportPanelStub = {
 describe("MobileQuickAdd Smart tab", () => {
   afterEach(() => {
     vi.useRealTimers()
+    Reflect.deleteProperty(window, "visualViewport")
   })
 
   it("starts on Smart and shows the tabs in Smart, Event, Task order", async () => {
@@ -98,5 +100,36 @@ describe("MobileQuickAdd Smart tab", () => {
 
     expect(wrapper.find(".mqa-footer").exists()).toBe(true)
     expect(wrapper.find("input[placeholder='Event title']").exists()).toBe(true)
+  })
+
+  it("sizes the sheet to the visual viewport so the keyboard cannot push it", async () => {
+    const listeners = new Set<EventListener>()
+    const viewport = {
+      offsetTop: 24,
+      height: 420,
+      addEventListener: vi.fn((_type: string, listener: EventListener) => listeners.add(listener)),
+      removeEventListener: vi.fn((_type: string, listener: EventListener) => listeners.delete(listener)),
+    }
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport })
+
+    const wrapper = mount(MobileQuickAdd, {
+      global: { stubs: { AiImportPanel: AiImportPanelStub } },
+    })
+    await nextTick()
+
+    const overlay = wrapper.find(".mobile-quick-add").element as HTMLElement
+    expect(overlay.style.top).toBe("24px")
+    expect(overlay.style.height).toBe("420px")
+
+    viewport.offsetTop = 0
+    viewport.height = 300
+    listeners.forEach(listener => listener(new Event("resize")))
+    await nextTick()
+
+    expect(overlay.style.top).toBe("0px")
+    expect(overlay.style.height).toBe("300px")
+
+    wrapper.unmount()
+    expect(viewport.removeEventListener).toHaveBeenCalledTimes(2)
   })
 })

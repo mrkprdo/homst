@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue"
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue"
 import { useEvents } from "@/composables/useEvents"
 import { useTasks } from "@/composables/useTasks"
 import { useMembers } from "@/composables/useMembers"
@@ -37,8 +37,38 @@ watch(
   { immediate: true },
 )
 
+// The keyboard shrinks the visual viewport but not the layout viewport, so a
+// sheet anchored to `dvh` ends up behind it. iOS then scrolls the page to
+// reveal the focused field, which shoves the whole sheet up. Track the visual
+// viewport instead: the sheet stays put, shrinks above the keyboard, and the
+// chat transcript scrolls like the Event and Task forms do.
+const visualViewport = window.visualViewport ?? null
+const viewportTop = ref(0)
+const viewportHeight = ref(0)
+
+function syncViewport() {
+  if (!visualViewport) return
+  viewportTop.value = visualViewport.offsetTop
+  viewportHeight.value = visualViewport.height
+}
+
+const viewportStyle = computed(() => {
+  if (!viewportHeight.value) return undefined
+  return { top: `${viewportTop.value}px`, height: `${viewportHeight.value}px` }
+})
+
 onMounted(async () => {
+  if (visualViewport) {
+    syncViewport()
+    visualViewport.addEventListener("resize", syncViewport)
+    visualViewport.addEventListener("scroll", syncViewport)
+  }
   await Promise.all([loadMembers(), ensureTasksLoaded()])
+})
+
+onBeforeUnmount(() => {
+  visualViewport?.removeEventListener("resize", syncViewport)
+  visualViewport?.removeEventListener("scroll", syncViewport)
 })
 
 const eventTitle = ref("")
@@ -288,7 +318,7 @@ const priorities = [
 </script>
 
 <template>
-  <div class="mobile-quick-add" @click.self="emit('close')">
+  <div class="mobile-quick-add" :style="viewportStyle" @click.self="emit('close')">
     <div class="mqa-sheet" role="dialog" aria-modal="true" aria-label="Add with Smart, an event or a task" @click.stop>
       <div class="mqa-handle" />
       <div class="mqa-header" role="group" aria-label="Add type">
@@ -495,7 +525,13 @@ const priorities = [
 <style scoped>
 .mobile-quick-add {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: auto;
+  /* Inline top/height follow the visual viewport while the keyboard is open. */
+  height: 100vh;
+  height: 100dvh;
   z-index: 200;
   display: flex;
   align-items: flex-end;
@@ -510,11 +546,10 @@ const priorities = [
 .mqa-sheet {
   width: 100%;
   /* Keep every quick-add tab the same height. Smart import has less natural
-     content than the manual forms, so a max-height alone made it collapse. */
-  height: 92vh;
-  height: 92dvh;
-  max-height: 92vh;
-  max-height: 92dvh;
+     content than the manual forms, so a max-height alone made it collapse.
+     Percentages keep the sheet above the keyboard with the overlay. */
+  height: 92%;
+  max-height: 92%;
   background: var(--color-bgElevated);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   display: flex;
