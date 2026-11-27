@@ -3314,17 +3314,17 @@ html.low-power .ai-typing-dot {
 :global(.futur .ai-added),
 :global(.futur .ai-callout),
 :global(.futur .ai-setup) {
-  border: 2px solid var(--color-ink);
-  box-shadow: 0 2px 0 0 var(--color-ink);
+  border: 2px solid var(--color-outline);
+  box-shadow: 0 2px 0 0 var(--color-outline);
 }
 
 :global(.futur .ai-bubble) {
-  border: 2px solid var(--color-ink);
+  border: 2px solid var(--color-outline);
 }
 
 :global(.futur .ai-avatar),
 :global(.futur .ai-welcome-mark) {
-  border: 2px solid var(--color-ink);
+  border: 2px solid var(--color-outline);
 }
 
 :global(.futur .ai-item--low) {
