@@ -112,7 +112,6 @@ describe("CameraCard", () => {
     expect(wrapper.find(".camera-overlay").attributes("style")).not.toContain("display: none")
     expect(wrapper.find(".camera-overlay .ui-loader").exists()).toBe(true)
     expect(wrapper.find(".camera-status").text()).toBe("Reconnecting to camera")
-    // Re-buffering does not blur the picture; only the loader signals it.
     expect(wrapper.find(".camera-video").classes()).not.toContain("camera-video--stalled")
 
     wrapper.unmount()
@@ -156,7 +155,6 @@ describe("CameraCard", () => {
     expect(wrapper.find(".camera-overlay .ui-loader").exists()).toBe(true)
     expect(wrapper.text()).not.toContain("Try again")
 
-    // The frozen frame survives the reconnect and only gives way to live video.
     await vi.advanceTimersByTimeAsync(60_000)
     await nextTick()
     expect(wrapper.find(".camera-still").attributes("style")).not.toContain("display: none")

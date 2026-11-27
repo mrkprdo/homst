@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { nextTick } from "vue"
 import { mount, flushPromises } from "@vue/test-utils"
 
-/* ── in-memory localStorage ──────────────────────────────────────────────────── */
 const _ls = new Map<string, string>()
 const _memLs: Storage = {
   get length() { return _ls.size },
@@ -18,8 +17,6 @@ Object.defineProperty(globalThis, "localStorage", { configurable: true, value: _
 const LAYOUT_KEY = "homst-widget-layout"
 const CLIENT_ID_KEY = "homst:spotify-client-id"
 
-/* ── window.location can be replaced in jsdom; used to pin the redirect-URI
-      branch (http + no port) and to swallow Spotify redirects ───────────────── */
 const REAL_LOCATION = window.location
 function stubLocation(overrides: Record<string, unknown> = {}) {
   Object.defineProperty(window, "location", {
@@ -53,11 +50,6 @@ function mockApi({ body = {}, fail = false }: Opts = {}) {
   }) as any)
 }
 
-/**
- * Import a brand-new copy of HomeView (so its module-scope `readCachedLayout()`
- * runs against the current localStorage) together with the fresh composable
- * instances it consumes.
- */
 async function freshMount(opts: Opts = {}) {
   mockApi(opts)
   vi.resetModules()
@@ -82,7 +74,6 @@ async function freshMount(opts: Opts = {}) {
   return { wrapper, motion, ...composables }
 }
 
-/** The five widgets `applyLayout` refuses to drop, plus the camera card. */
 const required = (overrides: Record<string, any>[] = []) => [
   { id: "datetime", col: 0, row: 0, w: 1, h: 1 },
   { id: "schedule", col: 1, row: 0, w: 1, h: 1 },
@@ -122,7 +113,6 @@ describe("HomeView — layout engine & edit mode", () => {
     })
     expect(wrapper.text()).toContain("Full Home")
 
-    // Stray pointer events outside a drag are ignored
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: 1, clientY: 1 }))
     window.dispatchEvent(new MouseEvent("pointerup"))
 
@@ -132,13 +122,11 @@ describe("HomeView — layout engine & edit mode", () => {
     expect(dragHandles.length).toBe(9)
     expect(resizeHandles.length).toBe(9)
 
-    // Both handle for every widget
     for (const handle of [...dragHandles, ...resizeHandles]) {
       handle.element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 5, clientY: 5, bubbles: true }))
       window.dispatchEvent(new MouseEvent("pointerup"))
     }
 
-    // Move "todos" (handle 4) three columns right into a free row-5 cell
     expect(wrapper.findAll(".widget")[4].attributes("style")).toContain("grid-row: 5 / span 1")
     dragHandles[4].element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: 610, clientY: 10 }))
@@ -146,7 +134,6 @@ describe("HomeView — layout engine & edit mode", () => {
     await nextTick()
     expect(wrapper.findAll(".widget")[4].attributes("style")).toContain("grid-column: 4 / span 1")
 
-    // Resize "spotify" (handle 6) one row taller into the free row below
     expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-row: 3 / span 1")
     resizeHandles[6].element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: 10, clientY: 210 }))
@@ -154,7 +141,6 @@ describe("HomeView — layout engine & edit mode", () => {
     await nextTick()
     expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-row: 3 / span 2")
 
-    // Header shortcut links
     await wrapper.findAll(".widget")[1].find("button").trigger("click")
     expect(ui.activePanel.value).toBe("calendar")
     ui.setPanel("home")
@@ -182,7 +168,6 @@ describe("HomeView — layout engine & edit mode", () => {
     const { wrapper } = await freshMount({ body: { houseName: "Minimums" } })
     await wrapper.find(".lock-toggle").trigger("click")
 
-    // The House card ships 1×2 at column 3; drag both axes in until it is 1×1.
     expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 3 / span 1")
     const handle = wrapper.findAll(".resize-handle")[0]
     handle.element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
@@ -204,7 +189,6 @@ describe("HomeView — layout engine & edit mode", () => {
         ],
       },
     })
-    // Rejected → the default layout survives (the House card is one column wide)
     expect(wrapper.findAll(".widget").length).toBe(9)
     expect(wrapper.findAll(".widget")[0].attributes("style")).toContain("grid-column: 3 / span 1")
     wrapper.unmount()
@@ -222,8 +206,6 @@ describe("HomeView — layout engine & edit mode", () => {
         ],
       },
     })
-    // temperatures, photos, spotify & camera were appended with their *default*
-    // coords (no slot found)
     expect(wrapper.findAll(".widget").length).toBe(9)
     expect(wrapper.findAll(".widget")[5].attributes("style")).toContain("grid-column: 4 / span 3")
     expect(wrapper.findAll(".widget")[6].attributes("style")).toContain("grid-column: 4 / span 2")
@@ -274,7 +256,6 @@ describe("HomeView — layout engine & edit mode", () => {
     await nextTick()
 
     expect(wrapper.find(".block-title-text").text()).toBe("House")
-    // Every card header now leads with its icon, then the title text.
     expect(wrapper.find(".datetime-card .block-title").element.children).toHaveLength(2)
     expect(wrapper.find(".house-family").exists()).toBe(false)
     expect(wrapper.find(".house-wifi").exists()).toBe(false)
@@ -378,22 +359,17 @@ describe("HomeView — cached layout (import time)", () => {
     } as any
     try {
       const { wrapper } = await freshMount({ body: { houseName: "Cached Home" } })
-      // layoutReady starts true → canvas is in the DOM right after mount
       expect(wrapper.find(".widget-canvas").exists()).toBe(true)
-      // The cached layout predates the camera and temperature cards, so they
-      // are merged in synchronously instead of waiting for the server.
       expect(wrapper.findAll(".widget").length).toBe(9)
       const canvas = wrapper.find(".widget-canvas").element
       expect(observed).toBe(canvas)
 
-      // canvas measurements feed the grid units used by drag math
       roCb!([{ contentRect: { width: 1_200, height: 700 } }])
       await nextTick()
 
       await wrapper.find(".lock-toggle").trigger("click")
       const handle = wrapper.findAll(".drag-handle")[0]
       handle.element.dispatchEvent(new MouseEvent("pointerdown", { clientX: 10, clientY: 10, bubbles: true }))
-      // rowUnit = (700 + 12) / 6 ≈ 118.7 → 285px is two rows down
       window.dispatchEvent(new MouseEvent("pointermove", { clientX: 10, clientY: 295 }))
       window.dispatchEvent(new MouseEvent("pointerup"))
       await nextTick()
@@ -451,7 +427,6 @@ describe("HomeView — widget data edge cases", () => {
   it("accepts a complete server layout without saving it back", async () => {
     const { wrapper } = await freshMount({ body: { houseName: "Complete", widgetLayout: COMPLETE_LAYOUT } })
     expect(wrapper.findAll(".widget").length).toBe(9)
-    // schedule sits where the server put it → applyLayout kept the response as-is
     expect(wrapper.findAll(".widget")[1].attributes("style")).toContain("grid-column: 1 / span 2")
     expect(wrapper.findAll(".widget")[2].attributes("style")).toContain("grid-column: 3 / span 2")
 
@@ -565,7 +540,6 @@ describe("HomeView — widget data edge cases", () => {
     window.dispatchEvent(new MouseEvent("pointerup"))
     await flushPromises()
 
-    // the move still lands locally even though the save was rejected
     expect(wrapper.findAll(".widget")[4].attributes("style")).toContain("grid-row: 4 / span 1")
     wrapper.unmount()
   })
@@ -578,18 +552,14 @@ describe("HomeView — Spotify widget", () => {
 
     expect(wrapper.find(".spotify-setup").exists()).toBe(true)
     expect(wrapper.find(".spotify-status").text()).toBe("Setup")
-    // Redirect URI branch: http + no port → pinned :80
     expect(wrapper.find(".spotify-setup-steps").text()).toContain("http://homst:80")
 
-    // Empty input is ignored
     await wrapper.find(".spotify-connect-btn").trigger("click")
     expect(localStorage.getItem(CLIENT_ID_KEY)).toBeNull()
 
-    // Enter in the input submits
     await wrapper.find(".spotify-setup-input").setValue("0123456789abcdef0123456789abcdef")
     await wrapper.find(".spotify-setup-input").trigger("keyup", { key: "Enter" })
     expect(localStorage.getItem(CLIENT_ID_KEY)).toBe("0123456789abcdef0123456789abcdef")
-    // the PKCE flow starts (verifier stored synchronously before the redirect)
     expect(localStorage.getItem("homst:spotify-code-verifier")).toBeTruthy()
     wrapper.unmount()
   })

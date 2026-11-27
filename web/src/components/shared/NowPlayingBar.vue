@@ -5,19 +5,11 @@ import { useSpotify } from "@/composables/useSpotify"
 import { useSettings } from "@/composables/useSettings"
 import { syncVinyl } from "@/lib/vinyl"
 
-/**
- * Compact "now playing" strip for the page toolbars. The app-level Spotify
- * polling already ticks `progressMs` once a second, so this stays in sync
- * without a timer of its own.
- */
 const { currentTrack, formatTime } = useSpotify()
 const settings = useSettings()
 
 const track = computed(() => currentTrack.value)
 
-// Keep the toolbar record on the same phase as the card and the backdrop.
-// A ref callback (not onMounted) because the disc mounts later, once a track
-// arrives, and the <Transition> may replace the node.
 const discEl = ref<HTMLElement | null>(null)
 
 function bindDisc(el: Element | ComponentPublicInstance | null) {
@@ -40,11 +32,6 @@ const label = computed(() =>
   track.value ? `${track.value.name} by ${track.value.artists}` : "",
 )
 
-/**
- * Scroll the title/artist sideways only when it does not fit. The second copy
- * makes the loop seamless; the speed is held to a readable ~24 px/s and the
- * effect is skipped on low-power / reduced-motion displays.
- */
 const textEl = ref<HTMLElement | null>(null)
 const copyEl = ref<HTMLElement | null>(null)
 const marquee = ref(false)
@@ -174,8 +161,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
     0 2px 8px -2px var(--shadow-drop);
 }
 
-/* Album cover spinning like a tiny record, in phase with the card and the
-   full-app backdrop (see lib/vinyl.ts). */
 .now-playing__disc {
   position: relative;
   display: grid;

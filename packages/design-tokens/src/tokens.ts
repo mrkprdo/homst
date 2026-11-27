@@ -1,4 +1,3 @@
-// Canonical design tokens — single source of truth for HOMST
 
 export const font = {
   family: "'Figtree', sans-serif",
@@ -19,8 +18,6 @@ export const text = {
   micro:   { size: "10px", weight: 400, lineHeight: 1.3 },
 } as const
 
-// ── Color Palette ───────────────────────────────────────
-
 export const palette = {
   peach:  { base: "#fcd0a1", light: "#fde0c6", lighter: "#feeedb", lightest: "#fef6ee", dark: "#caa681", darker: "#977c61", darkest: "#4c3e30" },
   sage:   { base: "#b1b695", light: "#c5c8af", lighter: "#d8dac9", lightest: "#f0f1eb", dark: "#8e9277", darker: "#6a6e59", darkest: "#35372d" },
@@ -30,8 +27,6 @@ export const palette = {
 } as const
 
 export type PaletteColor = keyof typeof palette
-
-// ── Spacing (4px base) ──────────────────────────────────
 
 export const space = {
   1:  4,
@@ -46,8 +41,6 @@ export const space = {
   16: 64,
 } as const
 
-// ── Border Radius ───────────────────────────────────────
-
 export const radius = {
   xs:   8,
   sm:   14,
@@ -57,16 +50,12 @@ export const radius = {
   full: 9999,
 } as const
 
-// ── Duration ────────────────────────────────────────────
-
 export const duration = {
   fast:   120,
   base:   200,
   slow:   320,
   spring: 400,
 } as const
-
-// ── Clay Shadow Lip Colors ──────────────────────────────
 
 export const shadowLip = {
   peach:  "#caa681",
@@ -77,13 +66,10 @@ export const shadowLip = {
   neutral:"#8e9288",
 } as const
 
-// Top-left inset shine (white highlight, not accent-tinted, dims in dark mode)
 export const shadowShine = {
   light: "rgba(255,255,255,0.50)",
   dark:  "rgba(255,255,255,0.10)",
 } as const
-
-// ── Semantic Colors (light mode) ────────────────────────
 
 export const lightMode = {
   bgBase:       "#f4f3f8",
@@ -104,8 +90,6 @@ export const lightMode = {
   danger:       "#a87781",
   info:         "#8ca8ba",
 } as const
-
-// ── Semantic Colors (dark mode) ─────────────────────────
 
 export const darkMode = {
   bgBase:       "#1a1820",
@@ -132,8 +116,6 @@ export const darkMode = {
   sky:          "#afd2e9",
 } as const
 
-// ── Warm lighting overlay (applied on top of light mode) ─
-
 export const warmLightMode = {
   bgBase:       "#f6ecdd",
   bgSurface:    "#fbf2e3",
@@ -147,8 +129,6 @@ export const warmLightMode = {
   borderStrong: "#bda57f",
 } as const
 
-// ── Warm lighting overlay (applied on top of dark mode) ──
-
 export const warmDarkMode = {
   bgBase:       "#201811",
   bgSurface:    "#2b2116",
@@ -161,8 +141,6 @@ export const warmDarkMode = {
   border:       "#4d3b26",
   borderStrong: "#94744a",
 } as const
-
-// ── All Tokens (exported for build scripts) ─────────────
 
 export const tokens = {
   font,

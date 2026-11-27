@@ -24,7 +24,6 @@ const { lists, tasks: allTasks, upsertTask, upsertList, ensureLoaded: ensureTask
 const { members, ensureLoaded: loadMembers } = useMembers()
 const { defaultReminderMinutes } = useSettings()
 
-/** Pre-fill value for the "Remind me" select from the household default. */
 function defaultReminderValue(): string {
   return defaultReminderMinutes.value != null ? String(defaultReminderMinutes.value) : ""
 }
@@ -37,11 +36,6 @@ watch(
   { immediate: true },
 )
 
-// The keyboard shrinks the visual viewport but not the layout viewport, so a
-// sheet anchored to `dvh` ends up behind it. iOS then scrolls the page to
-// reveal the focused field, which shoves the whole sheet up. Track the visual
-// viewport instead: the sheet stays put, shrinks above the keyboard, and the
-// chat transcript scrolls like the Event and Task forms do.
 const visualViewport = window.visualViewport ?? null
 const viewportTop = ref(0)
 const viewportHeight = ref(0)
@@ -140,7 +134,6 @@ function buildRecurEnd(): Record<string, string | number> {
   return {}
 }
 
-// ── Smart end time: keep it after start ──
 watch(eventStartTime, (val) => {
   if (!val) return
   const end = eventEndTime.value
@@ -149,7 +142,6 @@ watch(eventStartTime, (val) => {
   }
 })
 
-// ── End date can never be before start date ──
 watch(eventDate, (val) => {
   if (eventEndDate.value && val && eventEndDate.value < val) {
     eventEndDate.value = val
@@ -251,7 +243,6 @@ async function createEvent() {
     })
     upsertEvent(saved)
   } catch {
-    // silent
   } finally {
     submitting.value = false
     showToast("Created!")
@@ -279,7 +270,6 @@ async function createTask() {
     })
     upsertTask(saved)
   } catch {
-    // silent
   } finally {
     submitting.value = false
     showToast("Created!")
@@ -353,7 +343,6 @@ const priorities = [
       </div>
 
       <div class="mqa-body">
-        <!-- Event form -->
         <template v-if="tab === 'event'">
           <div class="mqa-field">
             <label class="mqa-label">Title</label>
@@ -457,7 +446,6 @@ const priorities = [
           </div>
         </template>
 
-        <!-- Task form -->
         <template v-if="tab === 'task'">
           <div class="mqa-field">
             <label class="mqa-label">Title</label>
@@ -493,7 +481,6 @@ const priorities = [
             <textarea v-model="taskDescription" class="mqa-textarea" placeholder="Add notes..." rows="3" />
           </div>
         </template>
-        <!-- Smart import -->
         <template v-if="tab === 'ai'">
           <AiImportPanel
             :member-names="memberNameMap"
@@ -529,7 +516,6 @@ const priorities = [
   right: 0;
   top: 0;
   bottom: auto;
-  /* Inline top/height follow the visual viewport while the keyboard is open. */
   height: 100vh;
   height: 100dvh;
   z-index: 200;
@@ -545,9 +531,6 @@ const priorities = [
 
 .mqa-sheet {
   width: 100%;
-  /* Keep every quick-add tab the same height. Smart import has less natural
-     content than the manual forms, so a max-height alone made it collapse.
-     Percentages keep the sheet above the keyboard with the overlay. */
   height: 92%;
   max-height: 92%;
   background: var(--color-bgElevated);
@@ -750,7 +733,6 @@ const priorities = [
 
 .mqa-recur-end .mqa-field { flex: 1 1 120px; }
 
-/* ── Duration chips ── */
 .mqa-duration {
   display: flex;
   flex-direction: column;
@@ -789,7 +771,6 @@ const priorities = [
   color: var(--color-accent-darker);
 }
 
-/* ── Error + summary ── */
 .mqa-error {
   margin: 0;
   font-size: var(--text-label-size);

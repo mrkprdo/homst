@@ -39,8 +39,6 @@ const { members, ensureLoaded: loadMembers } = useMembers()
 const ui = useUi()
 const settings = useSettings()
 
-// Double-clicking a card lifts it out of the grid into a centred, larger view
-// of the same live element.
 const {
   active: blowupActive,
   ready: blowupReady,
@@ -69,16 +67,11 @@ const setupClientId = ref("")
 const setupError = ref("")
 const vinylDiscEl = ref<HTMLElement | null>(null)
 
-// Keep the card's record on the same phase as the full-app backdrop.
 watch(
   () => [currentTrack.value?.id, currentTrack.value?.isPlaying],
   () => nextTick(() => syncVinyl(vinylDiscEl.value)),
 )
 
-/**
- * Ref callback, not onMounted: the disc appears after the layout has loaded
- * (and after a track arrives), long after the view itself mounted.
- */
 function bindVinylDisc(el: Element | ComponentPublicInstance | null) {
   vinylDiscEl.value = (el as HTMLElement | null) ?? null
   syncVinyl(el as Element | null)
@@ -103,15 +96,12 @@ function submitClientId() {
 
 const today = ref(new Date())
 
-// ── Grid config ──────────────────────────────────────────────────────────────
 const GRID_COLS = 6
 const GRID_ROWS = 6
 const GAP = 12
 
-// Grid cells are the floor: every card can be arranged down to 1×1.
 const MIN_SPAN = 1
 
-/** The 6×6 layout we shipped before adopting the live dashboard arrangement. */
 const BALANCED_SIX_COLUMN_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 0, row: 0, w: 3, h: 2 },
   { id: "weather",  col: 3, row: 0, w: 3, h: 2 },
@@ -122,10 +112,6 @@ const BALANCED_SIX_COLUMN_LAYOUT: WidgetDef[] = [
   { id: "photos",   col: 4, row: 4, w: 2, h: 2 },
 ]
 
-/**
- * The 4-column layouts shipped before the 6×6 dashboard. Untouched installs
- * are migrated to the roomier default; hand-arranged layouts are left alone.
- */
 const FOUR_COLUMN_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 0, row: 0, w: 2, h: 1 },
   { id: "weather",  col: 2, row: 0, w: 2, h: 1 },
@@ -146,10 +132,6 @@ const ORIGINAL_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "photos",   col: 0, row: 4, w: 4, h: 1 },
 ]
 
-/**
- * The layout shipped before the Spotify widget existed put the player on top of
- * the full-width calendar (cols 2–3, rows 1–2).
- */
 const LEGACY_OVERLAPPING_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 0, row: 0, w: 2, h: 1 },
   { id: "weather",  col: 2, row: 0, w: 2, h: 1 },
@@ -160,7 +142,6 @@ const LEGACY_OVERLAPPING_LAYOUT: WidgetDef[] = [
   { id: "photos",   col: 0, row: 4, w: 4, h: 1 },
 ]
 
-/** The default before the camera card existed (photos filled 4×4). */
 const PRE_CAMERA_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 3, row: 0, w: 1, h: 2 },
   { id: "weather",  col: 2, row: 0, w: 1, h: 2 },
@@ -171,7 +152,6 @@ const PRE_CAMERA_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "spotify",  col: 4, row: 0, w: 1, h: 2 },
 ]
 
-/** The default after the camera card shipped, before indoor temperatures. */
 const PRE_TEMPERATURE_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "datetime", col: 3, row: 0, w: 1, h: 2 },
   { id: "weather",  col: 2, row: 0, w: 1, h: 2 },
@@ -183,7 +163,6 @@ const PRE_TEMPERATURE_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "camera",   col: 2, row: 4, w: 4, h: 2 },
 ]
 
-/** The default after indoor temperatures shipped, before the live arrangement. */
 const TEMPERATURE_CARD_DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "datetime",     col: 3, row: 0, w: 1, h: 2 },
   { id: "weather",      col: 2, row: 0, w: 1, h: 2 },
@@ -218,10 +197,6 @@ function isOutdatedDefaultLayout(layout: WidgetDef[]): boolean {
   return OUTDATED_DEFAULT_LAYOUTS.some(reference => matchesLayout(layout, reference))
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Layout cache — read synchronously so refresh doesn't flash default positions
-// ═══════════════════════════════════════════════════════════════════════════════
-
 function findFreeSlot(w: number, h: number, existing: WidgetDef[]): { col: number; row: number } | null {
   for (let row = 0; row <= GRID_ROWS - h; row++) {
     for (let col = 0; col <= GRID_COLS - w; col++) {
@@ -236,13 +211,11 @@ function findFreeSlot(w: number, h: number, existing: WidgetDef[]): { col: numbe
   return null
 }
 
-/** Add any newly shipped cards to a layout saved before they existed. */
 function withDefaultWidgets(layout: WidgetDef[]): { layout: WidgetDef[]; added: boolean } {
   const merged = layout.map(w => ({ ...w }))
   let added = false
   for (const def of DEFAULT_LAYOUT) {
     if (merged.some(w => w.id === def.id)) continue
-    // Prefer the shipped size, but shrink rather than overlap another card.
     const sizes: Array<[number, number]> = [
       [def.w, def.h],
       [2, 2],
@@ -278,8 +251,6 @@ function readCachedLayout(): WidgetDef[] | null {
     const source = isOutdatedDefaultLayout(layout)
       ? DEFAULT_LAYOUT.map(w => ({ ...w }))
       : layout
-    // A cached layout from before a card shipped must still render that card
-    // immediately, even if the server settings request is slow or offline.
     return withDefaultWidgets(source).layout
   } catch {
     return null
@@ -312,7 +283,6 @@ function saveLayout() {
 const unlocked = ref(false)
 const lockBtnEl = ref<HTMLElement | null>(null)
 
-// Widget DOM refs for anime.js targeting
 const widgetEls: Record<string, HTMLElement> = {}
 function registerWidgetEl(id: string, el: HTMLElement | null) {
   if (el) {
@@ -323,34 +293,25 @@ function registerWidgetEl(id: string, el: HTMLElement | null) {
   }
 }
 
-// ── Canvas size tracking (ResizeObserver) ─────────────────────────────────────
 const canvasEl = ref<HTMLElement | null>(null)
 const canvasW = ref(0)
 const canvasH = ref(0)
 let ro: ResizeObserver | null = null
 
-// Grid unit = distance from one column/row edge to the next (cell + gap)
 const colUnit = computed(() => canvasW.value > 0 ? (canvasW.value + GAP) / GRID_COLS : 200)
 const rowUnit = computed(() => canvasH.value > 0 ? (canvasH.value + GAP) / GRID_ROWS : 200)
 
-// ── Live clock ────────────────────────────────────────────────────────────────
 let clockTimer: ReturnType<typeof setInterval>
 const _clockInit = new Date()
 const dateStr = ref(_clockInit.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }))
 const timeStr = ref(_clockInit.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))
 
-/**
- * Split the localised clock into a hero (hours:minutes) and a quiet side stack
- * (seconds and the day period). The hero then scales with the tile instead of
- * the whole 13-character string deciding the type size.
- */
 const clockParts = computed(() => {
   const [clock = "", period = ""] = timeStr.value.trim().split(/\s+/)
   const [hours = "", minutes = "", seconds = ""] = clock.split(":")
   return { hours, minutes, seconds, period }
 })
 
-/** No network name means nothing to scan, so the QR (and its panel) disappear. */
 const wifiPayload = computed(() => wifiQrPayload({
   ssid: settings.wifiSsid.value,
   password: settings.wifiPassword.value,
@@ -358,8 +319,6 @@ const wifiPayload = computed(() => wifiQrPayload({
   hidden: settings.wifiHidden.value,
 }))
 
-// ── Schedule date navigation ──────────────────────────────────────────────────
-/** A glance at another day should not stick around forever on a kiosk. */
 const SCHEDULE_RESET_MS = 2 * 60 * 1000
 const scheduleDayOffset = ref(0)
 let scheduleResetTimer: ReturnType<typeof setTimeout> | null = null
@@ -396,8 +355,6 @@ function resetScheduleToToday() {
   clearScheduleReset()
 }
 
-// Moving to another screen (or anything that keeps this view alive off-screen)
-// puts the card back to Today.
 watch(() => ui.activePanel.value, panel => {
   if (panel !== "home") {
     resetScheduleToToday()
@@ -412,7 +369,6 @@ const scheduleDate = computed(() => {
   return date
 })
 
-// Days outside the initial ±1 month prefetch need their own data on demand.
 watch(scheduleDate, date => {
   const key = `${date.getFullYear()}-${date.getMonth()}`
   if (key === prefetchedScheduleMonth) return
@@ -442,7 +398,6 @@ const scheduleDateLong = computed(() =>
   scheduleDate.value.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
 )
 
-/** Add an event on the schedule day currently in view. */
 function addEventFromMiniCalendar() {
   const date = scheduleDate.value
   const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
@@ -451,16 +406,9 @@ function addEventFromMiniCalendar() {
 
 const scheduleTitle = computed(() => `${scheduleRelativeLabel.value}'s Schedule`)
 
-// ── Schedule events ───────────────────────────────────────────────────────────
-// Mini-calendar month (the recurrence window below needs it)
 const viewYear  = ref(today.value.getFullYear())
 const viewMonth = ref(today.value.getMonth())
 
-/**
- * Recurring events are stored as a single base row, so expand them into real
- * occurrences before the schedule list and mini calendar filter by date.
- * The window covers both the viewed month and the selected schedule day.
- */
 const displayEvents = computed<CalendarEvent[]>(() => {
   const monthStart = new Date(viewYear.value, viewMonth.value, 1)
   const monthEnd   = new Date(viewYear.value, viewMonth.value + 1, 0, 23, 59, 59, 999)
@@ -468,17 +416,11 @@ const displayEvents = computed<CalendarEvent[]>(() => {
   const dayEnd     = new Date(scheduleDate.value)
   dayEnd.setDate(dayEnd.getDate() + 1)
   dayEnd.setMilliseconds(-1)
-  // Pad by a day so occurrences spanning a boundary still land in the window.
   const from = new Date(Math.min(monthStart.getTime(), dayStart.getTime()) - 86_400_000)
   const to   = new Date(Math.max(monthEnd.getTime(), dayEnd.getTime()) + 86_400_000)
   return expandEvents(events.value, from, to)
 })
 
-/**
- * The mini calendar only needs the visible month. Keeping it on its own window
- * means the once-a-minute `today` tick (which `scheduleDate` depends on) does
- * not re-expand every recurring event for all 31 days.
- */
 const monthDisplayEvents = computed<CalendarEvent[]>(() => {
   const monthStart = new Date(viewYear.value, viewMonth.value, 1)
   const monthEnd   = new Date(viewYear.value, viewMonth.value + 1, 0, 23, 59, 59, 999)
@@ -495,13 +437,11 @@ function eventCoversDate(e: { startAt: string; endAt: string | null; allDay: boo
   const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
   if (start >= dayEnd) return false
   let end = e.endAt ? new Date(e.endAt) : start
-  // Legacy all-day events store end_at === start_at; treat them as covering exactly their start day
   if (e.allDay && end.getTime() <= start.getTime()) end = new Date(start.getTime() + 1)
   return end >= dayStart
 }
 
 function compareEventsByStart(a: CalendarEvent, b: CalendarEvent) {
-  // All-day entries lead the day, then timed events run chronologically.
   if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
   return new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
 }
@@ -526,12 +466,9 @@ function scheduleTime(event: CalendarEvent): string {
 }
 
 function openScheduleEvent(event: CalendarEvent) {
-  // Expanded occurrences carry an `::<index>` suffix; the detail panel wants
-  // the base event id.
   ui.openCalendar(event.startAt, event.id.split("::")[0])
 }
 
-// ── Mini calendar ─────────────────────────────────────────────────────────────
 const monthName = computed(() =>
   new Date(viewYear.value, viewMonth.value, 1).toLocaleString("en-US", { month: "long", year: "numeric" })
 )
@@ -621,12 +558,9 @@ function dayEventTooltip(day: MiniCalendarDay): string | undefined {
   return `${base}\n${lines.join("\n")}`
 }
 
-// ── Todos ─────────────────────────────────────────────────────────────────────
 const homeTodos = computed(() => todos.value.slice(0, 8))
 const homeDoing = computed(() => doing.value.slice(0, 3))
 
-// ── Fitted widget lists ───────────────────────────────────────────────────────
-// Cards trim to the rows that fit instead of clipping them or scrolling.
 interface ScheduleEntry {
   kind: "row"
   event: CalendarEvent
@@ -678,8 +612,6 @@ interface HomeTodoEntry {
   doing?: boolean
 }
 
-// Group labels are useful breathing room on taller tiles, but waste a row on
-// the 1-row minimum. Short tiers drop them and let the icons carry the meaning.
 const showTodoLabels = computed(() => (getWidget("todos")?.h ?? 1) >= 2)
 
 const todoEntries = computed<HomeTodoEntry[]>(() => {
@@ -709,15 +641,10 @@ const {
   measureKey: () => settings.fontSize.value,
 })
 
-// ── Photos slideshow ──────────────────────────────────────────────────────────
 const activePhotos = computed(() =>
   (Array.isArray(settings.photos.value) ? settings.photos.value : [])
     .filter(p => p?.selected)
 )
-// Index is derived from wall-clock time, not stored state: every client has the
-// same photo list in the same server order (created_at ASC), so all clients show
-// the same photo at the same moment, remounts/reloads never flash photo[0],
-// and a server restart can't reset the slideshow to the first photo.
 const PHOTO_INTERVAL_MS = 5000
 const slideshowNow = ref(Date.now())
 const currentPhotoIndex = computed(() => {
@@ -729,34 +656,16 @@ const currentPhoto = computed(() => activePhotos.value[currentPhotoIndex.value] 
 interface PhotoSlide {
   key: number
   url: string
-  /** Pre-blurred, dimmed cover for the letterbox; empty until it is ready. */
   backdrop: string
-  /** Animate in over the frame below; the first frame appears immediately. */
   dissolving: boolean
 }
 
-/**
- * Cross-dissolving two full-card photos (plus a blurred copy of each) is a
- * compositor effect. On a Pi/software renderer it turns every five-second photo
- * change into a two-second stutter, so those devices swap the single frame
- * instead. The slideshow itself is unchanged.
- */
 const heavyPhotoEffects = isPerformanceMode() || isCheapCompositor()
 const PHOTO_DISSOLVE_MS = 2000
 
-/** The blurred cover only needs to survive being scaled up behind the photo. */
 const PHOTO_BACKDROP_SIZE = 128
 const PHOTO_BACKDROP_BLUR = 2
 
-/**
- * Render the blurred, dimmed letterbox cover once into a small canvas.
- *
- * The old version put `filter: blur(28px)` on a full-card copy of every photo,
- * so the compositor re-blurred it for the whole two-second dissolve. This pays
- * the blur once per photo instead, and the fade only blends two plain images.
- * Returns "" when decode/canvas is unavailable; the caller then falls back to
- * the CSS filter.
- */
 async function blurPhotoBackdrop(url: string): Promise<string> {
   if (typeof document === "undefined" || typeof Image === "undefined") return ""
   try {
@@ -772,12 +681,8 @@ async function blurPhotoBackdrop(url: string): Promise<string> {
 
     const context = canvas.getContext("2d")
     if (!context || typeof canvas.toDataURL !== "function") return ""
-    // Without canvas filters the draw would be a full-brightness copy; fall
-    // back to the CSS blur instead of changing how the card looks.
     if (typeof (context as CanvasRenderingContext2D).filter !== "string") return ""
 
-    // Draw a little past the canvas edges: a canvas blur fades the boundary to
-    // transparent, which would show as a light rim around the card.
     const zoom = 1 + (6 * PHOTO_BACKDROP_BLUR) / Math.min(canvas.width, canvas.height)
     const width = canvas.width * zoom
     const height = canvas.height * zoom
@@ -792,7 +697,6 @@ async function blurPhotoBackdrop(url: string): Promise<string> {
 let photoSlideSeq = 0
 let photoRequest = 0
 const photoSlides = ref<PhotoSlide[]>([])
-/** Drops the faded-out frame once the cross-dissolve has finished. */
 let photoSlideCleanup: ReturnType<typeof setTimeout> | null = null
 
 function clearPhotoSlideCleanup() {
@@ -802,9 +706,6 @@ function clearPhotoSlideCleanup() {
   }
 }
 
-// Keep the outgoing frame on screen while the incoming one dissolves in on top
-// of it. Fading both elements at once would dip through the card background
-// halfway through and make the photo visibly flash instead of cross-dissolve.
 watch(() => currentPhoto.value?.url ?? null, async (url) => {
   const request = ++photoRequest
   clearPhotoSlideCleanup()
@@ -815,13 +716,11 @@ watch(() => currentPhoto.value?.url ?? null, async (url) => {
   }
 
   if (heavyPhotoEffects) {
-    // One frame, no dissolve, and no blurred backdrop copy (see the template).
     photoSlides.value = [{ key: ++photoSlideSeq, url, backdrop: "", dissolving: false }]
     return
   }
 
   const backdrop = await blurPhotoBackdrop(url)
-  // A newer photo superseded this one while the cover was decoding.
   if (request !== photoRequest) return
 
   const dissolving = photoSlides.value.length > 0
@@ -832,16 +731,11 @@ watch(() => currentPhoto.value?.url ?? null, async (url) => {
   if (dissolving) {
     photoSlideCleanup = setTimeout(() => {
       photoSlideCleanup = null
-      // The outgoing frame is fully transparent by now; keeping it in the DOM
-      // would leave four decoded images painted for the rest of the interval.
       if (photoSlides.value.length > 1) photoSlides.value = photoSlides.value.slice(-1)
     }, PHOTO_DISSOLVE_MS + 120)
   }
 }, { immediate: true })
 
-// Warm the next couple of frames so a dissolve starts on a decoded image rather
-// than waiting on the network. The service worker keeps photos on disk across
-// reloads (see vite.config.ts), so a warm kiosk downloads nothing here.
 const PHOTO_PRELOAD_AHEAD = 2
 let preloadedPhotos: HTMLImageElement[] = []
 watch([currentPhotoIndex, activePhotos], () => {
@@ -859,10 +753,6 @@ watch([currentPhotoIndex, activePhotos], () => {
 }, { immediate: true })
 
 let photoTimer: ReturnType<typeof setInterval>
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Drag / Resize — window-level listeners, no pointer capture needed
-// ═══════════════════════════════════════════════════════════════════════════════
 
 let dragType: "move" | "resize" | null = null
 let dragWidgetId: string | null = null
@@ -961,7 +851,6 @@ function stopDragListeners() {
   window.removeEventListener("pointercancel", onWindowPointerUp)
 }
 
-// ── Drag start ────────────────────────────────────────────────────────────────
 function onDragHandleDown(e: PointerEvent, id: string) {
   if (!unlocked.value) return
   e.preventDefault()
@@ -985,7 +874,6 @@ function onDragHandleDown(e: PointerEvent, id: string) {
   if (el) animate(el, { scale: 1.04, translateY: -6, duration: 100, ease: ease.outFast })
 }
 
-// ── Resize start ──────────────────────────────────────────────────────────────
 function onResizeHandleDown(e: PointerEvent, id: string) {
   if (!unlocked.value) return
   e.preventDefault()
@@ -1008,7 +896,6 @@ function onResizeHandleDown(e: PointerEvent, id: string) {
   startDragListeners()
 }
 
-// ── Lock toggle ───────────────────────────────────────────────────────────────
 function toggleLock() {
   unlocked.value = !unlocked.value
   if (lockBtnEl.value) {
@@ -1016,7 +903,6 @@ function toggleLock() {
   }
 }
 
-// ── Entrance animation ────────────────────────────────────────────────────────
 const rootEl = ref<HTMLElement | null>(null)
 
 function onLayoutUpdated(e: Event) {
@@ -1050,9 +936,6 @@ onMounted(async () => {
   prefetchAround(now.getFullYear(), now.getMonth())
   initSpotify()
 
-  // A one-second tick keeps the time-derived index advancing on wall-clock
-  // boundaries and self-corrects drift, so clients stay in sync. The slideshow
-  // only changes every five seconds; a faster tick just burned wakeups.
   photoTimer = setInterval(() => { slideshowNow.value = Date.now() }, 1000)
 
   clockTimer = setInterval(() => {
@@ -1099,12 +982,6 @@ function widgetStyle(w: WidgetDef) {
 
 function getWidget(id: string) { return widgets.find(w => w.id === id) }
 
-/**
- * Double-click support is delegated from the canvas so every card gets it
- * without extra markup. Controls inside a card keep their own double-click
- * behaviour (calendar days, buttons, links), and layout editing disables the
- * gesture so a drag never opens a card by accident.
- */
 function onCanvasDoubleClick(e: MouseEvent) {
   if (unlocked.value || dragType || blowupActive.value) return
   const target = e.target as HTMLElement | null
@@ -1120,13 +997,11 @@ function onCanvasDoubleClick(e: MouseEvent) {
 
 <template>
   <div ref="rootEl" class="home-view">
-    <!-- Full-page widget canvas -->
     <div v-if="layoutReady" ref="canvasEl" class="widget-canvas" :class="{ 'is-editing': unlocked }" :style="{
       gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
       gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)`,
       gap: `${GAP}px`,
     }" @dblclick="onCanvasDoubleClick">
-      <!-- Grid overlay cells (shown in edit mode) -->
       <template v-if="unlocked">
         <div v-for="i in GRID_COLS * GRID_ROWS" :key="'gc-' + i" class="grid-cell-bg" aria-hidden="true" :style="{
           gridColumn: `${((i - 1) % GRID_COLS) + 1}`,
@@ -1134,7 +1009,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         }" />
       </template>
 
-      <!-- House: date & time, family, guest Wi-Fi -->
       <div :ref="(el) => registerWidgetEl('datetime', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'datetime' }"
         :style="{ ...widgetStyle(getWidget('datetime')!), '--wobble-delay': '0ms' }">
@@ -1179,7 +1053,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'datetime')" />
       </div>
 
-      <!-- Schedule for the selected day -->
       <div :ref="(el) => registerWidgetEl('schedule', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'schedule' }"
         :style="{ ...widgetStyle(getWidget('schedule')!), '--wobble-delay': '220ms' }">
@@ -1241,7 +1114,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'schedule')" />
       </div>
 
-      <!-- Weather -->
       <div :ref="(el) => registerWidgetEl('weather', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'weather' }"
         :style="{ ...widgetStyle(getWidget('weather')!), '--wobble-delay': '120ms' }">
@@ -1295,7 +1167,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'weather')" />
       </div>
 
-      <!-- Mini calendar -->
       <div :ref="(el) => registerWidgetEl('calendar', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'calendar' }"
         :style="{ ...widgetStyle(getWidget('calendar')!), '--wobble-delay': '100ms' }">
@@ -1372,7 +1243,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'calendar')" />
       </div>
 
-      <!-- To Do -->
       <div :ref="(el) => registerWidgetEl('todos', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'todos' }"
         :style="{ ...widgetStyle(getWidget('todos')!), '--wobble-delay': '340ms' }">
@@ -1410,7 +1280,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'todos')" />
       </div>
 
-      <!-- Photos -->
       <div :ref="(el) => registerWidgetEl('photos', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'photos' }"
         :style="{ ...widgetStyle(getWidget('photos')!), '--wobble-delay': '160ms' }">
@@ -1423,9 +1292,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
             <span class="block-title"><PhImage :size="18" /><span class="block-title-text">Photos</span></span>
           </div>
           <div v-if="activePhotos.length" class="photos-body">
-            <!-- Blurred cover copy fills the letterbox left by object-fit: contain.
-                 A software compositor draws it twice for no benefit, so weak
-                 displays get the plain panel tint instead. -->
             <template v-if="!heavyPhotoEffects">
               <img
                 v-for="(slide, index) in photoSlides"
@@ -1466,7 +1332,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'photos')" />
       </div>
 
-      <!-- Spotify -->
       <div :ref="(el) => registerWidgetEl('spotify', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'spotify' }"
         :style="{ ...widgetStyle(getWidget('spotify')!), '--wobble-delay': '280ms' }">
@@ -1486,7 +1351,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
             </span>
           </div>
 
-          <!-- Not configured — show setup -->
           <div v-if="spotifyNeedsConfig()" class="spotify-body spotify-body--center">
             <div class="spotify-setup">
               <span class="spotify-setup-badge" aria-hidden="true">
@@ -1515,7 +1379,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
             </div>
           </div>
 
-          <!-- Connected but nothing playing -->
           <div v-else-if="!currentTrack" class="spotify-body spotify-body--center">
             <div class="spotify-idle">
               <div class="spotify-vinyl spotify-vinyl--idle">
@@ -1536,7 +1399,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
             </div>
           </div>
 
-          <!-- Now playing -->
           <div v-else class="spotify-body spotify-body--playing">
             <div class="spotify-stage" aria-hidden="true">
               <div class="spotify-vinyl" :class="{ 'spotify-vinyl--paused': !currentTrack.isPlaying, 'spotify-vinyl--still': !settings.musicCardSpin.value }">
@@ -1569,7 +1431,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'spotify')" />
       </div>
 
-      <!-- Indoor temperatures (Nest) -->
       <div v-if="getWidget('temperatures')" :ref="(el) => registerWidgetEl('temperatures', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'temperatures' }"
         :style="{ ...widgetStyle(getWidget('temperatures')!), '--wobble-delay': '460ms' }">
@@ -1580,7 +1441,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
         <div v-if="unlocked" class="resize-handle" @pointerdown="onResizeHandleDown($event, 'temperatures')" />
       </div>
 
-      <!-- RTSP camera -->
       <div v-if="getWidget('camera')" :ref="(el) => registerWidgetEl('camera', el as HTMLElement | null)" class="widget"
         :class="{ 'is-dragging': draggingId === 'camera' }"
         :style="{ ...widgetStyle(getWidget('camera')!), '--wobble-delay': '400ms' }">
@@ -1592,15 +1452,12 @@ function onCanvasDoubleClick(e: MouseEvent) {
       </div>
     </div>
 
-    <!-- Lock / Unlock FAB — fixed bottom right -->
     <button ref="lockBtnEl" class="lock-toggle" :class="{ 'lock-toggle--unlocked': unlocked }" @click="toggleLock"
       :aria-label="unlocked ? 'Lock layout' : 'Unlock layout'">
       <PhLockOpen v-if="unlocked" :size="18" />
       <PhLock v-else :size="18" />
     </button>
 
-    <!-- Double-clicked card, lifted out of the grid. The real element is moved
-         into the stage so its live content and controls keep working. -->
     <Teleport to="body">
       <div v-if="blowupActive" class="card-blowup" :class="{ 'card-blowup--ready': blowupReady }" role="dialog"
         aria-modal="true" :aria-label="`${blowupLabel} card expanded`">
@@ -1616,28 +1473,20 @@ function onCanvasDoubleClick(e: MouseEvent) {
 </template>
 
 <style scoped>
-/* ── Root — fills the main panel ────────────────────────────────────────────── */
 .home-view {
   position: relative;
   width: 100%;
   height: 100%;
-  /* Contain the canvas without slicing what the cards paint. Cards sit flush
-     against the canvas edges, so plain `hidden` cut the Futur ink lip off the
-     bottom row and the edit-mode outlines off every outer edge. The margin
-     gives the 3px lip and the 2px outlines room to paint, still well inside
-     the main panel's 16px padding. */
   overflow: clip;
   overflow-clip-margin: 6px;
 }
 
-/* ── Widget canvas — absolute, fills home-view ──────────────────────────────── */
 .widget-canvas {
   position: absolute;
   inset: 0;
   display: grid;
 }
 
-/* ── Grid background cells (edit mode) ──────────────────────────────────────── */
 .grid-cell-bg {
   border-radius: var(--radius-md);
   background: var(--color-bgSubtle);
@@ -1651,7 +1500,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   opacity: 0.55;
 }
 
-/* ── Widget ──────────────────────────────────────────────────────────────────── */
 .widget {
   position: relative;
   z-index: 2;
@@ -1659,20 +1507,13 @@ function onCanvasDoubleClick(e: MouseEvent) {
   min-height: 0;
   container-type: size;
   container-name: w;
-  /* The card surface is a display, not a document: double-clicking to expand
-     it must not select labels or values. Form fields opt back in below. */
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  /* Keep the edit outline present (just transparent) at all times. Declaring it
-     only inside .is-editing makes unlock transition outline-color from its
-     initial `currentColor` (near-white in dark mode) to transparent, which
-     flashes a white outline around every card as edit mode starts. */
   outline: 2px dashed transparent;
   transition: outline-color var(--duration-fast);
 }
 
-/* Editing a form value still needs normal text selection. */
 .widget :deep(input),
 .widget :deep(textarea),
 .widget :deep([contenteditable="true"]) {
@@ -1695,7 +1536,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   animation: none !important;
 }
 
-/* Wobble in edit mode — slow, smooth sway; staggered phase via negative delay */
 @keyframes widget-wobble {
 
   0%,
@@ -1714,7 +1554,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   animation-delay: calc(-1 * var(--wobble-delay, 0ms));
 }
 
-/* ── Home block (fills widget) ───────────────────────────────────────────────── */
 .home-block {
   width: 100%;
   height: 100%;
@@ -1724,7 +1563,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   min-height: 0;
 }
 
-/* Empty states are padded for full pages; keep them within small tiles. */
 .home-block :deep(.widget-empty) {
   flex: 1;
   min-height: 0;
@@ -1745,7 +1583,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* ── Drag handle ─────────────────────────────────────────────────────────────── */
 .drag-handle {
   position: absolute;
   top: 8px;
@@ -1769,9 +1606,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   cursor: grabbing;
 }
 
-/* Edit mode is used on the wall display too. Hover-only controls are invisible
-   there, so the handles stay visible whenever the layout is unlocked; hover and
-   keyboard focus only strengthen them. */
 .is-editing .widget .drag-handle {
   opacity: 0.72;
 }
@@ -1781,7 +1615,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   opacity: 1;
 }
 
-/* ── Resize handle ───────────────────────────────────────────────────────────── */
 .resize-handle {
   position: absolute;
   bottom: 6px;
@@ -1811,7 +1644,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   opacity: 1 !important;
 }
 
-/* Touch screens need a finger-sized grab area, not a mouse-sized one. */
 @media (pointer: coarse) {
   .drag-handle {
     top: 6px;
@@ -1833,10 +1665,8 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* ── Lock toggle FAB ─────────────────────────────────────────────────────────── */
 .lock-toggle {
   position: absolute;
-  /* relative to home-view — avoids fixed+transform ancestor bug */
   bottom: var(--space-6);
   right: var(--space-6);
   z-index: 50;
@@ -1929,9 +1759,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
     inset 0 -2px 5px rgba(0, 0, 0, 0.35);
 }
 
-/* ── Photos slideshow ───────────────────────────────────────────────────────── */
-/* The photo is the card surface, like the camera and weather cards: it paints
-   behind the header instead of sitting in a body block below it. */
 .photos-card {
   position: relative;
 }
@@ -1967,8 +1794,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   background: var(--color-bgSubtle);
 }
 
-/* Fills the letterbox behind the contained photo with a blurred, dimmed
-   cover copy of the same frame — matching the camera card's backdrop. */
 .photos-backdrop {
   position: absolute;
   inset: 0;
@@ -1979,8 +1804,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   pointer-events: none;
 }
 
-/* Fallback when the canvas cover could not be produced (old browsers, tests):
-   the CSS blur is expensive, but this path only exists on capable clients. */
 .photos-backdrop--fallback {
   filter: blur(28px) saturate(1.15) brightness(0.55);
 }
@@ -1994,19 +1817,11 @@ function onCanvasDoubleClick(e: MouseEvent) {
   z-index: 1;
 }
 
-/* Incoming frames dissolve over the previous one while the previous fades
-   out. Fading the outgoing frame matters now that the sharp photo uses
-   `contain`: without it, a wider previous photo would stay fully visible in
-   the letterbox around a smaller incoming one. The global low-power rules
-   shorten this. */
 .photos-img--dissolve {
   animation: photo-dissolve 2s ease-in-out both;
-  /* Opacity is the one property the compositor can blend without repainting
-     the two full-card photos underneath. */
   will-change: opacity;
 }
 
-/* Software compositors swap the frame instead; see heavyPhotoEffects. */
 :global(html.cheap-compositor) .photos-img--dissolve {
   animation: none !important;
 }
@@ -2029,10 +1844,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   from { opacity: 1; }
   to { opacity: 0; }
 }
-
-/* ── Shared widget chrome + size tiers ──────────────────────────────────────── */
-/* Container font-size follows the household text setting, so em breakpoints
-   tighten the layout when text grows — not only when the tile shrinks. */
 
 .block-header {
   display: flex;
@@ -2067,7 +1878,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   color: var(--color-textMuted);
 }
 
-/* The three hero cards carry their domain colour in the header mark. */
 .datetime-card .block-title svg,
 .spotify-card .block-title svg {
   color: var(--color-primaryDark);
@@ -2094,14 +1904,12 @@ function onCanvasDoubleClick(e: MouseEvent) {
   font-size: var(--text-label-size);
 }
 
-/* Narrow tiles: drop the header shortcut instead of truncating the title. */
 @container w (max-width: 16em) {
   .block-header :deep(.ui-btn--sm) {
     display: none;
   }
 }
 
-/* ── House (date & time, family, guest Wi-Fi) ────────────────────────────────── */
 .house-card {
   --hero-tint: var(--color-primary);
 }
@@ -2202,7 +2010,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   color: var(--color-textSecondary);
 }
 
-/* A quiet separator when the house and date share a line. */
 .datetime-date::before {
   content: "";
   display: inline-block;
@@ -2214,7 +2021,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   vertical-align: middle;
 }
 
-/* Guest Wi-Fi: a bare QR with its label underneath. */
 .house-wifi {
   display: flex;
   flex-direction: column;
@@ -2240,7 +2046,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   color: var(--color-textMuted);
 }
 
-/* Very narrow tiles: cap the clock by width so it never ellipsizes. */
 @container w (max-width: 12em) {
   .datetime-clock {
     font-size: clamp(20px, 14cqw, 64px);
@@ -2272,7 +2077,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Short tiles: clock on the left, QR on the right. */
 @container w (max-height: 12em) {
   .house-body {
     flex-direction: row;
@@ -2308,7 +2112,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* A wide single-row tile can afford a bigger clock and QR. */
 @container w (max-height: 12em) and (min-width: 32em) {
   .house-wifi__code {
     width: clamp(96px, min(24cqw, 64cqh), 240px);
@@ -2323,7 +2126,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Compact heights: give the QR the room, drop secondary context. */
 @container w (min-height: 12em) and (max-height: 14.5em) and (max-width: 25.9em) {
   .datetime-meta {
     display: none;
@@ -2344,7 +2146,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Roomy tiles: clock leads on the left, the QR sits on the right. */
 @container w (min-width: 26em) and (min-height: 12em) {
   .house-body {
     flex-direction: row;
@@ -2388,7 +2189,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Generous tiles: let the hero clock and QR grow into the space. */
 @container w (min-width: 32em) and (min-height: 20em) {
   .house-body {
     gap: clamp(8px, 2.2cqh, var(--space-5));
@@ -2407,13 +2207,11 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* ── Weather ──────────────────────────────────────────────────────────────────── */
 .weather-card {
   --hero-tint: var(--color-info);
   position: relative;
 }
 
-/* The animated scene is the card surface; the readout stays above it. */
 .weather-card > .block-header,
 .weather-card > .weather-body {
   position: relative;
@@ -2581,7 +2379,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   color: var(--color-danger);
 }
 
-/* Roomy tile: reading on the left, supporting detail behind a rule. */
 @container w (min-width: 24em) and (min-height: 9em) {
   .weather-body {
     display: grid;
@@ -2612,7 +2409,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* One-row tile: lay the reading out horizontally and drop extras. */
 @container w (max-height: 10em) {
   .weather-body {
     flex-direction: row;
@@ -2660,7 +2456,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Single-cell tiles: icon + temperature + high/low is all that fits. */
 @container w (max-width: 12em) and (max-height: 10em) {
   .weather-secondary {
     display: none;
@@ -2683,7 +2478,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* ── Schedule ────────────────────────────────────────────────────────────────── */
 .schedule-nav {
   display: flex;
   align-items: stretch;
@@ -2866,7 +2660,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   text-transform: uppercase;
 }
 
-/* The event in progress gets a quiet accent wash; finished ones recede. */
 .schedule-row--now {
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
@@ -2885,7 +2678,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   opacity: 0.35;
 }
 
-/* "+N more" is a designed end to the list, not clipped content. */
 .list-more {
   flex-shrink: 0;
   padding: 2px var(--space-3);
@@ -2907,7 +2699,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Small tiles drop the date and keep the day name so the arrows stay tappable. */
 @container w (max-width: 12em) {
   .schedule-nav {
     margin-inline: var(--space-2);
@@ -2929,7 +2720,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* ── Mini calendar ───────────────────────────────────────────────────────────── */
 .calendar-header-actions {
   display: flex;
   align-items: center;
@@ -2956,7 +2746,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
     transform var(--duration-fast);
 }
 
-/* Fingertip-sized hit area without growing the header. */
 .calendar-add-btn::after {
   content: "";
   position: absolute;
@@ -3006,8 +2795,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   transition: background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
 }
 
-/* Keep the fingertip-sized hit area without making the header taller than the
-   other cards' headers. */
 .calendar-month-nav__arrow::after {
   content: "";
   position: absolute;
@@ -3026,8 +2813,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
 .calendar-month-nav__label {
   position: relative;
   min-width: 0;
-  /* Grow the tap target without making the header taller than the others;
-     the negative block margin removes the padding from layout. */
   margin-block: -12px;
   padding: 12px var(--space-1);
   border: none;
@@ -3190,10 +2975,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   box-shadow: 0 0 0 1px var(--color-textInverse);
 }
 
-/*
- * Detailed mode: once a cell can fit the day number plus a couple of lines,
- * replace the density dots with real event titles.
- */
 @container w (min-width: 20em) and (min-height: 18em) {
   .mini-cal-day {
     align-items: stretch;
@@ -3282,7 +3063,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Keep the month controls legible on single-column tiles. */
 @container w (max-width: 20em) {
   .calendar-header :deep(.ui-btn--sm),
   .calendar-add-btn {
@@ -3290,7 +3070,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Shorter tiles drop the weekday strip so the month keeps every date. */
 @container w (max-height: 12em) {
   .mini-cal-weekdays {
     display: none;
@@ -3311,7 +3090,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Very short tiles keep the month title instead of squashing the date grid. */
 @container w (max-height: 7em) {
   .mini-cal-weekdays,
   .mini-cal-grid {
@@ -3323,7 +3101,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* ── Tasks ───────────────────────────────────────────────────────────────────── */
 .todo-list {
   flex: 1;
   min-height: 0;
@@ -3396,7 +3173,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   color: var(--color-error);
 }
 
-/* ── Spotify ─────────────────────────────────────────────────── */
 .spotify-card {
   --hero-tint: var(--color-primary);
   min-height: 0;
@@ -3412,7 +3188,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   50% { height: 11px; }
 }
 
-/* ── Header status chip ──────────────────────────────────────── */
 .spotify-status {
   display: inline-flex;
   align-items: center;
@@ -3453,7 +3228,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   color: var(--color-textMuted);
 }
 
-/* ── Equalizer bars ──────────────────────────────────────────── */
 .spotify-equalizer {
   display: flex;
   align-items: flex-end;
@@ -3479,7 +3253,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   animation-delay: 0.4s;
 }
 
-/* ── Shared body ──────────────────────────────────────────────── */
 .spotify-body {
   flex: 1;
   display: flex;
@@ -3496,7 +3269,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   justify-content: center;
 }
 
-/* ── Now playing: record stage + solid reading panel ──────────── */
 .spotify-body--playing {
   position: relative;
   display: flex;
@@ -3617,7 +3389,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   opacity: 0.7;
 }
 
-/* ── Track info ──────────────────────────────────────────────── */
 .spotify-info {
   display: flex;
   flex: 0 0 auto;
@@ -3653,7 +3424,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   text-overflow: ellipsis;
 }
 
-/* ── Progress bar ────────────────────────────────────────────── */
 .spotify-progress {
   display: flex;
   flex-direction: column;
@@ -3701,7 +3471,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   text-align: right;
 }
 
-/* ── Setup / Idle states ─────────────────────────────────────── */
 .spotify-setup {
   display: flex;
   flex-direction: column;
@@ -3885,7 +3654,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   max-width: 340px;
 }
 
-/* ── Short / narrow responsive states ────────────────────────── */
 @container w (max-width: 16em) {
   .spotify-song {
     font-size: var(--text-label-size);
@@ -3902,7 +3670,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Wide / short tiles: record + copy side by side, controls stay reachable. */
 @container w (max-height: 18em) {
   .spotify-body {
     flex-direction: row;
@@ -3983,7 +3750,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Setup needs the most room: progressively trim prose, keep the form. */
 @container w (max-height: 20em) {
   .spotify-setup-badge {
     display: none;
@@ -4025,9 +3791,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Cramped one-row tiles (1×1 next to wider 2×1 players): the 48px touch box
-   dwarfs the card, so draw the control at its natural size and give it a
-   transparent hit area instead. */
 @container w (max-height: 13em) and (max-width: 20em) {
   .spotify-connect-btn {
     position: relative;
@@ -4046,8 +3809,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Narrow one-row tiles: drop the idle copy first, then the record, so the
-   control never gets pushed out of the card. */
 @container w (max-width: 12em) and (max-height: 13em) {
   .spotify-idle-text {
     display: none;
@@ -4064,7 +3825,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Tiny one-row tiles: keep the track title, drop the rest of the details. */
 @container w (max-height: 4.5em) {
   .spotify-body--playing .spotify-artist,
   .spotify-body--playing .spotify-progress {
@@ -4072,7 +3832,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* Single-column tiles: stack the setup form so the button stays reachable. */
 @container w (max-width: 12em) {
   .spotify-setup-input-row {
     flex-direction: column;
@@ -4090,10 +3849,6 @@ function onCanvasDoubleClick(e: MouseEvent) {
   }
 }
 
-/* ── Card blow-up ──────────────────────────────────────────────────────────────
-   A double-clicked home card is moved into this layer and eased from its grid
-   cell to a large centred view. Below the drawer (100) so task/event details can
-   still open above it, and above the nav. */
 .card-blowup {
   position: fixed;
   inset: 0;

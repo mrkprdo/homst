@@ -25,15 +25,12 @@ def _payload(
     return payload
 
 
-# ── Endpoint validation ──────────────────────────────────────────────
-
-
 @pytest.mark.parametrize(
     "endpoint",
     [
         "https://fcm.googleapis.com/fcm/send/abc",
-        "https://eu.fcm.googleapis.com/fcm/send/def",  # suffix match
-        "https://FCM.GoogleAPIs.com/fcm/send/ghi",  # hostname is case-insensitive
+        "https://eu.fcm.googleapis.com/fcm/send/def",
+        "https://FCM.GoogleAPIs.com/fcm/send/ghi",
         "https://fcm.googleapis.com:443/fcm/send/jkl",
     ],
 )
@@ -49,7 +46,7 @@ def test_validate_push_endpoint_accepts_allowlisted_services(endpoint):
         "https://127.0.0.1/push",
         "https://192.168.1.10/push",
         "https://evil.example.com/push",
-        "https://fcm.googleapis.com.evil.com/push",  # suffix spoof
+        "https://fcm.googleapis.com.evil.com/push",
         "https://user:pass@fcm.googleapis.com/push",
         "https://fcm.googleapis.com:8443/push",
         "https://fcm.googleapis.com:notaport/push",
@@ -60,9 +57,6 @@ def test_validate_push_endpoint_accepts_allowlisted_services(endpoint):
 def test_validate_push_endpoint_rejects_unsafe_urls(endpoint):
     with pytest.raises(ValueError):
         validate_push_endpoint(endpoint)
-
-
-# ── Subscribe endpoint ───────────────────────────────────────────────
 
 
 async def test_subscribe_accepts_fcm_endpoint(client):
@@ -125,13 +119,9 @@ async def test_subscribe_caps_new_endpoints(client, monkeypatch):
     r = await client.post("/api/v1/push/subscribe", json=second)
     assert r.status_code == 429
 
-    # Refreshing an already-registered endpoint is still allowed.
     first["keys"]["p256dh"] = "p2"
     r = await client.post("/api/v1/push/subscribe", json=first)
     assert r.status_code == 201
-
-
-# ── Delivery ─────────────────────────────────────────────────────────
 
 
 async def test_deliver_push_skips_invalid_stored_endpoint(db_session, monkeypatch):

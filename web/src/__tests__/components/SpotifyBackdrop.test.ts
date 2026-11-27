@@ -34,7 +34,6 @@ describe("SpotifyBackdrop", () => {
 
     expect(wrapper.find(".vinyl-backdrop").exists()).toBe(true)
     expect(wrapper.find(".vinyl-art").attributes("style")).toContain("cover.jpg")
-    // The shells key their translucent surfaces off this root class.
     expect(html.classList.contains("vinyl-backdrop")).toBe(true)
 
     wrapper.unmount()

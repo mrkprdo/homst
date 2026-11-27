@@ -24,7 +24,6 @@ export interface AccentPaletteEntry {
   lighter: string
   dark: string
   darker: string
-  /** Text/icon color that stays legible on top of `base`. */
   onAccent: string
 }
 
@@ -34,7 +33,6 @@ export const accentPalette: Record<AccentColor, AccentPaletteEntry> = {
   mauve:  { base: "#a690a4", light: "#c4b7c3", lighter: "#e2dde2", dark: "#857383", darker: "#645663", onAccent: "#1c2828" },
   plum:   { base: "#5e4b56", light: "#92818b", lighter: "#c5bcc1", dark: "#4b3c45", darker: "#382d34", onAccent: "#fafafa" },
   sky:    { base: "#afd2e9", light: "#c3deef", lighter: "#d7eaf4", dark: "#8ca8ba", darker: "#697e8c", onAccent: "#1c2828" },
-  // Theme-preset "futur" accents.
   mint:   { base: "#8ae3c6", light: "#b5f3df", lighter: "#d6f8ec", dark: "#4fb99c", darker: "#16756b", onAccent: "#15171c" },
   honey:  { base: "#e0a21a", light: "#f2c64b", lighter: "#fce3a0", dark: "#b27a0b", darker: "#8a6206", onAccent: "#15171c" },
   violet: { base: "#6b5aa0", light: "#a99bd2", lighter: "#cfc7e7", dark: "#52447f", darker: "#3b305e", onAccent: "#fffdf4" },
@@ -42,19 +40,16 @@ export const accentPalette: Record<AccentColor, AccentPaletteEntry> = {
   aqua:   { base: "#67d5e0", light: "#9ae7ef", lighter: "#c9f5f8", dark: "#2a9fac", darker: "#17666f", onAccent: "#15171c" },
 }
 
-/** Accent choices exposed by each theme preset, in display order. */
 export const accentSets: Record<ThemePreset, AccentColor[]> = {
   default: ["peach", "sage", "mauve", "plum", "sky"],
   futur:   ["mint", "honey", "violet", "clay", "aqua"],
 }
 
-/** Accent selected when moving into a preset whose current accent is unavailable. */
 export const presetDefaultAccent: Record<ThemePreset, AccentColor> = {
   default: "sage",
   futur: "mint",
 }
 
-/** Member avatars keep the original five families so the picker stays compact. */
 export const defaultAccentColors: AccentColor[] = ["peach", "sage", "mauve", "plum", "sky"]
 
 export const fontSizeScale: Record<FontSize, Record<string, string>> = {
@@ -69,41 +64,30 @@ const themePreset = ref<ThemePreset>("futur")
 const accentColor = ref<AccentColor>("mint")
 const fontSize = ref<FontSize>("large")
 const warm = ref(false)
-/** Server-resolved day/night state while `theme` is "auto". Null until known. */
 const autoThemeDark = ref<boolean | null>(null)
-/** Today's sunrise/sunset (ISO 8601, household timezone) while theme is auto. */
 const autoSunrise = ref<string | null>(null)
 const autoSunset = ref<string | null>(null)
 const hudEnabled = ref(true)
-/** Now-playing extras: the lyrics overlay, the full-screen cover, its spin, and the card's spin. */
 const lyricsEnabled = ref(true)
-/** Lyric delay in milliseconds: negative starts lines earlier, positive later. */
 const lyricsOffsetMs = ref(0)
 const musicBackground = ref(true)
 const musicBackgroundSpin = ref(false)
 const musicCardSpin = ref(true)
-/** Auto-cycle the kiosk through Home, Calendar and Tasks while idle. */
 const carouselEnabled = ref(false)
-/** Return to Home after 15 minutes without interaction. */
 const returnHomeEnabled = ref(true)
-/** Tuck the nav rail away and reveal it when the pointer nears the left edge. */
 const navAutoHide = ref(false)
 const houseName = ref("")
 const photos = ref<PhotoEntry[]>([])
-/** RTSP camera details exposed by the server (never the password itself). */
 const cameraUrl = ref("")
 const cameraUsername = ref("")
 const cameraPasswordSet = ref(false)
 const cameraRotation = ref(0)
 const cameraStreamPath = ref<string | null>(null)
-/** Guest Wi-Fi details encoded into the House card QR (empty SSID hides it). */
 const wifiSsid = ref("")
 const wifiPassword = ref("")
 const wifiEncryption = ref<WifiEncryption>("WPA")
 const wifiHidden = ref(false)
-/** Household default reminder lead (minutes before start); null = no default. */
 const defaultReminderMinutes = ref<number | null>(null)
-/** Last accent picked in each preset, so switching back restores it. */
 const accentMemory: Record<ThemePreset, AccentColor> = { ...presetDefaultAccent }
 
 function applyThemePresetToDOM(preset: ThemePreset) {
@@ -121,11 +105,9 @@ function applyAccentToDOM(color: AccentColor) {
   root.style.setProperty("--color-accent-darker", p.darker)
   root.style.setProperty("--color-accent-glow", p.lighter)
   root.style.setProperty("--color-on-accent", p.onAccent)
-  // Hover stays legible: accents with light text darken, all others lighten.
   const darkHover = p.onAccent === "#fffdf4" || p.onAccent === "#fafafa"
   root.style.setProperty("--color-actionHover", darkHover ? p.dark : p.light)
   if (themePreset.value === "futur") {
-    // Futur uses flat cutout depth: a hard ink lip, no tinted blur.
     root.style.setProperty("--shadow-accent-lip", "var(--color-ink)")
     root.style.setProperty("--shadow-accent-drop", "transparent")
     root.style.setProperty("--shadow-accent-inner", "transparent")
@@ -158,8 +140,6 @@ function applyFontSizeToDOM(size: FontSize) {
 function updateTheme(t: Theme) {
   theme.value = t
   if (t !== "auto") {
-    // Drop the resolved sun state so a later offline switch to auto falls
-    // back to the OS instead of reusing yesterday's day/night flag.
     autoThemeDark.value = null
     autoSunrise.value = null
     autoSunset.value = null
@@ -205,7 +185,6 @@ function updateLyricsEnabled(on: boolean) {
   lyricsEnabled.value = on
 }
 
-/** Clamp to the ±2s range the settings stepper exposes, in 50 ms steps. */
 function updateLyricsOffset(ms: number) {
   const value = Number.isFinite(ms) ? ms : 0
   lyricsOffsetMs.value = Math.round(Math.max(-2000, Math.min(2000, value)) / 50) * 50
@@ -258,20 +237,12 @@ function updateDefaultReminderMinutes(minutes: number | null) {
   defaultReminderMinutes.value = minutes
 }
 
-/**
- * Depth counter for server-driven applies (initial load, reconnect resync, SSE
- * broadcast). While it is non-zero the persistence watcher in App.vue skips
- * PATCHing, so a broadcast echoed back to us can never be written to the
- * server again — or race a newer change with stale values.
- */
 let serverApplyDepth = 0
 
-/** True while a server payload is being applied (and its watchers are flushing). */
 export function isApplyingRemoteSettings(): boolean {
   return serverApplyDepth > 0
 }
 
-/** Apply a household-settings payload to the local refs and the DOM. Absent keys are left alone. */
 export function applyHouseholdSettings(s: HouseholdSettings) {
   serverApplyDepth++
   try {
@@ -304,7 +275,6 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
       if (s.screens.returnHome !== undefined) updateReturnHomeEnabled(s.screens.returnHome === true)
       if (s.screens.autoHideNav !== undefined) updateNavAutoHide(s.screens.autoHideNav === true)
     }
-    // Keep the accent and preset coherent if an older/partial payload is loaded.
     if (!accentSets[themePreset.value].includes(accentColor.value)) {
       accentColor.value = presetDefaultAccent[themePreset.value]
     }
@@ -313,23 +283,15 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
     applyAccentToDOM(accentColor.value)
     applyFontSizeToDOM(fontSize.value)
   } finally {
-    // Keep the guard set through the watcher flush so persistence watchers see
-    // it, then release (Vue runs nextTick callbacks after flush jobs).
     void nextTick(() => { serverApplyDepth-- })
   }
 }
 
-/** Re-fetch the shared photo list and apply it. */
 export async function refreshPhotos() {
   const list = await photosApi.list().catch(() => null)
   if (list) photos.value = Array.isArray(list) ? list : []
 }
 
-/**
- * Re-fetch household settings and photos and apply them. Used when a client
- * resyncs after a reconnect, so changes made while it was offline (theme,
- * reminder default, widget layout, photos) are picked up.
- */
 export async function refreshFromServer() {
   const s = await householdApi.getSettings()
   applyHouseholdSettings(s)

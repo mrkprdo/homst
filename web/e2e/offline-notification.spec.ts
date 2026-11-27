@@ -1,18 +1,9 @@
 import { test, expect } from "@playwright/test"
 
-/**
- * A push tap while the household server is unreachable must show the text that
- * the service worker stored on the device, not a blank PWA shell.
- *
- * Playwright cannot deliver a real Web Push here, so seed the same IndexedDB
- * record the service worker writes and make every API request fail.
- */
 test("a notification tap is readable while the server is unreachable", async ({ page }) => {
   await page.route(/\/api\/(v1\/|health|stream)/, route => route.abort("failed"))
-  // The household was already set up on this device before the phone left the LAN.
   await page.addInitScript(() => localStorage.setItem("homst-household-complete", "true"))
 
-  // Establish the origin, then seed the offline copy.
   await page.goto("/")
   const homeUrl = new URL("/", page.url()).href
   await page.evaluate(async () => {
@@ -50,11 +41,9 @@ test("a notification tap is readable while the server is unreachable", async ({ 
   await expect(sheet.locator(".offline-push__body")).toContainText("Dinner is ready")
   await expect(page).toHaveURL(homeUrl)
 
-  // Closing the sheet leaves a banner that can reopen the stored copy.
   await page.locator(".offline-push__done").click()
   const banner = page.locator(".server-offline")
   await expect(banner).toContainText("HOMST local server is out of reach")
-  // The notice is collapsed behind the top-right dot until hovered, focused, or pinned.
   await banner.locator(".server-offline__trigger").click()
   await expect(banner).toHaveClass(/server-offline--pinned/)
   await banner.getByRole("button", { name: "Read notifications" }).click()

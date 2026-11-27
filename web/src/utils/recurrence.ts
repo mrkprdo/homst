@@ -6,7 +6,6 @@ export interface RecurrenceRule {
   count?: number | null
 }
 
-/** Hard stop so a corrupt rule can never spin the render loop. */
 const MAX_INSTANCES = 2000
 
 function stepDate(freq: string, d: Date): Date | null {
@@ -31,14 +30,6 @@ function stepMs(freq: string): number {
   }
 }
 
-/**
- * Expand a recurring event into concrete occurrences inside [from, to].
- *
- * Events are stored as a single base row (`startAt` = first occurrence), so
- * anything that filters by real dates has to expand them first. Occurrences
- * keep the base id with a `::<index>` suffix; consumers strip it before
- * opening the event detail.
- */
 export function expandRecurringEvent(ev: Event, from: Date, to: Date): Event[] {
   const rec = ev.recurrence as RecurrenceRule | null
   if (!rec?.freq) return [ev]
@@ -51,13 +42,11 @@ export function expandRecurringEvent(ev: Event, from: Date, to: Date): Event[] {
   const endBound = until && !Number.isNaN(until.getTime()) ? until : to
   const maxCount = typeof rec.count === "number" && rec.count > 0 ? rec.count : Infinity
 
-  // Unknown frequencies cannot be stepped — treat them as one-off events.
   if (!stepDate(rec.freq, origStart)) return [ev]
 
   let cursor = origStart
   let index = 0
 
-  // Fast-forward: skip whole iterations before `from` for fixed-length steps.
   const msStep = stepMs(rec.freq)
   if (cursor < from && msStep > 0) {
     const skip = Math.max(0, Math.floor((from.getTime() - cursor.getTime()) / msStep))
@@ -87,7 +76,6 @@ export function expandRecurringEvent(ev: Event, from: Date, to: Date): Event[] {
   return instances.length ? instances : [ev]
 }
 
-/** Expand every recurring event in a list over the given window. */
 export function expandEvents(events: Event[], from: Date, to: Date): Event[] {
   return events.flatMap(ev => (ev.recurrence ? expandRecurringEvent(ev, from, to) : [ev]))
 }

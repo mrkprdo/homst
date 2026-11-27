@@ -84,8 +84,6 @@ class AiConversation(Base):
     id = Column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     household_id = Column(Uuid(as_uuid=False), ForeignKey("households.id"), nullable=False)
     title = Column(String(255), nullable=False, default="")
-    # Compact client-owned transcript. It is returned verbatim so an event's
-    # original chat can be opened and continued later.
     turns = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -98,10 +96,7 @@ class Event(Base):
     calendar_id = Column(Uuid(as_uuid=False), ForeignKey("calendars.id"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, default="")
-    # Raw email/screenshot text that produced an AI-imported event. Kept
-    # separate from ``description`` so the parsed notes stay readable.
     source_message = Column(Text, nullable=True)
-    # The Smart import chat that created this event, when there is one.
     ai_conversation_id = Column(
         Uuid(as_uuid=False),
         ForeignKey("ai_conversations.id", ondelete="SET NULL"),
@@ -118,10 +113,6 @@ class Event(Base):
         nullable=False, default="internal",
     )
     external_uid = Column(Text, nullable=True)
-    # Migration 0002 and the startup shim create this column as VARCHAR(36),
-    # not UUID. Keep the model in step with the schema: comparing a UUID bind
-    # parameter against a varchar column fails on PostgreSQL (member deletion
-    # nulls this column first), while strings compare cleanly everywhere.
     assignee_id = Column(String(36), nullable=True)
     created_by = Column(Uuid(as_uuid=False), ForeignKey("members.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
@@ -207,8 +198,8 @@ class ReminderLog(Base):
         nullable=False,
     )
     occurrence_at = Column(DateTime(timezone=True), nullable=False)
-    channel = Column(String(20), nullable=False)  # hud | push
-    status = Column(String(20), nullable=False, default="sent")  # sent | failed | skipped
+    channel = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False, default="sent")
     detail = Column(Text, nullable=True)
     sent_at = Column(DateTime(timezone=True), default=utcnow)
 

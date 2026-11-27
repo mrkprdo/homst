@@ -154,7 +154,6 @@ describe("downloadIcs", () => {
       if (tag === "a") anchor = el as HTMLAnchorElement
       return el
     })
-    // Prevent jsdom's "navigation not implemented" noise.
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
 
     downloadIcs(makeEvent({ title: "Team Meeting!" }))

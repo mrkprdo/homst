@@ -121,7 +121,7 @@ describe("UI primitives", () => {
     await w.trigger("pointerup")
 
     const wMed = mount(TaskCard, { props: { title: "M", priority: "medium", done: true } })
-    await wMed.trigger("pointerdown") // early return when done
+    await wMed.trigger("pointerdown")
     const wLow = mount(TaskCard, { props: { title: "L", priority: "low" } })
     expect(wLow.text()).toContain("low")
   })

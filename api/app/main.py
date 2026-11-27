@@ -57,10 +57,6 @@ _SAFE_MIGRATIONS = [
     """,
     "ALTER TABLE members DROP COLUMN IF EXISTS email",
     "DELETE FROM reminder_log WHERE channel = 'email'",
-    # Databases first created by `create_all` (dev) made events.assignee_id a
-    # UUID with a foreign key, while migration 0002 and production use
-    # VARCHAR(36). The model has always been compared with string ids, so
-    # normalise old dev databases to the deployed shape before queries run.
     """
     DO $$
     BEGIN
@@ -76,9 +72,6 @@ _SAFE_MIGRATIONS = [
         END IF;
     END $$;
     """,
-    # Reminder history kept events undeletable: the original foreign key had
-    # no ON DELETE CASCADE, so any event that had fired a reminder failed to
-    # delete. Rebuild the constraint (idempotently) to cascade the logs.
     """
     DO $$
     BEGIN
@@ -106,9 +99,8 @@ _SAFE_MIGRATIONS = [
     """,
 ]
 
-# ── Retry settings for database startup ──
 _DB_RETRY_MAX = 15
-_DB_RETRY_DELAY = 2  # seconds, doubles each attempt
+_DB_RETRY_DELAY = 2
 
 
 async def _wait_for_database(
@@ -141,7 +133,7 @@ async def _wait_for_database(
                 delay,
             )
             await asyncio.sleep(delay)
-            delay *= 2  # exponential backoff
+            delay *= 2
 
     logger.critical("Could not connect to the database after %d attempts", max_retries)
     raise last_exc  # type: ignore[misc]
@@ -223,7 +215,6 @@ async def block_cross_site_requests(request: Request, call_next):
     return await call_next(request)
 
 
-# ── Host / CORS ──
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=_csv(settings.allowed_hosts) or ["*"],
@@ -236,7 +227,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routers ──
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(calendar.router, prefix="/api/v1", tags=["calendar"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
@@ -252,7 +242,7 @@ app.include_router(nest_router, prefix="/api/v1/nest", tags=["nest"])
 app.include_router(push_router, prefix="/api/v1", tags=["push"])
 app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
 
-# ── Static files (photo uploads) ──
+
 class _PhotoStaticFiles(StaticFiles):
     """Serve uploads with a long-lived browser cache.
 

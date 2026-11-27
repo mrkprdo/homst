@@ -1,5 +1,4 @@
 export interface ReminderOption {
-  /** Select value as a string; "" means no reminder */
   value: string
   label: string
 }
@@ -15,7 +14,6 @@ export const REMINDER_OPTIONS: ReminderOption[] = [
   { value: "1440", label: "1 day before" },
 ]
 
-/** Human label for a stored reminder offset. */
 export function reminderLabel(minutes: number | null | undefined): string | null {
   if (minutes == null) return null
   const option = REMINDER_OPTIONS.find(o => o.value === String(minutes))
@@ -23,7 +21,6 @@ export function reminderLabel(minutes: number | null | undefined): string | null
   return minutes >= 1440 ? `${Math.round(minutes / 1440)} days before` : `${minutes} minutes before`
 }
 
-/** Parse a select value into the API payload ("" → null). */
 export function reminderMinutesFromValue(value: string): number | null {
   return value === "" ? null : Number(value)
 }

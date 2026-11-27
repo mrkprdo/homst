@@ -64,7 +64,6 @@ describe("QuickAddForm — recurrence payloads and time guards", () => {
     await field(w, "Repeat")!.find("select").setValue("daily")
     await field(w, "End repeat")!.find("select").setValue("count")
 
-    // non-numeric input collapses to 0
     const times = () => field(w, "Times")!.find("input")
     await times().setValue("")
     await submit(w)
@@ -91,7 +90,6 @@ describe("QuickAddForm — recurrence payloads and time guards", () => {
     await times[0]!.setValue("")
     expect(w.find(".summary-preview").text()).toBeTruthy()
 
-    // a later valid start time re-derives the end time
     times = w.findAll("input[type='time']")
     await times[0]!.setValue("23:30")
     times = w.findAll("input[type='time']")

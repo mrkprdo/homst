@@ -2,10 +2,6 @@ import { animate as animeAnimate, stagger, createTimeline, spring } from 'animej
 
 export { stagger, createTimeline }
 
-// ═══════════════════════════════════════════════════════════════
-// Low-power client detection (e.g. Raspberry Pi display)
-// ═══════════════════════════════════════════════════════════════
-
 const ANIMATIONS_ENABLED_KEY = 'homst-animations-enabled'
 
 function getUserAnimationOverride(): boolean | null {
@@ -17,56 +13,34 @@ function getUserAnimationOverride(): boolean | null {
   return null
 }
 
-/** ARM Linux covers Raspberry Pi and the other single-board kiosk displays. */
 function detectArmLinux(): boolean {
   if (typeof navigator === 'undefined') return false
   return /linux (armv7l|armv8l|aarch64)/.test(navigator.userAgent.toLowerCase())
 }
 
-/**
- * Whether the device itself is weak (Pi / low-end ARM display board).
- *
- * This is deliberately hardware-only: it must not be confused with the user's
- * animation preference. "Motion off" is a taste setting; "this SoC cannot copy
- * decoded video frames into a canvas" is a capability fact.
- */
 function detectWeakDevice(): boolean {
   if (typeof navigator === 'undefined') return false
 
-  // Avoid flagging Vitest test runners
   const isVitest = typeof import.meta !== 'undefined' && (import.meta as any).env?.VITEST === true
   if (isVitest) return false
 
   const isArmLinux = detectArmLinux()
   const lowCores = navigator.hardwareConcurrency != null && navigator.hardwareConcurrency <= 4
-  // deviceMemory is Chromium-only (Firefox leaves it undefined), so treat it as
-  // a bonus signal rather than the only one.
   const lowMemory = (navigator as any).deviceMemory != null && (navigator as any).deviceMemory <= 4
 
-  // Pi / low-end ARM display boards: either signal is enough.
   if (isArmLinux) return lowCores || lowMemory
-  // Small x86 mini-PCs driving a 4K wall display are common kiosks too. Both
-  // signals are required so an ordinary 4-core laptop is not flagged.
   return lowCores && lowMemory
 }
 
-/**
- * The budget for expensive continuous effects (video frame snapshots, blurs,
- * backdrop filters). Reduced motion or a weak device both qualify, but the
- * animation toggle does not: enabling animations on a Pi must not put the
- * 4 fps video→canvas copy back on the same SoC that is decoding the stream.
- */
 function detectPerformanceMode(): boolean {
   if (typeof window === 'undefined') return false
 
-  // Respect the system reduced-motion preference.
   if (typeof window.matchMedia === 'function') {
     try {
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true
     } catch {}
   }
 
-  // Manual override for debugging or kiosk configuration
   try {
     if (new URLSearchParams(window.location.search).has('low-power')) return true
   } catch {}
@@ -77,7 +51,6 @@ function detectPerformanceMode(): boolean {
 function detectLowPower(): boolean {
   if (typeof window === 'undefined') return false
 
-  // An explicit choice in the settings panel beats the system preference.
   const userOverride = getUserAnimationOverride()
   if (userOverride === true) return false
   if (userOverride === false) return true
@@ -90,16 +63,6 @@ export let isLowPower = lowPower
 
 let performanceMode = detectPerformanceMode()
 
-/**
- * A profile for browsers that composite in software — in practice ARM Linux
- * (Pi / SBC kiosks) with Firefox, but also Chromium there. These devices can
- * show idle CPU and still stutter: the compositor rasterises large layers on
- * the CPU, so a spinning full-screen cover, a per-card backdrop blur, or a
- * scale-based spring repaints the viewport every frame.
- *
- * Independent of the user's Motion setting: turning animations on must not put
- * the full-screen vinyl rotation back on a device that cannot composite it.
- */
 function detectCheapCompositor(): boolean {
   if (typeof window === 'undefined') return false
   try {
@@ -112,23 +75,19 @@ function detectCheapCompositor(): boolean {
 
 let cheapCompositor = detectCheapCompositor()
 
-/** Whether heavy composited effects should be avoided (ARM / software compositor). */
 export function isCheapCompositor(): boolean {
   return cheapCompositor
 }
 
-/** Force the cheap-compositor profile (tests only). */
 export function setCheapCompositor(enabled: boolean): void {
   cheapCompositor = enabled
   syncMotionClasses()
 }
 
-/** Whether continuous heavy effects should be throttled on this device. */
 export function isPerformanceMode(): boolean {
   return performanceMode
 }
 
-/** Force the heavy-effect budget (tests / kiosk configuration). */
 export function setPerformanceMode(enabled: boolean): void {
   performanceMode = enabled
 }
@@ -137,10 +96,7 @@ function syncMotionClasses(): void {
   if (typeof document === 'undefined') return
   document.documentElement.classList.toggle('low-power', lowPower)
   document.documentElement.classList.toggle('cheap-compositor', cheapCompositor)
-  // Lets the token stylesheet keep durations when the user explicitly opts in
-  // despite `prefers-reduced-motion: reduce`.
   document.documentElement.classList.toggle('motion-on', !lowPower)
-  // Exposed for on-device debugging (inspect from the kiosk's console).
   ;(window as any).__homstMotion = {
     lowPower,
     cheapCompositor,
@@ -149,7 +105,6 @@ function syncMotionClasses(): void {
   }
 }
 
-/** Toggle low-power mode at runtime (useful for tests / debug). */
 export function setLowPower(enabled: boolean): void {
   lowPower = enabled
   isLowPower = enabled
@@ -158,17 +113,10 @@ export function setLowPower(enabled: boolean): void {
 
 syncMotionClasses()
 
-/** Read whether animations are currently enabled. */
 export function getAnimationEnabled(): boolean {
   return !isLowPower
 }
 
-/**
- * A single compositor-only transform (one layer moving/scaling) is cheap
- * enough for a weak display, unlike the blur/spring/paint work the low-power
- * budget exists to avoid. Callers must still honour an explicit "animations
- * off" choice and the system reduced-motion preference.
- */
 export function canAnimateTransform(): boolean {
   if (typeof window === "undefined") return false
   if (getUserAnimationOverride() === false) return false
@@ -178,7 +126,6 @@ export function canAnimateTransform(): boolean {
   return true
 }
 
-/** Persist user animation preference and apply it immediately. */
 export function setAnimationEnabled(enabled: boolean): void {
   try {
     window.localStorage.setItem(ANIMATIONS_ENABLED_KEY, String(enabled))
@@ -186,31 +133,19 @@ export function setAnimationEnabled(enabled: boolean): void {
   setLowPower(!enabled)
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Rubbery tactile springs — underdamped so they overshoot and wobble back.
-// Damping ratio = damping / (2 * sqrt(stiffness)); ratio < 1 = wobble.
-// ═══════════════════════════════════════════════════════════════
-
 export const springs = {
-  // ── Entries: blocks, cards — slow-wind rubbery bounce (ratio ≈ 0.28)
   enter:   spring({ stiffness: 200, damping: 8 }),
 
-  // ── Drawer/overlay — fast, one visible bounce at the end (ratio ≈ 0.42)
   overlay: spring({ stiffness: 280, damping: 14 }),
 
-  // ── Staggered list items — snappy entry with one wobble (ratio ≈ 0.29)
   item:    spring({ stiffness: 240, damping: 9 }),
 
-  // ── Button/pop release — elastic rubberband snap-back (ratio ≈ 0.25)
   pop:     spring({ stiffness: 400, damping: 10 }),
 
-  // ── Press down (before release) — stiff, heavy resistance (ratio ≈ 0.61)
   press:   spring({ stiffness: 600, damping: 30 }),
 
-  // ── Toggle switch knob — overshoots past target then settles (ratio ≈ 0.24)
   toggle:  spring({ stiffness: 350, damping: 9 }),
 
-  // ── Drag/swipe release — heavy mass, long wobble tail (ratio ≈ 0.18)
   swipe:   spring({ stiffness: 180, damping: 5 }),
 }
 
@@ -218,7 +153,6 @@ export const ease = {
   out:     'outQuart',
   outFast: 'outExpo',
   in:      'inQuart',
-  // CSS cubic-bezier for rubbery release (overshoots ~8% then settles)
   rubber:  'cubic-bezier(0.34, 1.56, 0.64, 1)',
 }
 
@@ -228,14 +162,6 @@ export const dur = {
   slow:   320,
 }
 
-// ═══════════════════════════════════════════════════════════════
-// animate() wrapper: skips to final state on low-power clients and on
-// browsers that composite in software (ARM/Firefox kiosks). A JS-driven
-// spring over a large surface is repainted on the CPU there, so it reads
-// as stutter even while the device is idle. The compositor-only CSS fade
-// used for panel changes remains available separately.
-// ═══════════════════════════════════════════════════════════════
-
 const transformProps = new Set([
   'translateX', 'translateY', 'translateZ',
   'scale', 'scaleX', 'scaleY',
@@ -243,9 +169,6 @@ const transformProps = new Set([
   'skewX', 'skewY',
 ])
 
-// Anime.js treats bare numbers as px (translate) or deg (rotate/skew), but CSS
-// needs an explicit unit. Without these, a numeric transform such as
-// translateX(109.14) is rejected by the browser and the element never moves.
 const transformUnits: Record<string, string> = {
   translateX: 'px', translateY: 'px', translateZ: 'px',
   rotate: 'deg', rotateX: 'deg', rotateY: 'deg', rotateZ: 'deg',
@@ -312,7 +235,6 @@ function applyFinalState(target: unknown, params: any): void {
       style.transform = transforms.join(' ')
     }
     for (const [key, value] of Object.entries(otherStyles)) {
-      // Custom properties are not writable through the camelCase style object.
       if (key.startsWith('--')) style.setProperty(key, value)
       else (style as any)[key] = value
     }
@@ -330,10 +252,6 @@ export function animate(...args: Parameters<typeof animeAnimate>): ReturnType<ty
   applyFinalState(target, raw)
 
   if (typeof raw.onComplete === 'function') {
-    // Defer completion by one frame. Calling Vue Transition done() callbacks
-    // synchronously (especially with mode="out-in") can leave Vue in a state
-    // where it tries to access the leaving element's parent before the next
-    // element has been anchored, causing "Cannot read properties of null".
     const cb = raw.onComplete
     const schedule =
       typeof requestAnimationFrame === 'function'
@@ -342,7 +260,6 @@ export function animate(...args: Parameters<typeof animeAnimate>): ReturnType<ty
     schedule(cb)
   }
 
-  // Minimal stub matching the methods callers might chain.
   const stub = {
     complete: () => stub,
     cancel: () => stub,

@@ -19,10 +19,8 @@ export interface ReminderPayload {
 
 const MAX_VISIBLE = 3
 
-/** Cards linger briefly after the event starts so "at start time" reminders stay visible. */
 export const START_GRACE_MS = 2 * 60 * 1000
 
-/** setTimeout delay cap (~24.8 days) — larger values overflow. */
 const MAX_TIMEOUT = 2_147_483_647
 
 const notifications = ref<HudNotification[]>([])
@@ -41,7 +39,6 @@ function clearAllTimers() {
   expiryTimers.clear()
 }
 
-/** Add a reminder to the heads-up display; deduped, capped, and auto-expiring. */
 function push(payload: ReminderPayload) {
   const id = `${payload.event_id ?? "event"}::${payload.start_at ?? Date.now()}`
   if (notifications.value.some(n => n.id === id)) return
@@ -54,8 +51,6 @@ function push(payload: ReminderPayload) {
     allDay: !!payload.all_day,
   }
 
-  // Auto-expire: once the event has started (plus a short grace) the reminder
-  // is stale — drop it, or schedule its dismissal.
   if (notification.startAt) {
     const expiresAt = new Date(notification.startAt).getTime() + START_GRACE_MS
     const remaining = expiresAt - Date.now()

@@ -4,7 +4,6 @@ import { mount, flushPromises } from "@vue/test-utils"
 import { setLowPower } from "@/lib/motion"
 import { useCardBlowup } from "@/composables/useCardBlowup"
 
-/** Minimal host for the composable: one card and the overlay stage. */
 const Harness = defineComponent({
   setup() {
     const { active, stageEl, closeEl, open, close } = useCardBlowup()
@@ -90,7 +89,6 @@ describe("useCardBlowup motion", () => {
 
   it("jumps to the expanded state when motion is switched off", async () => {
     setLowPower(true)
-    // jsdom has no Element.animate, so the composable takes the no-motion path.
     expect(typeof (document.createElement("div") as HTMLElement).animate).toBe("undefined")
 
     const wrapper = await openCard()

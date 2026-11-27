@@ -47,7 +47,6 @@ onMounted(() => {
     </PageHeader>
 
     <div ref="columnsEl" class="tasks-columns">
-      <!-- To Do -->
       <div class="tasks-column" style="--col: 0">
         <div class="column-header column-header--todo">
           <span class="column-title">To Do</span>
@@ -73,7 +72,6 @@ onMounted(() => {
         </TransitionGroup>
       </div>
 
-      <!-- Doing -->
       <div class="tasks-column" style="--col: 1">
         <div class="column-header column-header--doing">
           <span class="column-title">Doing</span>
@@ -102,7 +100,6 @@ onMounted(() => {
         </TransitionGroup>
       </div>
 
-      <!-- Done -->
       <div class="tasks-column" style="--col: 2">
         <div class="column-header column-header--done">
           <span class="column-title">Done</span>
@@ -143,8 +140,6 @@ onMounted(() => {
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
   flex: 1;
-  /* The columns are Futur cards whose ink lip paints 3px past the box; clip
-     with a margin so the bottom of each column keeps it. */
   overflow: clip;
   overflow-clip-margin: 6px;
 }

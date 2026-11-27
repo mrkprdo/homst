@@ -1,11 +1,4 @@
-/* ─────────────────────────────────────────────────────────────────────────────
-   HOMST "Futur" theme layer
-   Applied by adding the `futur` class to <html>. It paints the app as flat cel
-   color: warm paper, ink contours, hard offset shadows, saturated tertiary
-   fields, and a geometric display face. The Clay-o theme is untouched.
-   ───────────────────────────────────────────────────────────────────────────── */
 
-/* ── Light — Delivery Day ──────────────────────────────────────────────────── */
 .futur {
   --color-ink: #15171c;
   --color-paper: #f3edd6;
@@ -53,7 +46,6 @@
   --clay-gradient-bottom: transparent;
 }
 
-/* ── Dark — Deep Space ─────────────────────────────────────────────────────── */
 .futur.dark {
   --color-ink: #05080e;
   --color-paper: #f3edd6;
@@ -87,7 +79,6 @@
   --shadow-accent-lip: var(--color-ink);
 }
 
-/* ── Warm light — Mars Campus ─────────────────────────────────────────────── */
 .futur.warm {
   --color-ink: #2a2114;
   --color-paper: #f2e4c4;
@@ -118,7 +109,6 @@
   --shadow-accent-lip: var(--color-ink);
 }
 
-/* ── Warm dark — Mars Night ───────────────────────────────────────────────── */
 .futur.dark.warm {
   --color-ink: #05080e;
   --color-bgBase: #1b1208;
@@ -142,10 +132,6 @@
   --color-info: #67d5e0;
 }
 
-/* ── Palette family remap ─────────────────────────────────────────────────────
-   Components that still reference the five original families adopt the Futur
-   palette without needing per-component edits. Member colours are stored as
-   inline hex, so they are unaffected. */
 .futur {
   --color-peach-base: #e0a21a;  --color-peach-light: #f2c64b;
   --color-peach-lighter: #fce3a0; --color-peach-lightest: #fff7da;
@@ -190,7 +176,6 @@
   --color-sky-dark: #67d5e0;    --color-sky-darker: #2a9fac;    --color-sky-darkest: #17666f;
 }
 
-/* ── Flat cel surfaces ────────────────────────────────────────────────────── */
 .futur .clay-surface { background: none !important; }
 
 .futur [class*="shadow-clay-sm"],
@@ -206,7 +191,6 @@
   box-shadow: inset 0 2px 0 0 var(--color-paperDeep) !important;
 }
 
-/* ── Typography ───────────────────────────────────────────────────────────── */
 .futur h1,
 .futur h2,
 .futur h3,
@@ -224,7 +208,6 @@
   letter-spacing: -0.01em;
 }
 
-/* ── Cards and widgets ────────────────────────────────────────────────────── */
 .futur .ui-card,
 .futur .settings-card,
 .futur .font-preview,
@@ -243,7 +226,6 @@
   border: 1.5px dashed var(--color-ink);
 }
 
-/* ── Buttons ──────────────────────────────────────────────────────────────── */
 .futur .ui-btn {
   border: 2px solid var(--color-ink) !important;
   box-shadow: 0 3px 0 0 var(--color-ink) !important;
@@ -291,7 +273,6 @@
 }
 .futur .ui-btn:active { box-shadow: none !important; }
 
-/* ── Inputs and selects ───────────────────────────────────────────────────── */
 .futur .ui-input,
 .futur .ui-select,
 .futur .ui-textarea {
@@ -309,7 +290,6 @@
   box-shadow: none !important;
 }
 
-/* ── Toggles and segmented controls ───────────────────────────────────────── */
 .futur .ui-toggle {
   background: var(--color-bgSubtle) !important;
   border: 2px solid var(--color-ink);
@@ -337,7 +317,6 @@
 }
 .futur .segmented-btn.active { color: var(--color-on-accent) !important; }
 
-/* ── Navigation ───────────────────────────────────────────────────────────── */
 .futur .app-nav {
   background: var(--color-bgSurface) !important;
   border-right: 2px solid var(--color-ink);
@@ -363,7 +342,6 @@
 .futur .nav-logo svg rect:nth-of-type(2) { fill: var(--color-action); }
 .futur .nav-logo svg path:first-of-type { fill: var(--color-ink); }
 
-/* ── Settings cards ───────────────────────────────────────────────────────── */
 .futur .theme-card,
 .futur .preset-card {
   background: var(--color-bgSurface) !important;
@@ -404,14 +382,11 @@
   border-top-color: color-mix(in srgb, var(--color-ink) 18%, transparent) !important;
 }
 
-/* The Wi-Fi code keeps the flat cel look: crisp square paper, ink contour and
-   the same hard lip the other Futur surfaces sit on. */
 .futur .wifi-qr {
   border-radius: var(--radius-xs) !important;
   box-shadow: 0 0 0 2px var(--color-ink), 0 3px 0 0 var(--color-ink) !important;
 }
 
-/* ── Avatars, tasks, calendar ─────────────────────────────────────────────── */
 .futur .ui-avatar {
   box-shadow: 0 0 0 2px var(--color-ink), 0 2px 0 0 var(--color-ink) !important;
 }
@@ -431,8 +406,6 @@
   box-shadow: 0 1px 0 0 var(--color-ink) !important;
 }
 
-/* Today and selected month cards get an accent field plus the ink outline so
-   they read instantly against the flat paper surface. */
 .futur .day-cell.today {
   background: color-mix(in srgb, var(--color-action) 18%, var(--color-bgSurface)) !important;
   box-shadow: inset 0 0 0 2px var(--color-ink), 0 1px 0 0 var(--color-ink) !important;
@@ -454,7 +427,6 @@
   border: 1px solid color-mix(in srgb, var(--color-ink) 22%, transparent);
 }
 
-/* ── Floating controls ────────────────────────────────────────────────────── */
 .futur .lock-toggle {
   background: var(--color-bgSurface) !important;
   border: 2px solid var(--color-ink);

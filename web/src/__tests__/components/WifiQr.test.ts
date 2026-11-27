@@ -19,7 +19,6 @@ describe("WifiQr", () => {
 
     const modules = svg.find("path.wifi-qr__modules")
     expect(modules.attributes("d")!.length).toBeGreaterThan(100)
-    // Colours live in CSS so the code follows the theme accent.
     expect(paper.attributes("fill")).toBeUndefined()
     expect(modules.attributes("fill")).toBeUndefined()
 

@@ -17,10 +17,6 @@ from app.updater.job import (
 )
 from app.updater.state import StateStore
 
-# ══════════════════════════════════════════════════════════════════════
-# updater/docker_api
-# ══════════════════════════════════════════════════════════════════════
-
 
 class _Response:
     def __init__(
@@ -173,11 +169,11 @@ async def test_docker_pull_stream_reports_progress_and_errors():
 async def test_docker_container_lifecycle_ignores_benign_statuses():
     client, http = _client(
         [
-            _Response(304),  # stop: already stopped
-            _Response(404),  # stop: gone
-            _Response(200),  # rename
-            _Response(304),  # start: already running
-            _Response(404),  # remove: gone
+            _Response(304),
+            _Response(404),
+            _Response(200),
+            _Response(304),
+            _Response(404),
         ]
     )
     await client.stop_container("c1")
@@ -227,11 +223,6 @@ async def test_docker_health_check_reads_exec_exit_code(monkeypatch):
 
     client, _ = _client(error=RuntimeError("exec failed"))
     assert await client.health_check("c1") is False
-
-
-# ══════════════════════════════════════════════════════════════════════
-# updater/job helpers and sync
-# ══════════════════════════════════════════════════════════════════════
 
 
 def _image(version=None, image_id="sha256:img", label=None, env=None):
@@ -295,7 +286,7 @@ async def test_sync_current_handles_missing_container_and_image(tmp_path):
         docker=_SyncDocker(), store=StateStore(str(tmp_path)),
         target_name="homst", image_repo="ghcr.io/mrkprdo/homst",
     )
-    await manager.sync_current()  # no target
+    await manager.sync_current()
 
     docker = _SyncDocker(container=_container(), image_error=DockerError(404, "no image"))
     manager = UpdateManager(
@@ -326,13 +317,7 @@ async def test_sync_current_clears_stale_and_invalid_holds(tmp_path):
 
     docker = _SyncDocker(container=_container(), image=_image("0.2.0"))
     await manager.sync_current()
-    # Same version: no redundant state write.
     assert (await manager.snapshot())["current_version"] == "0.2.0"
-
-
-# ══════════════════════════════════════════════════════════════════════
-# updater/job recovery
-# ══════════════════════════════════════════════════════════════════════
 
 
 class _RecoveryDocker:
@@ -482,7 +467,6 @@ async def test_recover_finishes_a_healthy_new_container(tmp_path):
     assert ("remove", "rollback-id") in docker.calls
     assert ("tag", "ghcr.io/mrkprdo/homst:0.3.0", "ghcr.io/mrkprdo/homst", "latest") in docker.calls
 
-    # A failed latest retag is only a warning.
     store = StateStore(str(tmp_path / "retag"))
     docker.calls.clear()
 
@@ -551,11 +535,6 @@ async def test_recover_reports_unrecoverable_state(tmp_path):
     manager = _manager(tmp_path, _RecoveryDocker())
     await manager.recover()
     assert (await manager.snapshot())["job"]["state"] == "failed"
-
-
-# ══════════════════════════════════════════════════════════════════════
-# updater/job install guards and rollback helper
-# ══════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.asyncio
@@ -666,11 +645,6 @@ async def test_retry_rollback_guards_and_success(tmp_path):
         await manager.retry_rollback()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# updater/main (sidecar application)
-# ══════════════════════════════════════════════════════════════════════
-
-
 class _SidecarDocker:
     def __init__(self, *, ping_error=None, containers=None, image=None):
         self.ping_error = ping_error
@@ -740,7 +714,6 @@ async def test_sidecar_lifespan_starts_recovers_and_closes(monkeypatch):
         assert updater_main.manager is manager
     assert docker.closed is True
 
-    # A failing recovery is logged but does not stop the sidecar.
     monkeypatch.setattr(
         updater_main,
         "UpdateManager",
@@ -859,11 +832,6 @@ async def test_sidecar_target_route(monkeypatch):
     assert (await updater_main.target())["version"] == "0.2.0"
 
 
-# ══════════════════════════════════════════════════════════════════════
-# updater/job: install paths and health polling
-# ══════════════════════════════════════════════════════════════════════
-
-
 class _RunDocker(_RecoveryDocker):
     def __init__(
         self,
@@ -892,7 +860,6 @@ class _RunDocker(_RecoveryDocker):
         if ref.startswith("ghcr.io/mrkprdo/homst:0.3.0") or ref == "sha256:new":
             return copy.deepcopy(self.new_image)
         if ref.startswith("ghcr.io/mrkprdo/homst:0."):
-            # A rollback target that is not retained locally.
             raise DockerError(404, "missing")
         return copy.deepcopy(self.old_image)
 

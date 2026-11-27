@@ -6,7 +6,6 @@ from sqlalchemy import String, select, update
 
 from app.models.all import Calendar, Event, ReminderLog, Task
 
-# ── Health ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_health(client):
@@ -14,8 +13,6 @@ async def test_health(client):
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
 
-
-# ── Members ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_list_members_empty(client):
@@ -138,8 +135,6 @@ async def test_delete_member_not_found(client):
     assert r.status_code == 404
 
 
-# ── Calendars ────────────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_create_calendar(client):
     r = await client.post("/api/v1/calendars", json={
@@ -217,8 +212,6 @@ async def test_subscribe_calendar(client):
     assert r.json()["source"] == "ical"
     assert r.json()["feed_url"] == "https://example.com/cal.ics"
 
-
-# ── Events ───────────────────────────────────────────────────────────────────
 
 async def _make_calendar(client, name="Cal"):
     r = await client.post("/api/v1/calendars", json={"name": name, "color": "sage", "source": "internal"})
@@ -337,11 +330,9 @@ async def test_list_events_keeps_recurring_series_in_later_windows(client):
         "start_at": "2026-05-05T10:00:00Z", "end_at": "2026-05-05T11:00:00Z",
     })
 
-    # The series' base occurrence is over, but it still repeats in June.
     r = await client.get("/api/v1/events?from=2026-06-01&to=2026-06-30")
     assert [e["title"] for e in r.json()] == ["Weekly"]
 
-    # It must not leak into a window that ends before it starts.
     r = await client.get("/api/v1/events?to=2026-05-01")
     assert r.json() == []
 
@@ -394,8 +385,6 @@ async def test_delete_event_with_reminder_history(client, db_session):
     assert logs == []
 
 
-# ── Task Lists ───────────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_create_task_list(client):
     r = await client.post("/api/v1/task-lists", json={"name": "Chores", "color": "taupe", "position": 0})
@@ -434,8 +423,6 @@ async def test_delete_task_list(client):
     r = await client.get("/api/v1/task-lists")
     assert all(l["id"] != list_id for l in r.json())
 
-
-# ── Tasks ────────────────────────────────────────────────────────────────────
 
 async def _make_list(client, name="Work"):
     r = await client.post("/api/v1/task-lists", json={"name": name, "color": "taupe", "position": 0})
@@ -673,8 +660,6 @@ async def test_delete_task_list_cascades_tasks(client):
     assert len(r.json()) == 0
 
 
-# ── Settings ─────────────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_get_settings(client):
     r = await client.get("/api/v1/household/settings")
@@ -689,8 +674,6 @@ async def test_update_settings(client):
     r = await client.get("/api/v1/household/settings")
     assert r.json().get("theme") == "dark"
 
-
-# ── Holidays ─────────────────────────────────────────────────────────────────
 
 def _mock_nager_2026():
     return [
@@ -782,7 +765,7 @@ async def test_sync_holidays_with_province(client, monkeypatch):
 
     r = await client.get("/api/v1/holidays")
     holidays = r.json()
-    assert len(holidays) == 2  # 1 from 2026, 1 from 2027
+    assert len(holidays) == 2
     assert all(h["name"] == "NY Day" for h in holidays)
 
 
@@ -803,8 +786,7 @@ async def test_sync_holidays_without_province_includes_all(client, monkeypatch):
 
     r = await client.get("/api/v1/holidays")
     holidays = r.json()
-    # Without province filter, ALL holidays are included (even county-specific ones)
-    assert len(holidays) == 4  # 2 per year × 2 years
+    assert len(holidays) == 4
     names = {h["name"] for h in holidays}
     assert "National Holiday" in names
     assert "Local Only" in names
@@ -841,7 +823,6 @@ async def test_sync_holidays_same_country_twice_no_duplicates(client, monkeypatc
     await client.post("/api/v1/holidays/sync", json={"country_code": "US"})
     await client.post("/api/v1/holidays/sync", json={"country_code": "US"})
     r = await client.get("/api/v1/holidays")
-    # Should still be 5, not 10 — sync replaces all
     assert len(r.json()) == 5
 
 
@@ -893,7 +874,6 @@ async def test_settings_and_members_onboarding_flow(client):
     })
     assert r.status_code == 200
 
-    # Verify members
     r = await client.get("/api/v1/household/members")
     members = r.json()
     assert len(members) == 2
@@ -901,7 +881,6 @@ async def test_settings_and_members_onboarding_flow(client):
     assert "Alice" in names
     assert "Bob" in names
 
-    # Verify settings
     r = await client.get("/api/v1/household/settings")
     settings = r.json()
     assert settings.get("houseName") == "My Home"

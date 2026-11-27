@@ -6,10 +6,8 @@ const permission = ref<NotificationPermission>("default")
 const subscribed = ref(false)
 const busy = ref(false)
 const error = ref<string | null>(null)
-/** Human-readable reason push is unavailable — surfaced in the settings hint. */
 const supportDetail = ref("")
 
-/** Convert the base64url VAPID key into the byte array `subscribe()` expects. */
 export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
@@ -24,8 +22,6 @@ function detectSupport(): boolean {
     supportDetail.value = "no browser environment"
     return false
   }
-  // Real browsers always set this boolean; jsdom leaves it undefined, so only
-  // treat an explicit `false` as insecure.
   if (window.isSecureContext === false) {
     supportDetail.value =
       "this page isn't a secure context — the HTTPS certificate isn't trusted on this device"
@@ -53,7 +49,6 @@ function getRegistration(): Promise<ServiceWorkerRegistration | undefined> {
   return navigator.serviceWorker.getRegistration()
 }
 
-/** Fail fast instead of hanging when no service worker ever activates (e.g. dev). */
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([
     promise,
@@ -61,7 +56,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   ])
 }
 
-/** Always call this before showing state — it also runs `detectSupport()`. */
 async function refresh() {
   supported.value = detectSupport()
   if (!supported.value) {
@@ -78,7 +72,6 @@ async function refresh() {
   }
 }
 
-/** Ask for permission, subscribe this device, and register it with the server. */
 async function enable(): Promise<boolean> {
   if (!detectSupport()) {
     supported.value = false
@@ -121,7 +114,6 @@ async function enable(): Promise<boolean> {
   }
 }
 
-/** Unsubscribe this device and forget it on the server. */
 async function disable(): Promise<boolean> {
   busy.value = true
   error.value = null

@@ -8,7 +8,6 @@ export interface NestRoom {
   humidity: number | null
   kind: "thermostat" | "sensor"
   online: boolean
-  /** This sensor is the one the thermostat currently follows. */
   active: boolean
 }
 
@@ -17,7 +16,6 @@ export interface NestTemperatures {
   authType: "google" | "nest" | null
   connected: boolean
   rooms: NestRoom[]
-  /** Rolling 12-hr sparkline samples per room id: [epochSeconds, tempC][]. */
   history?: Record<string, Array<[number, number]>>
   updatedAt: string | null
   error: string | null

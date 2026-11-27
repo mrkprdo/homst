@@ -61,8 +61,6 @@ describe("App", () => {
   })
 
   async function settlePanel(wrapper: ReturnType<typeof mountApp>, selector: string) {
-    // The first import of a panel SFC includes Vitest's transform step, which
-    // can take longer than a few microtasks. Poll with a real timer.
     const deadline = Date.now() + 5000
     while (!wrapper.find(selector).exists() && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 25))
@@ -284,8 +282,6 @@ describe("App", () => {
     const removeSpy = vi.spyOn(window, "removeEventListener")
 
     const wrapper = mountApp()
-    // Four idle listeners plus online and offline (visibilitychange is on
-    // document), plus the nav's three auto-hide listeners.
     expect(addSpy).toHaveBeenCalledTimes(9)
 
     wrapper.unmount()

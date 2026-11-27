@@ -1,14 +1,6 @@
 import { test, expect, type Page } from "@playwright/test"
 import { setupApiMocks, completeOnboarding } from "./mocks"
 
-/**
- * Reminder heads-up display (HUD).
- *
- * Reminders reach the kiosk over the `/api/stream` SSE connection. We stand in
- * for the API by fulfilling that request with a static `text/event-stream`
- * body, which the real EventSource parses and dispatches as events.
- */
-
 function reminder(id: string, title: string, minutesFromNow: number, extra: Record<string, unknown> = {}) {
   return {
     event_id: id,

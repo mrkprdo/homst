@@ -95,20 +95,17 @@ describe("useFittedList", () => {
     await flushPromises()
     await nextTick()
 
-    // 140px fits three rows once the measured "+N more" slot is reserved.
     expect(api.visible.value).toHaveLength(3)
     expect(api.hiddenCount.value).toBe(7)
     expect(wrapper.findAll(".row")).toHaveLength(3)
     expect(wrapper.find(".list-more").text()).toBe("+7 more")
 
-    // A font-scale change clears the cached row heights and re-measures.
     measureKey.value++
     await flushPromises()
     await nextTick()
     expect(api.visible.value).toHaveLength(3)
     expect(api.hiddenCount.value).toBe(7)
 
-    // Taller tile exposes more rows without scrolling.
     containerHeight = 300
     roCallback!()
     await flushPromises()
@@ -117,12 +114,10 @@ describe("useFittedList", () => {
     expect(api.hiddenCount.value).toBe(3)
     expect(wrapper.findAll(".row")).toHaveLength(7)
 
-    // New rows of a known kind are trimmed without a re-measure.
     entries.value = rows(12)
     await flushPromises()
     expect(api.hiddenCount.value).toBe(5)
 
-    // Even a tile too small for a footer keeps its first row visible.
     containerHeight = 50
     roCallback!()
     await flushPromises()
@@ -135,7 +130,7 @@ describe("useFittedList", () => {
 
   it("re-measures new row kinds and trims a trailing group label", async () => {
     containerHeight = 80
-    labelHeight = 0 // first pass cannot measure the label yet
+    labelHeight = 0
     entries.value = [
       { kind: "row", id: "r1" },
       { kind: "label", id: "l1" },
@@ -146,7 +141,6 @@ describe("useFittedList", () => {
     await flushPromises()
     await nextTick()
 
-    // Unmeasurable kind falls back to showing every row.
     expect(api.visible.value).toHaveLength(3)
 
     labelHeight = 20
@@ -154,12 +148,9 @@ describe("useFittedList", () => {
     await flushPromises()
     await nextTick()
 
-    // row, label, row would end on a label; the label is dropped so it never hangs.
     expect(api.visible.value.map(entry => entry.id)).toEqual(["r1"])
-    // Only the hidden row counts as "more" — the label is chrome.
     expect(api.hiddenCount.value).toBe(1)
 
-    // Empty data resets the list instead of leaving a stale slice behind.
     entries.value = []
     await flushPromises()
     expect(api.visible.value).toHaveLength(0)

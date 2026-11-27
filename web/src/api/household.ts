@@ -22,9 +22,7 @@ export interface HouseholdSettings {
   accentColor?: string
   fontSize?: string
   warm?: boolean
-  /** Server-resolved day/night state while `theme` is "auto". */
   autoThemeDark?: boolean
-  /** Today's sunrise/sunset (ISO 8601) while `theme` is "auto". */
   autoSunrise?: string
   autoSunset?: string
   widgetLayout?: WidgetDef[]
@@ -36,45 +34,35 @@ export interface HouseholdSettings {
   wifi?: WifiSettings | null
 }
 
-/** Guest network details shared with every screen so the house card can show a join QR. */
 export interface WifiSettings {
   ssid?: string
   password?: string
-  /** WPA covers WPA/WPA2/WPA3; "nopass" is an open network. */
   encryption?: WifiEncryption
   hidden?: boolean
 }
 
 export type WifiEncryption = "WPA" | "WEP" | "nopass"
 
-/** The server keeps the password; clients only learn whether one is saved. */
 export interface CameraSettings {
   url?: string
   username?: string
   password?: string
   passwordSet?: boolean
-  /** Clockwise rotation in degrees: 0, 90, 180 or 270. */
   rotation?: number
   streamPath?: string | null
 }
 
-/** Now-playing display choices, shared by every screen in the household. */
 export interface MusicPreferences {
   lyrics?: boolean
-  /** Lyric delay in milliseconds: negative starts lines earlier, positive later. */
   lyricsOffsetMs?: number
   background?: boolean
   backgroundSpin?: boolean
   cardSpin?: boolean
 }
 
-/** Kiosk screen behaviour, shared by every display in the household. */
 export interface ScreenPreferences {
-  /** Cycle through Home, Calendar and Tasks while the display is idle. */
   carousel?: boolean
-  /** Return to Home after 15 minutes without interaction. */
   returnHome?: boolean
-  /** Slide the nav rail off-screen until the pointer reaches the left edge. */
   autoHideNav?: boolean
 }
 
@@ -87,7 +75,6 @@ export interface NotificationPreferences {
 export interface UpdatePreferences {
   enabled: boolean
   checkIntervalMinutes: number
-  /** Install new stable releases after a short countdown, without asking. */
   autoInstall: boolean
 }
 

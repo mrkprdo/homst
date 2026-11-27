@@ -1,21 +1,14 @@
 import { test, expect } from "@playwright/test"
 import { setupApiMocks, completeOnboarding, addMockEvent, addMockTask } from "./mocks"
 
-/**
- * Home dashboard (kiosk) — widgets, slideshow, and the layout lock.
- * The home panel is the default view, so no navigation is required.
- */
 test.describe("Home dashboard", () => {
   test.describe.configure({ mode: "serial" })
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page)
-    // Holidays are folded into the event list by useEvents; clear them so the
-    // "empty state" assertions don't depend on the current date.
     await page.route("**/api/v1/holidays", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
     )
-    // App.vue loads the photo library on boot for the slideshow widget.
     await page.route("**/api/v1/photos", async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({
@@ -35,8 +28,6 @@ test.describe("Home dashboard", () => {
   })
 
   test("renders every widget on the home panel", async ({ page }) => {
-    // Assert at wall-display size: the House card drops its date line on short
-    // tiles by container query, so the default 720px-tall window would hide it.
     await page.setViewportSize({ width: 1920, height: 1080 })
     await expect(page.locator(".home-view")).toBeVisible()
     await expect(page.locator(".widget")).toHaveCount(9)
@@ -48,7 +39,6 @@ test.describe("Home dashboard", () => {
     for (const title of ["Today's Schedule", "Weather", "To Do", "Photos", "Spotify"]) {
       await expect(page.locator(".widget").filter({ hasText: title }).first()).toBeVisible()
     }
-    // Mini calendar renders this month
     const monthName = new Date().toLocaleString("en-US", { month: "long", year: "numeric" })
     await expect(page.locator(".widget").filter({ hasText: monthName })).toBeVisible()
     await expect(page.locator(".mini-cal-day")).not.toHaveCount(0)
@@ -59,8 +49,6 @@ test.describe("Home dashboard", () => {
       const s = getComputedStyle(el)
       return { overflow: s.overflow, margin: Number.parseFloat(s.overflowClipMargin) || 0 }
     })
-    // Futur cards paint a 3px ink lip below their box. Cards sit flush with the
-    // canvas, so clipping hard at its edge sliced the lip off the bottom row.
     expect(style.overflow).toBe("clip")
     expect(style.margin).toBeGreaterThanOrEqual(3)
   })
@@ -93,10 +81,6 @@ test.describe("Home dashboard", () => {
     const weather = page.locator(".widget").filter({ hasText: "Weather" }).first()
     await expect(weather.locator(".weather-temp")).toBeVisible()
 
-    // The cloud art is painted above the raw box (::before), so compare the
-    // base offset to the card height: 13% of the box used to mean a top band;
-    // once the tile is taller than wide the scene is centred and the first
-    // cloud starts well into the card.
     const cloudOffset = await weather.evaluate((el) => {
       const card = el.getBoundingClientRect()
       const cloud = el.querySelector(".wx-cloud--a")!.getBoundingClientRect()
@@ -123,7 +107,6 @@ test.describe("Home dashboard", () => {
   })
 
   test("seeded event appears in today's schedule", async ({ page }) => {
-    // Local noon today guarantees the event lands on the local "today" regardless of timezone.
     const start = new Date()
     start.setHours(12, 0, 0, 0)
     const end = new Date(start)
@@ -132,7 +115,6 @@ test.describe("Home dashboard", () => {
     await page.reload()
     await page.waitForTimeout(700)
     await expect(page.locator(".widget").filter({ hasText: "Today's Schedule" })).toContainText("Team standup")
-    // Event day is marked on the mini calendar (chips in detailed tiles, dots when compact)
     await expect(page.locator(".mini-cal-chip:visible, .event-dot:visible").first()).toBeVisible()
   })
 
@@ -170,7 +152,6 @@ test.describe("Home dashboard", () => {
     await toggle.click()
     await expect(toggle).toHaveAttribute("aria-label", "Lock layout")
     await expect(page.locator(".widget-canvas")).toHaveClass(/is-editing/)
-    // 6 columns × 6 rows of helper cells, one handle set per widget
     await expect(page.locator(".grid-cell-bg")).toHaveCount(36)
     await expect(page.locator(".drag-handle")).toHaveCount(9)
     await expect(page.locator(".resize-handle")).toHaveCount(9)
@@ -190,7 +171,6 @@ test.describe("Home dashboard", () => {
     await expect(stage).toBeVisible()
     await expect(stage.locator(".widget")).toHaveCount(1)
     await expect(stage.locator(".datetime-house")).toHaveText("Cedar House")
-    // The card left its grid cell while expanded.
     await expect(page.locator(".widget-canvas .widget")).toHaveCount(8)
 
     const box = await stage.boundingBox()
@@ -205,7 +185,6 @@ test.describe("Home dashboard", () => {
     const card = page.locator(".widget").first()
     expect(await card.evaluate(el => getComputedStyle(el).userSelect)).toBe("none")
 
-    // Form fields inside a card stay editable.
     const input = page.locator(".spotify-setup-input")
     await expect(input).toBeVisible()
     expect(await input.evaluate(el => getComputedStyle(el).userSelect)).toBe("text")

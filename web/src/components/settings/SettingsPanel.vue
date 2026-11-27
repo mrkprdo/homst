@@ -116,11 +116,6 @@ const autoSchedule = computed(() => {
   return sunrise && sunset ? `Sunrise ${sunrise} · Sunset ${sunset}` : ""
 })
 
-/**
- * Auto needs the server to resolve sunrise/sunset, so ask for the new state in
- * the same round-trip instead of waiting for the debounced settings watcher.
- * Other themes apply immediately and persist through that watcher.
- */
 let themeRequest = 0
 async function selectTheme(theme: Theme) {
   const request = ++themeRequest
@@ -130,13 +125,10 @@ async function selectTheme(theme: Theme) {
   }
   try {
     const res = await householdApi.updateSettings({ theme: "auto" })
-    // A newer click won while this request was in flight.
     if (request !== themeRequest) return
     applyHouseholdSettings(res.settings ?? { theme: "auto" })
   } catch {
     if (request !== themeRequest) return
-    // Offline: keep auto selected; it falls back to the OS preference until
-    // the next successful load supplies the server's day/night state.
     settings.updateTheme("auto")
   }
 }
@@ -197,7 +189,6 @@ const currentFontSizeName = computed(() => fontSizeNames[settings.fontSize.value
 
 const selectedColorName = computed(() => colorNames[settings.accentColor.value] ?? "Custom")
 
-// ── Home layout ──
 const confirmingLayoutReset = ref(false)
 const resettingLayout = ref(false)
 const resetLayoutMessage = ref("")
@@ -213,8 +204,6 @@ async function resetHomeLayout() {
   resettingLayout.value = true
   resetLayoutError.value = ""
   resetLayoutMessage.value = ""
-  // Paint the default immediately on the next home visit, even before the
-  // server round-trip completes.
   const layout = DEFAULT_LAYOUT.map(card => ({ ...card }))
   writeCachedHomeLayout(layout)
   try {
@@ -238,7 +227,6 @@ watch(animationsEnabled, (enabled) => {
   setAnimationEnabled(enabled)
 })
 
-// ── Reminders ──
 const defaultReminder = ref("")
 const testing = ref(false)
 const testResults = ref<Record<string, string> | null>(null)
@@ -286,7 +274,6 @@ onMounted(async () => {
   void loadAi()
 })
 
-/** Mirror reminder preferences changed on another client (SSE broadcast). */
 watch(() => settings.defaultReminderMinutes.value, (minutes) => {
   defaultReminder.value = minutes != null ? String(minutes) : ""
 })
@@ -295,7 +282,6 @@ watch(serverReachable, (reachable) => {
   if (reachable) testUnreachable.value = false
 })
 
-/** Toggling push turns *this* device's subscription on or off (per device). */
 async function onPushToggle(enabled: boolean) {
   if (enabled) await enablePush()
   else await disablePush()
@@ -310,13 +296,11 @@ function saveNotifications() {
   }).catch(() => {})
 }
 
-/** "On this display" is household-wide (the server gates HUD delivery on it). */
 function onHudToggle(enabled: boolean) {
   settings.updateHudEnabled(!!enabled)
   saveNotifications()
 }
 
-/** Now-playing choices are household-wide: every screen shows the same thing. */
 const musicSetters = {
   lyrics: settings.updateLyricsEnabled,
   background: settings.updateMusicBackground,
@@ -324,7 +308,6 @@ const musicSetters = {
   cardSpin: settings.updateMusicCardSpin,
 } as const
 
-/** Every music PATCH carries the whole block, so none of the choices drop out. */
 function musicPayload() {
   return {
     lyrics: settings.lyricsEnabled.value,
@@ -356,7 +339,6 @@ const lyricsOffsetLabel = computed(() => {
   return `${sign}${Math.abs(seconds).toFixed(2)} s`
 })
 
-/** Nudge the delay in 50 ms steps; the delay is persisted once the tapping stops. */
 function onLyricsOffset(deltaMs: number) {
   settings.updateLyricsOffset(settings.lyricsOffsetMs.value + deltaMs)
   if (lyricsOffsetSaveTimer !== null) clearTimeout(lyricsOffsetSaveTimer)
@@ -371,7 +353,6 @@ function resetLyricsOffset() {
   saveMusic()
 }
 
-/** Kiosk screen choices are household-wide, like the music options. */
 function onScreenToggle(key: "carousel" | "returnHome" | "autoHideNav", value: boolean) {
   if (key === "carousel") settings.updateCarouselEnabled(!!value)
   else if (key === "returnHome") settings.updateReturnHomeEnabled(!!value)
@@ -385,7 +366,6 @@ function onScreenToggle(key: "carousel" | "returnHome" | "autoHideNav", value: b
   }).catch(() => {})
 }
 
-// ── Camera ──
 const cameraUrl = ref("")
 const cameraUsername = ref("")
 const cameraPassword = ref("")
@@ -425,7 +405,6 @@ function removeCamera() {
   void saveCamera()
 }
 
-// ── Smart import (AI) ──
 const aiStatus = ref<AiStatus | null>(null)
 const aiKey = ref("")
 const aiProvider = ref<AiProvider>("console")
@@ -457,7 +436,6 @@ async function loadAi() {
     }
     if (status.configured) void loadAiModels()
   } catch {
-    // Settings still work offline; the card just shows its defaults.
   }
 }
 
@@ -542,7 +520,6 @@ async function removeAi() {
   }
 }
 
-// ── Guest Wi-Fi ──
 const wifiSsid = ref("")
 const wifiPassword = ref("")
 const wifiEncryption = ref<WifiEncryption>("WPA")
@@ -589,7 +566,6 @@ function removeWifi() {
   void saveWifi()
 }
 
-/** Mirror Wi-Fi changes made on another client. */
 watch(
   () => [
     settings.wifiSsid.value,
@@ -605,14 +581,12 @@ watch(
   },
 )
 
-/** Keep the shared settings store in sync so event forms pre-fill immediately. */
 function onDefaultReminderChange(value: string) {
   defaultReminder.value = value
   settings.updateDefaultReminderMinutes(reminderMinutesFromValue(value))
   saveNotifications()
 }
 
-/** Fire a reminder at every client: all open screens (HUD) and all phones (push). */
 async function sendTest() {
   testing.value = true
   testResults.value = null
@@ -631,11 +605,6 @@ async function sendTest() {
   }
 }
 
-// ── Search ──
-// The cards are hand-written sections, so instead of teaching every one of
-// them about the query, the panel filters its own children: a card stays if
-// its text holds every word in the search. Matches are painted with the CSS
-// Highlight API, which marks ranges without touching the DOM Vue owns.
 const HIGHLIGHT_NAME = "settings-search"
 
 const searchQuery = ref("")
@@ -647,7 +616,6 @@ const cardCount = ref(0)
 const searchTokens = computed(() => searchQuery.value.toLowerCase().split(/\s+/).filter(Boolean))
 const searching = computed(() => searchTokens.value.length > 0)
 
-/** Chromium, Safari 17.2+, and Firefox 140+ paint ranges; elsewhere filtering still works. */
 function highlightSupport() {
   if (typeof CSS === "undefined" || typeof Highlight === "undefined") return null
   if (!CSS.highlights) return null
@@ -726,8 +694,6 @@ function clearSearch() {
   searchInputEl.value?.focus()
 }
 
-// Vue patches text as settings change (a nested row appears, a version arrives),
-// so re-run the filter whenever the cards' content moves.
 let searchObserver: MutationObserver | null = null
 
 onMounted(() => {
@@ -778,7 +744,6 @@ watch(searchTokens, applySearch, { flush: "post" })
     </div>
 
     <div ref="masonryEl" class="settings-masonry">
-      <!-- ── Theme ── -->
       <section class="settings-card settings-card--preset">
         <header class="card-header">
           <div class="card-heading">
@@ -820,7 +785,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </div>
       </section>
 
-      <!-- ── Accent Color ── -->
       <section class="settings-card settings-card--accent">
         <header class="card-header">
           <div class="card-heading">
@@ -860,7 +824,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </div>
       </section>
 
-      <!-- ── Appearance ── -->
       <section class="settings-card settings-card--appearance">
         <header class="card-header">
           <div class="card-heading">
@@ -917,7 +880,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </div>
       </section>
 
-      <!-- ── Text Size ── -->
       <section class="settings-card settings-card--textsize">
         <header class="card-header">
           <div class="card-heading">
@@ -941,7 +903,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </div>
       </section>
 
-      <!-- ── Reminders ── -->
       <section class="settings-card settings-card--reminders">
         <header class="card-header">
           <div class="card-heading">
@@ -1019,7 +980,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </p>
       </section>
 
-      <!-- ── Devices ── -->
       <section class="settings-card settings-card--devices">
         <header class="card-header">
           <div class="card-heading">
@@ -1072,7 +1032,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </p>
       </section>
 
-      <!-- ── Music ── -->
       <section class="settings-card settings-card--music">
         <header class="card-header">
           <div class="card-heading">
@@ -1173,7 +1132,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </p>
       </section>
 
-      <!-- ── Camera ── -->
       <section class="settings-card settings-card--camera">
         <header class="card-header">
           <div class="card-heading">
@@ -1256,10 +1214,8 @@ watch(searchTokens, applySearch, { flush: "post" })
         </p>
       </section>
 
-      <!-- ── Indoor temperatures (Nest) ── -->
       <NestSettingsCard />
 
-      <!-- ── Motion ── -->
       <section class="settings-card settings-card--motion">
         <header class="card-header">
           <div class="card-heading">
@@ -1293,7 +1249,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </div>
       </section>
 
-      <!-- ── Home screen ── -->
       <section class="settings-card settings-card--home">
         <header class="card-header">
           <div class="card-heading">
@@ -1377,7 +1332,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </div>
       </section>
 
-      <!-- ── Guest Wi-Fi ── -->
       <section class="settings-card settings-card--wifi">
         <header class="card-header">
           <div class="card-heading">
@@ -1475,7 +1429,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </p>
       </section>
 
-      <!-- ── Smart import ── -->
       <section class="settings-card settings-card--ai">
         <header class="card-header">
           <div class="card-heading">
@@ -1583,7 +1536,6 @@ watch(searchTokens, applySearch, { flush: "post" })
         </p>
       </section>
 
-      <!-- ── Software update ── -->
       <SoftwareUpdateCard class="settings-card--software" />
     </div>
 
@@ -1604,9 +1556,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   flex-direction: column;
 }
 
-/* ── Search ──
-   A single quiet bar above the cards. It spans the panel, stays at the 48px
-   touch floor, and borrows the accent only when focused. */
 .settings-search {
   display: flex;
   align-items: center;
@@ -1656,7 +1605,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   color: var(--color-textMuted);
 }
 
-/* The bar's own clear button replaces the browser's. */
 .settings-search__input::-webkit-search-cancel-button,
 .settings-search__input::-webkit-search-decoration {
   -webkit-appearance: none;
@@ -1696,7 +1644,6 @@ watch(searchTokens, applySearch, { flush: "post" })
     transform 80ms ease;
 }
 
-/* 48px fingerprint around the 32px chip. */
 .settings-search__clear::after {
   content: "";
   position: absolute;
@@ -1718,13 +1665,11 @@ watch(searchTokens, applySearch, { flush: "post" })
   outline-offset: 2px;
 }
 
-/* Painted through the Highlight API so the cards' DOM stays untouched. */
 :global(::highlight(settings-search)) {
   background-color: color-mix(in srgb, var(--color-primary) 42%, transparent);
   color: inherit;
 }
 
-/* On a dark surface the accent is light, so marked text flips to ink. */
 :global(html.dark ::highlight(settings-search)) {
   background-color: color-mix(in srgb, var(--color-primary) 82%, transparent);
   color: var(--color-textInverse);
@@ -1753,17 +1698,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   line-height: 1.5;
 }
 
-/* ── Masonry layout ───────────────────────────────────────────────────────────
-   Settings cards have genuinely different heights. A balanced column flow
-   keeps their natural rhythm instead of stretching short cards into tall grid
-   rows, while DOM order stays the reading order: identity, display, systems.
-   Cards never split across columns.
-
-   Balance is left entirely to the browser. Do not hand-pin cards with
-   `break-after: column`: those hints only fit the card set they were written
-   for, and every later card is then forced into the last column, which is how
-   the newer cards (Nest, Motion, Home, Wi-Fi, Software update) ended up piled
-   in one long column. */
 .settings-masonry {
   column-count: 1;
   column-gap: var(--space-4);
@@ -1777,7 +1711,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   margin: 0 0 var(--space-4);
 }
 
-/* Hidden cards leave the column flow entirely, so the rest rebalance. */
 .settings-masonry > .is-filtered-out {
   display: none;
 }
@@ -1794,7 +1727,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   }
 }
 
-/* ── Card shell ── */
 .settings-card {
   min-width: 0;
   background: var(--color-bgSurface);
@@ -1806,7 +1738,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   gap: var(--space-4);
 }
 
-/* ── Shared card anatomy: header, body, foot ── */
 .card-header {
   display: flex;
   align-items: flex-start;
@@ -1849,7 +1780,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   justify-content: space-between;
 }
 
-/* Header actions keep their label on one line and never shrink into a stack. */
 .settings-card--home .card-header :deep(.ui-btn) {
   flex-shrink: 0;
 }
@@ -1876,7 +1806,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   flex-shrink: 0;
 }
 
-/* ── Option grids ── */
 .option-grid {
   display: grid;
   gap: var(--space-3);
@@ -1890,8 +1819,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-/* The appearance picker falls to two columns whenever its own card is narrow,
-   not when the viewport is: the bento pairs it with Accent on mid-size screens. */
 .settings-card--appearance {
   container-type: inline-size;
 }
@@ -1906,7 +1833,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   .option-grid--presets { grid-template-columns: 1fr; }
 }
 
-/* One tile anatomy for both pickers: media on top, label and description below. */
 .option-tile {
   min-width: 0;
   min-height: 0;
@@ -1988,7 +1914,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   color: var(--color-textSecondary);
 }
 
-/* ── Theme previews ── */
 .preset-preview {
   display: flex;
   gap: 5px;
@@ -2027,7 +1952,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   color: var(--color-primary);
 }
 
-/* ── Accent colors ── */
 .color-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2119,7 +2043,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
 }
 
-/* ── Setting rows ── */
 .setting-row {
   display: flex;
   align-items: center;
@@ -2149,14 +2072,10 @@ watch(searchTokens, applySearch, { flush: "post" })
   max-width: 56ch;
 }
 
-/* Sub-option of the row above it (the cover spin follows the cover background). */
 .setting-row--nested {
   padding-left: var(--space-6);
 }
 
-/* Lyrics timing: two arrow targets around a fixed-width readout. The visual
-   buttons stay 34px so they sit quietly beside the switches, while ::after
-   gives each one a full 48px fingerprint. */
 .setting-row--sync {
   flex-wrap: wrap;
 }
@@ -2266,7 +2185,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   }
 }
 
-/* ── Camera ── */
 .settings-card--camera .setting-row--stack {
   flex-direction: column;
   align-items: stretch;
@@ -2289,7 +2207,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   border-top: 1px solid var(--color-border);
 }
 
-/* ── Smart import ── */
 .settings-card--ai .setting-row--stack {
   flex-direction: column;
   align-items: stretch;
@@ -2323,7 +2240,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   border-top: 1px solid var(--color-border);
 }
 
-/* ── Guest Wi-Fi ── */
 .settings-card--wifi .setting-row--stack {
   flex-direction: column;
   align-items: stretch;
@@ -2385,7 +2301,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   }
 }
 
-/* ── Inline notes ── */
 .card-note {
   display: flex;
   align-items: flex-start;
@@ -2415,7 +2330,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   align-items: center;
 }
 
-/* ── Text size ── */
 .settings-card--textsize :deep(.segmented-control) {
   display: flex;
   width: 100%;
@@ -2453,7 +2367,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   color: var(--color-textSecondary);
 }
 
-/* ── Reminders ── */
 .push-on {
   color: var(--color-primary);
   font-weight: var(--font-weight-medium);
@@ -2500,8 +2413,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   color: var(--color-textPrimary);
 }
 
-/* Override UiSelect's default width:100% — as a row item it overflows the
-   card and squeezes the label text. Size it to its widest option instead. */
 .setting-row .reminder-default-select {
   width: auto;
   max-width: 100%;
@@ -2509,7 +2420,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   flex-shrink: 0;
 }
 
-/* On a phone the select needs the full row so the label keeps a readable measure. */
 @media (max-width: 560px) {
   .setting-row--stack {
     flex-wrap: wrap;
@@ -2523,7 +2433,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   }
 }
 
-/* ── Devices ── */
 .download-btn {
   display: inline-flex;
   align-items: center;
@@ -2569,7 +2478,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   font-weight: var(--font-weight-medium);
 }
 
-/* ── Motion preview ── */
 .motion-preview {
   flex: 1;
   min-height: 124px;
@@ -2623,7 +2531,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   animation-delay: 360ms;
 }
 
-/* A perpetual animation on a low-power display flickers: hold the demo still. */
 :global(html.low-power) .motion-preview.is-on .motion-block {
   animation: none !important;
 }
@@ -2637,7 +2544,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   font-style: italic;
 }
 
-/* ── Home layout preview ── */
 .layout-preview {
   flex: 1;
   display: grid;
@@ -2669,7 +2575,6 @@ watch(searchTokens, applySearch, { flush: "post" })
   background: color-mix(in srgb, var(--color-primary) 26%, var(--color-bgSurface));
 }
 
-/* ── Layout reset confirmation ── */
 .confirm-box {
   display: flex;
   align-items: flex-start;

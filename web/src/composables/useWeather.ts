@@ -16,7 +16,6 @@ export interface WeatherData {
   location: string
   lat: number
   lon: number
-  /** Open-Meteo's day/night flag; absent on older cached payloads. */
   isDay?: boolean
 }
 
@@ -50,17 +49,11 @@ function normalizeCountryCode(country?: string): string | null {
 async function geocode(address?: string, province?: string, country?: string): Promise<GeoResult | null> {
   const countryCode = normalizeCountryCode(country)
 
-  // Candidate queries, most specific first. The country is passed as the
-  // `countryCode` filter parameter, NEVER appended to the name — appending a
-  // 2-letter code like "CA" makes Open-Meteo read it as a US state
-  // (e.g. "Ontario, CA" resolves to Ontario, California instead of Canada).
   const candidates: string[] = []
   const full = [address, province].filter(Boolean).join(", ")
   if (full) candidates.push(full)
   if (address) {
     candidates.push(address)
-    // Street addresses aren't geocodable by Open-Meteo (city-level only) —
-    // fall back to the city portion (last comma segment).
     const city = address.split(",").pop()?.trim()
     if (city && !candidates.includes(city)) candidates.push(city)
   }
@@ -73,8 +66,6 @@ async function geocode(address?: string, province?: string, country?: string): P
     if (!res.ok) continue
     const data = await res.json()
     for (const r of data.results ?? []) {
-      // When a country code is known, only accept results from it —
-      // prevents "Ontario" from matching Ontario, California.
       if (countryCode && (r.country_code ?? "").toUpperCase() !== countryCode) continue
       return { lat: r.latitude, lon: r.longitude, name: r.name }
     }

@@ -118,7 +118,6 @@ describe("SettingsPanel", () => {
     expect(settings.musicCardSpin.value).toBe(false)
     expect(settings.lyricsEnabled.value).toBe(false)
 
-    // The spin sub-option follows its parent.
     expect(wrapper.text()).toContain("Spin the cover")
     await row("Album cover background").find(".ui-toggle").trigger("click")
     await flushPromises()
@@ -157,7 +156,6 @@ describe("SettingsPanel", () => {
     expect(settings.lyricsOffsetMs.value).toBe(100)
     expect(row.text()).toContain("+0.10 s")
 
-    // Reset while the debounce is still pending flushes it immediately.
     await row.find(".lyric-offset__reset").trigger("click")
     expect(settings.lyricsOffsetMs.value).toBe(0)
     expect(row.text()).toContain("0.00 s")
@@ -167,12 +165,10 @@ describe("SettingsPanel", () => {
     expect(settings.lyricsOffsetMs.value).toBe(-100)
     expect(row.text()).toContain("−0.10 s")
 
-    // The save is debounced while the arrows are tapped.
     await new Promise((resolve) => setTimeout(resolve, 400))
     const patch = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH").at(-1)!
     expect(JSON.parse((patch[1] as RequestInit).body as string).settings.music.lyricsOffsetMs).toBe(-100)
 
-    // The household setting is clamped to the ±2s range.
     settings.updateLyricsOffset(9_999)
     expect(settings.lyricsOffsetMs.value).toBe(2000)
     settings.updateLyricsOffset(-9_999)
@@ -407,7 +403,6 @@ describe("SettingsPanel", () => {
     await wrapper.findAll("button").find(b => b.text() === "Reset layout")!.trigger("click")
     expect(wrapper.text()).toContain("Reset the home screen layout?")
 
-    // Cancel closes the prompt without touching the stored layout.
     await wrapper.findAll("button").find(b => b.text() === "Cancel")!.trigger("click")
     expect(wrapper.text()).not.toContain("Reset the home screen layout?")
     expect(localStorage.getItem("homst-widget-layout")).toBeNull()
@@ -458,7 +453,6 @@ describe("SettingsPanel", () => {
     expect(wrapper.find(".settings-card--music").classes()).toContain("is-filtered-out")
     expect(wrapper.find(".settings-search__count").text()).toBe("1 card")
 
-    // Words may live in different rows of the same card.
     await wrapper.find(".settings-search__input").setValue("camera password")
     await nextTick()
     expect(wrapper.find(".settings-card--camera").classes()).not.toContain("is-filtered-out")
@@ -515,7 +509,6 @@ describe("SettingsPanel", () => {
     try {
       const wrapper = mount(SettingsPanel)
       await flushPromises()
-      // Mounting without a query clears any previous paint.
       expect(remove).toHaveBeenCalledWith("settings-search")
 
       await wrapper.find(".settings-search__input").setValue("camera")

@@ -51,10 +51,6 @@ const hls = vi.hoisted(() => {
 
 vi.mock("hls.js", () => ({ default: hls.FakeHls }))
 
-/**
- * Let the composable finish its asynchronous hls.js import. A plain nextTick()
- * only flushes Vue's queue; the dynamic import resolves on a later microtask.
- */
 function settle(): Promise<void> {
   let pending = nextTick()
   for (let i = 0; i < 20; i += 1) pending = pending.then(() => undefined)
@@ -77,7 +73,6 @@ function mountStream(
   return { wrapper, api }
 }
 
-/** Get the current hls.js instance and report a parsed manifest. */
 function playingInstance(api: ReturnType<typeof useCameraStream>) {
   const instance = hls.instances.at(-1)!
   instance.handlers["manifest"]!("manifest", {})
@@ -118,8 +113,6 @@ describe("useCameraStream", () => {
   })
 
   it("prefers hls.js even when the browser claims native HLS", async () => {
-    // Chromium can advertise native HLS and then re-fetch the playlist in a
-    // zero-delay loop; hls.js keeps the reload on the playlist's cadence.
     vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("maybe")
 
     const path = ref("/both.m3u8")
@@ -134,7 +127,6 @@ describe("useCameraStream", () => {
   })
 
   it("plays native HLS and swallows a rejected play promise", async () => {
-    // Native is the fallback only: no MSE, but HLS is supported (Safari, iOS).
     hls.FakeHls.supported = false
     vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("maybe")
     vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValue(new Error("blocked"))
@@ -151,8 +143,6 @@ describe("useCameraStream", () => {
   })
 
   it("takes the native path without loading hls.js when MSE is unavailable", async () => {
-    // hls.js cannot run at all without Media Source Extensions, so the chunk
-    // must not be downloaded on those browsers.
     const descriptor = Object.getOwnPropertyDescriptor(window, "MediaSource")
     Object.defineProperty(window, "MediaSource", {
       configurable: true,
@@ -184,7 +174,6 @@ describe("useCameraStream", () => {
     const instance = hls.instances[0]
     expect(instance.config.lowLatencyMode).toBe(false)
     expect(instance.config.liveSyncDurationCount).toBe(3)
-    // Drift is tolerated instead of forcing a seek to the live edge.
     expect(instance.config.liveMaxLatencyDurationCount).toBe(30)
     expect(instance.config.maxBufferLength).toBe(12)
     expect(instance.loaded).toBe("/live.m3u8")
@@ -235,8 +224,6 @@ describe("useCameraStream", () => {
     await settle()
 
     const instance = playingInstance(api)
-    // A lagging client can ask for a segment the server already deleted. That is
-    // not a dead stream: hls.js skips it and keeps playing.
     instance.handlers["error"]!("error", {
       fatal: true,
       type: "network",
@@ -340,8 +327,6 @@ describe("useCameraStream", () => {
   })
 
   it("reconnects on its own after a fatal HTTP error", async () => {
-    // The server deletes the playlist while ffmpeg restarts after a camera
-    // hiccup. A kiosk must recover from that window without a human tap.
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
@@ -365,7 +350,6 @@ describe("useCameraStream", () => {
     wrapper.unmount()
   })
 
-  /** Stub the compositor-frame signal on the video element. */
   function stubRenderFrames(el: HTMLVideoElement) {
     let frameCb: (() => void) | null = null
     el.requestVideoFrameCallback = ((cb: () => void) => {
@@ -373,7 +357,6 @@ describe("useCameraStream", () => {
       return 1
     }) as typeof el.requestVideoFrameCallback
     return {
-      /** Present one frame to the compositor. */
       render: () => frameCb?.(),
       get pending() {
         return frameCb !== null
@@ -382,8 +365,6 @@ describe("useCameraStream", () => {
   }
 
   it("rebuilds the pipeline when the picture freezes but the clock keeps advancing", async () => {
-    // A stuck hardware decoder can leave timeupdate firing while the picture
-    // is frozen. Only a full rebuild (fresh MediaSource + decoder) fixes that.
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
@@ -393,7 +374,6 @@ describe("useCameraStream", () => {
     const instance = playingInstance(api)
     expect(frames.pending).toBe(true)
 
-    // The clock keeps ticking; no frame ever reaches the compositor.
     for (let step = 0; step < 5; step++) {
       await vi.advanceTimersByTimeAsync(4_000)
       await wrapper.find("video").trigger("timeupdate")
@@ -429,15 +409,12 @@ describe("useCameraStream", () => {
     await settle()
     expect(cancelled).toEqual([7])
 
-    // A stale callback from the old pipeline must not report progress or
-    // re-register itself on the new one.
     frameCb!()
     expect(api.status.value).toBe("loading")
     wrapper.unmount()
   })
 
   it("does not rebuild for a frozen render while the page is hidden", async () => {
-    // Background tabs stop composing frames without anything being broken.
     vi.useFakeTimers()
     Object.defineProperty(document, "visibilityState", {
       value: "hidden",
@@ -487,7 +464,6 @@ describe("useCameraStream", () => {
     stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
 
     playingInstance(api)
-    // Every rebuild comes back playing (clock alive) but never renders again.
     for (let attempt = 0; attempt < 4; attempt++) {
       for (let step = 0; step < 5; step++) {
         await vi.advanceTimersByTimeAsync(4_000)
@@ -497,7 +473,6 @@ describe("useCameraStream", () => {
     }
     expect(api.status.value).toBe("failed")
     expect(api.error.value).toBe("failed retrieving stream")
-    // 1 initial pipeline + 3 rebuilds, then the slow-cadence reconnect.
     expect(hls.instances).toHaveLength(4)
 
     await vi.advanceTimersByTimeAsync(60_000)
@@ -534,8 +509,6 @@ describe("useCameraStream", () => {
 
     playingInstance(api)
 
-    // hls.js can stop downloading while its buffer is full. As long as the
-    // video keeps advancing, the stream is healthy.
     for (let step = 0; step < 4; step++) {
       await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS - 1_000)
       await wrapper.find("video").trigger("timeupdate")

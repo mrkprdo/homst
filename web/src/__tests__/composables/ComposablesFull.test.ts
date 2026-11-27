@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { flushPromises } from "@vue/test-utils"
 import { useEvents } from "@/composables/useEvents"
 
-/* ── in-memory localStorage ─────────────────────────────────────────────────── */
 const _ls = new Map<string, string>()
 const _memLs: Storage = {
   get length() { return _ls.size },
@@ -49,7 +48,6 @@ function storeToken(expiresInMs: number, partial: Record<string, unknown> = {}) 
 
 beforeEach(() => {
   localStorage.clear()
-  // Force the "not configured" branch unless a test overrides it
   vi.stubEnv("VITE_SPOTIFY_CLIENT_ID", "")
 })
 
@@ -68,7 +66,7 @@ describe("useSpotify — storage & auth error paths", () => {
       const sp = (await freshSpotify()).useSpotify()
       expect(sp.clientId.value).toBe("")
       expect(sp.needsConfig()).toBe(true)
-      sp.setClientId("abc") // no-op store must not throw
+      sp.setClientId("abc")
       expect(sp.clientId.value).toBe("abc")
     } finally {
       Object.defineProperty(globalThis, "localStorage", { configurable: true, value: real })
@@ -81,7 +79,6 @@ describe("useSpotify — storage & auth error paths", () => {
     await sp.init()
     expect(sp.connected.value).toBe(false)
 
-    // connect() without a configured client id does nothing
     sp.clientId.value = ""
     await sp.connect()
     expect(localStorage.getItem(CODE_VERIFIER_KEY)).toBeNull()
@@ -141,7 +138,6 @@ describe("useSpotify — storage & auth error paths", () => {
   })
 
   it("keeps polling state consistent for 204 / empty / missing-artwork responses", async () => {
-    // 204 while nothing is playing
     storeToken(3_600_000)
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }))
     let sp = (await freshSpotify()).useSpotify()
@@ -151,7 +147,6 @@ describe("useSpotify — storage & auth error paths", () => {
     expect(sp.currentTrack.value).toBeNull()
     sp.disconnect()
 
-    // 200 without an item → no track info
     localStorage.clear()
     storeToken(3_600_000)
     vi.mocked(fetch).mockResolvedValueOnce(json({ progress_ms: 0 }))
@@ -161,7 +156,6 @@ describe("useSpotify — storage & auth error paths", () => {
     expect(sp.currentTrack.value).toBeNull()
     sp.disconnect()
 
-    // item without artwork → empty album art
     localStorage.clear()
     storeToken(3_600_000)
     vi.mocked(fetch).mockResolvedValueOnce(json({
@@ -183,7 +177,6 @@ describe("useSpotify — storage & auth error paths", () => {
   it("clears an expired token when the refresh fails, then stops reporting a token", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] })
     storeToken(-1_000)
-    // refresh response without an access token
     vi.mocked(fetch).mockResolvedValueOnce(json({}))
     const sp = (await freshSpotify()).useSpotify()
     await sp.init()
@@ -191,7 +184,6 @@ describe("useSpotify — storage & auth error paths", () => {
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
     expect(sp.connected.value).toBe(false)
 
-    // next poll finds no token at all
     vi.mocked(fetch).mockClear()
     await vi.advanceTimersByTimeAsync(5_000)
     await flushPromises()
@@ -254,7 +246,7 @@ describe("useSpotify — storage & auth error paths", () => {
     expect(sp.currentTrack.value?.albumArt).toBe("art.jpg")
 
     await vi.advanceTimersByTimeAsync(1_000)
-    expect(sp.currentTrack.value?.progressMs).toBe(60_000) // clamped to duration
+    expect(sp.currentTrack.value?.progressMs).toBe(60_000)
 
     sp.disconnect()
     vi.mocked(fetch).mockClear()
@@ -273,7 +265,6 @@ describe("useSpotify — storage & auth error paths", () => {
           album: { images: [{ url: "art.jpg" }] },
         },
       }))
-      // Stopped: Spotify answers 200 with no item on the device.
       .mockResolvedValueOnce(json({ is_playing: false, item: null }))
 
     const sp = (await freshSpotify()).useSpotify()
@@ -321,7 +312,6 @@ describe("useEvents — calendar/holiday/event loading", () => {
     await ev.ensureMonth(2026, 4)
     expect(ev.events.value.map(e => e.title)).toContain("Party")
 
-    // second call is a no-op (already fetched)
     await ev.ensureMonth(2026, 4)
   })
 

@@ -18,8 +18,6 @@ test.describe("Tasks", () => {
     await page.waitForTimeout(500)
   }
 
-  // ── Task View ──
-
   test("task view renders with title", async ({ page }) => {
     await goToTasks(page)
     await expect(page.locator(".tasks-view")).toBeVisible()
@@ -76,8 +74,6 @@ test.describe("Tasks", () => {
     await goToTasks(page)
     await expect(page.locator(".tasks-view")).toBeVisible()
   })
-
-  // ── Kanban View ──
 
   test("kanban view shows 3 columns", async ({ page }) => {
     await goToKanban(page)

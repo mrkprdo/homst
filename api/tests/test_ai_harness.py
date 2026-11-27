@@ -43,9 +43,6 @@ def draft(
     }
 
 
-# ── Persona ────────────────────────────────────────────────────────────────
-
-
 def test_system_prompt_identifies_as_smart_event_assistant():
     prompt = ai._system_prompt(
         datetime(2027, 1, 5, 9, tzinfo=TZ), "UTC", ["Alice Smith"], has_image=False
@@ -75,9 +72,6 @@ def test_turn_actions_are_validated_and_deduplicated():
     ]
 
 
-# ── Members ────────────────────────────────────────────────────────────────
-
-
 def test_member_aliases_lookup_and_line():
     assert ai._member_aliases("") == []
     assert ai._member_aliases("Mom") == ["mom"]
@@ -91,7 +85,6 @@ def test_member_aliases_lookup_and_line():
     lookup = ai._member_lookup(
         [("1", "Alice Smith"), ("2", "Alice Jones"), ("3", "Bob")]
     )
-    # A shared first name is not safe to resolve.
     assert "alice" not in lookup
     assert lookup["alice smith"] == "1"
     assert lookup["bob"] == "3"
@@ -138,7 +131,6 @@ def test_validate_event_resolves_and_flags_assignees():
     assert inferred["assignee_id"] == "m-bob"
     assert issues == []
 
-    # A clear title beats an unusable assignee value.
     recovered, _, issues = ai._validate_event(
         {
             "title": "Bob's game",
@@ -152,14 +144,10 @@ def test_validate_event_resolves_and_flags_assignees():
     assert recovered["assignee_id"] == "m-bob"
     assert issues == []
 
-    # Non-string assignee values are simply ignored.
     plain, _, _ = ai._validate_event(
         {"title": "Practice", "start_at": start, "assignee": 42}, TZ, MEMBERS
     )
     assert plain["assignee_id"] is None
-
-
-# ── Questions and clarifications ───────────────────────────────────────────
 
 
 def test_normalize_questions_caps_dedupes_and_skips_answered():
@@ -316,9 +304,6 @@ def test_validate_payload_ex_collects_questions_warnings_and_conflicts():
     assert ai.validate_payload({"events": []}, TZ, MEMBERS) == ([], 0, [])
 
 
-# ── Conflicts ──────────────────────────────────────────────────────────────
-
-
 def test_conflict_detection_respects_owners_and_drafts():
     busy = [
         {
@@ -368,7 +353,6 @@ def test_conflict_detection_respects_owners_and_drafts():
     assert conflicts[2]["draft_index"] == 2
     assert conflicts[2]["existing_title"] == "Household repair"
     assert conflicts[0]["message"].startswith('"Standup" overlaps "Dentist"')
-    # Two different named members can be busy at the same time.
     assert all(c["draft_index"] != 3 for c in conflicts)
 
 
@@ -417,7 +401,6 @@ def test_conflict_detection_handles_all_day_drafts_and_duplicates():
         draft("Second appointment", "2027-01-05T14:00:00Z", "2027-01-05T15:00:00Z"),
     ]
     conflicts = ai._find_conflicts(drafts, busy, TZ)
-    # Each draft hits the all-day trip, and the two drafts hit each other.
     assert len(conflicts) == 3
     assert {c["existing_kind"] for c in conflicts} == {"existing", "draft"}
     assert all("(all day)" in conflicts[index]["message"] for index in (0, 1))
@@ -489,7 +472,6 @@ def test_busy_intervals_and_prompt_lines():
         datetime(2027, 1, 1, tzinfo=TZ),
         datetime(2027, 1, 20, tzinfo=TZ),
     )
-    # Three weekly swims plus the unnamed all-day row.
     assert len(intervals) == 4
     assert intervals[0]["title"] == "Weekly swim"
     assert intervals[-1]["title"] == "Untitled"
@@ -563,7 +545,6 @@ def test_validate_actions_updates_and_deletes():
     update = updates[0]
     assert update["event_id"] == CATALOG[0]["id"]
     assert update["title"] == "Dentist"
-    # Moving an event without a new end keeps its one-hour duration.
     assert update["changes"]["start_at"] == "2027-01-05T15:00:00+00:00"
     assert update["changes"]["end_at"] == "2027-01-05T16:00:00+00:00"
     assert "title" not in update["changes"]
@@ -743,7 +724,6 @@ def test_validate_actions_clears_fields_and_rejects_bad_refs():
     )
     assert [item["ref"] for item in deletes] == [1]
     assert len(warnings) >= 2
-    # A ref cannot be updated and deleted in the same answer.
     assert [item["ref"] for item in updates] == [2]
     assert any("isn't in the calendar" in note for note in warnings)
     assert any("also being deleted" in note for note in warnings)
@@ -841,7 +821,6 @@ def test_recurrence_expansion_edges():
     )
     assert yearly == [start, start.replace(year=2028), start.replace(year=2029)]
 
-    # Malformed count/until values fall back to safe bounds.
     bounded = ai._recurrence_starts(
         {"freq": "daily", "count": "nope", "until": "nope"},
         start,
@@ -876,9 +855,6 @@ def test_find_conflicts_skips_unparseable_drafts():
         draft("Bad", "not-a-date"),
     ]
     assert ai._find_conflicts(drafts, None, TZ) == []
-
-
-# ── Request building ───────────────────────────────────────────────────────
 
 
 def test_parse_schedule_sends_members_busy_and_clarifications(monkeypatch):
@@ -1017,9 +993,6 @@ def test_history_is_capped_and_ignores_bad_turns():
 
 async def _collect(events):
     return [event async for event in events]
-
-
-# ── Router integration ─────────────────────────────────────────────────────
 
 
 class _Scalars:
@@ -1169,7 +1142,6 @@ async def test_parse_endpoint_expands_recurring_busy_events(client, monkeypatch)
             "recurrence": {"freq": "weekly"},
         },
     )
-    # A real occurrence of the series: 60 days ago + 9 weeks = 3 days ahead.
     target = start + timedelta(weeks=9)
     content = json.dumps(
         {
@@ -1187,6 +1159,7 @@ async def test_parse_endpoint_expands_recurring_busy_events(client, monkeypatch)
     assert response.status_code == 200
     assert response.json()["conflicts"][0]["existing_title"] == "Weekly swim"
     assert response.json()["needs_input"] is True
+
 
 @pytest.mark.asyncio
 async def test_conversation_endpoints_round_trip(client):
@@ -1408,7 +1381,6 @@ async def test_parse_edits_the_focused_event(client, monkeypatch):
     assert "Event being updated" in user
     assert "Dentist" in user
     assert "Return exactly one event" in user
-    # The event being edited is not treated as a conflict with itself.
     assert response.json()["conflicts"] == []
     assert response.json()["events"][0]["title"] == "Dentist"
 

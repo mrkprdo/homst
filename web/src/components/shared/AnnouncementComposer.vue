@@ -26,7 +26,6 @@ const notifyPhones = ref(true)
 const sending = ref(false)
 const error = ref("")
 const sent = ref(false)
-/** The request never reached the server, so this is a notice, not an error. */
 const unreachable = ref(false)
 
 let sentTimer: ReturnType<typeof setTimeout> | undefined
@@ -254,7 +253,6 @@ async function submit() {
   font-size: var(--text-label-size);
 }
 
-/* Fill the left pane on wide screens so the composer owns the full height. */
 @media (min-width: 1000px) {
   .announcement-composer--fill {
     flex: 1;

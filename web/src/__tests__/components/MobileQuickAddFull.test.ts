@@ -14,7 +14,6 @@ function seedMember(id = "m1", name = "Alice", color = "#00ff00") {
   })
 }
 
-/** Find the <select> that contains an <option> with the given label. */
 function selectWithOption(wrapper: ReturnType<typeof mount>, label: string) {
   const found = wrapper.findAll("select").find(s => s.findAll("option").some(o => o.text() === label))
   if (!found) throw new Error(`No select with option "${label}"`)
@@ -23,7 +22,6 @@ function selectWithOption(wrapper: ReturnType<typeof mount>, label: string) {
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-/** Smart import is the default tab; mount directly on the form under test. */
 async function mountTab(tab: "event" | "task") {
   const wrapper = mount(MobileQuickAdd)
   await flushPromises()

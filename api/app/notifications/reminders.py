@@ -37,11 +37,8 @@ from app.notifications.senders import (
 
 DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 
-# A reminder due just before a worker tick is still delivered after it; this is
-# also the tolerance for short worker restarts.
 CATCHUP = timedelta(minutes=6)
 
-# Upper bound for how far ahead an event may start and still be considered.
 MAX_LEAD = timedelta(days=8)
 
 
@@ -88,8 +85,6 @@ def occurrences_between(ev: Event, from_dt: datetime, to_dt: datetime) -> list[d
     if not freq:
         return [start] if from_dt <= start <= to_dt else []
 
-    # Stored JSON is user/import controlled: a malformed rule must never take
-    # the worker down, so bad values fall back to the plain window / max count.
     until = rec.get("until")
     end_bound = to_dt
     if until:
@@ -108,7 +103,6 @@ def occurrences_between(ev: Event, from_dt: datetime, to_dt: datetime) -> list[d
     cursor = start
     n = 0
 
-    # Fast-forward fixed-step frequencies so long histories don't iterate.
     if cursor < from_dt:
         step = {
             "daily": timedelta(days=1),
@@ -160,7 +154,6 @@ async def find_due_reminders(session: AsyncSession, now: datetime) -> list[DueRe
     for ev in events:
         minutes = int(ev.reminder_minutes or 0)
         offset = timedelta(minutes=minutes)
-        # Occurrences whose due time falls in (now - CATCHUP, now].
         occs = occurrences_between(ev, now - CATCHUP + offset, now + offset)
         for occ in occs:
             if now - CATCHUP < occ - offset <= now:
@@ -289,12 +282,8 @@ async def dispatch_due_reminders(
             ))
             await session.commit()
         except IntegrityError:
-            # Another tick already logged this occurrence — nothing to do.
             await session.rollback()
     return logs
-
-
-# ── Ad-hoc test notification (settings panel) ─────────────────────────
 
 
 async def send_test_notification(

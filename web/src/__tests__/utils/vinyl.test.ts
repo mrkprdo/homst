@@ -15,8 +15,6 @@ describe("syncVinyl", () => {
     const animations = [{ startTime: 1234 }, { startTime: 99 }]
     syncVinyl(fakeEl(animations))
 
-    // startTime 0 makes progress a function of wall-clock time only, which is
-    // what keeps the card and the backdrop at the same angle.
     expect(animations.map((a) => a.startTime)).toEqual([0, 0])
   })
 
@@ -32,8 +30,6 @@ describe("syncVinyl", () => {
 
     syncVinyl(fakeEl([paused, running]))
 
-    // Setting startTime on a paused animation resumes it in the browser, so
-    // the paused one must not be touched while the running one is synced.
     expect(paused.startTime).toBeNull()
     expect(running.startTime).toBe(0)
   })
@@ -50,7 +46,6 @@ describe("syncVinyl", () => {
       configurable: true,
       value: () => (++calls === 1 ? [] : [animation]),
     })
-    // Run the retry immediately instead of waiting for the next frame.
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
       cb(0)
       return 1

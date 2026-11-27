@@ -1,8 +1,6 @@
-/** Read one-shot navigation intents from notification taps. */
 export type NotificationIntent =
   | { type: "event"; id: string; startAt: string | null; pushId?: string }
   | { type: "announcement"; id: string; pushId?: string }
-  /** A test/plain push with no deep link of its own. */
   | { type: "push"; id: string }
 
 let consumed = false
@@ -46,21 +44,14 @@ function clearIntentFromUrl() {
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`)
 }
 
-/**
- * Read the deep link before the router's initial navigation can redirect to
- * onboarding (which would drop the query). `main.ts` calls this at startup.
- */
 export function captureNotificationIntent(): NotificationIntent | null {
   if (captured) return pending
   captured = true
-  // Keep the query in the address bar until take(): a service-worker update
-  // can reload the page before Vue mounts, and the reload must see it again.
   pending = parseIntent()
   return pending
 }
 
 export function useNotificationIntent() {
-  /** Return the pending intent once, and remove it from the address bar. */
   function take(): NotificationIntent | null {
     if (consumed) return null
     const intent = captureNotificationIntent()

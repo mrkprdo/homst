@@ -82,7 +82,6 @@ describe("EventDetailPanel", () => {
       color: "#b1b695", role: "admin", joinedAt: "",
     })
 
-    // Timed event with recurrence until + reminder + assignee + description
     ev.upsertEvent({
       id: "e1", calendarId: "c1", title: "Dentist", description: "Bring card",
       sourceMessage: "Original email body",
@@ -105,26 +104,22 @@ describe("EventDetailPanel", () => {
     expect(w.text()).not.toContain("Imported message")
     expect(w.text()).not.toContain("Original email body")
 
-    // Start edit → recurrence until branch populated
     const editBtn = w.findAll("button").find(b => b.text().includes("Edit"))!
     await editBtn.trigger("click")
     expect(w.find(".edp-form").exists()).toBe(true)
 
-    // Toggle allDay true then false to exercise watch(editAllDay)
     const toggle = w.findComponent({ name: "UiToggle" })
     await toggle.vm.$emit("update:modelValue", true)
     await nextTick()
     await toggle.vm.$emit("update:modelValue", false)
     await nextTick()
 
-    // Invalid time range (end <= start) shows editTimeError
     const dateInputs = w.findAll('input[type="datetime-local"]')
     await dateInputs[0]!.setValue("2026-05-20T12:00")
     await dateInputs[1]!.setValue("2026-05-20T10:00")
     await nextTick()
     expect(w.text()).toContain("End must be after start")
 
-    // Fix end time, switch recurrence to count, save successfully
     await dateInputs[1]!.setValue("2026-05-20T14:00")
     const selects = w.findAll("select")
     await selects[2]!.setValue("count")
@@ -146,7 +141,6 @@ describe("EventDetailPanel", () => {
     await flushPromises()
     expect(w.find(".edp-form").exists()).toBe(false)
 
-    // Re-enter edit with count recurrence & all-day multi-day save + failed save branch
     ev.upsertEvent({
       id: "e1", calendarId: "c1", title: "Trip", description: "",
       startAt: "2026-05-15T00:00:00Z", endAt: "2026-05-17T00:00:00Z",
@@ -161,16 +155,13 @@ describe("EventDetailPanel", () => {
     expect(w.text()).toContain("Unassigned")
 
     await w.findAll("button").find(b => b.text().includes("Edit"))!.trigger("click")
-    // Save fails → sets editError
     vi.mocked(fetch).mockRejectedValueOnce(new Error("500"))
     await w.findAll("button").find(b => b.text().includes("Save"))!.trigger("click")
     await flushPromises()
     expect(w.find(".edp-form").exists()).toBe(true)
 
-    // Cancel edit
     await w.findAll("button").find(b => b.text().includes("Cancel"))!.trigger("click")
 
-    // Delete confirm + cancel + confirmDelete
     await w.find('[aria-label="Delete event"]').trigger("click")
     expect(w.text()).toContain("Delete this event?")
     await w.findAll("button").find(b => b.text() === "Cancel")!.trigger("click")
@@ -218,20 +209,17 @@ describe("TaskDetailPanel", () => {
     expect(w.text()).toContain("Bob")
     expect(w.text()).toContain("Front & back")
 
-    // Edit flow
     await w.findAll("button").find(b => b.text().includes("Edit"))!.trigger("click")
     expect(w.find(".tdp-form").exists()).toBe(true)
 
     const dateInput = w.find('input[type="date"]')
     await dateInput.setValue("2026-05-20")
 
-    // Failed save keeps form open
     vi.mocked(fetch).mockRejectedValueOnce(new Error("fail"))
     await w.findAll("button").find(b => b.text().includes("Save"))!.trigger("click")
     await flushPromises()
     expect(w.find(".tdp-form").exists()).toBe(true)
 
-    // Successful save closes form
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
       id: "t1", list_id: "l1", title: "Mow lawn", description: "Front & back",
       assignee_id: "m1", start_at: "2026-05-20T00:00:00Z", end_at: null,
@@ -242,7 +230,6 @@ describe("TaskDetailPanel", () => {
     await flushPromises()
     expect(w.find(".tdp-form").exists()).toBe(false)
 
-    // Delete flow
     await w.findAll("button").find(b => b.text().includes("Delete"))!.trigger("click")
     await w.findAll("button").find(b => b.text() === "Cancel")!.trigger("click")
     await w.findAll("button").find(b => b.text().includes("Delete"))!.trigger("click")
@@ -267,18 +254,15 @@ describe("OnboardingWizard & MobileOnboardingGate", () => {
   })
 
   it("OnboardingWizard walks through all 4 steps, manages members/colors, and finishes", async () => {
-    // Preload the lazy home route so its import cannot outlive the test.
     await import("@/components/home/HomeView.vue")
 
     const w = mount(OnboardingWizard, { global: { plugins: [router] } })
 
-    // Step 1: house name + address
     const inputs1 = w.findAll("input")
     await inputs1[0]!.setValue("Maple House")
     await inputs1[1]!.setValue("100 Queen St")
     await w.findAll("button").find(b => b.text().includes("Next"))!.trigger("click")
 
-    // Step 2: members — add second member, change color, remove second member, fill name
     expect(w.text()).toContain("Household Members")
     await w.find(".add-member-btn").trigger("click")
     expect(w.findAll(".member-row")).toHaveLength(2)
@@ -295,13 +279,11 @@ describe("OnboardingWizard & MobileOnboardingGate", () => {
     await w.findAll("button").find(b => b.text().includes("Next"))!.trigger("click")
     await w.findAll("button").find(b => b.text().includes("Next"))!.trigger("click")
 
-    // Step 3: holidays
     expect(w.text()).toContain("Holiday Calendar")
     await w.find("select").setValue("US")
     await w.find("input").setValue("California")
     await w.findAll("button").find(b => b.text().includes("Next"))!.trigger("click")
 
-    // Step 4: review & finish
     expect(w.text()).toContain("All set!")
     expect(w.text()).toContain("Maple House")
     expect(w.text()).toContain("100 Queen St")

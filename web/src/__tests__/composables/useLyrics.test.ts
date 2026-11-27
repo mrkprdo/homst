@@ -62,7 +62,6 @@ describe("useLyrics", () => {
     await play(track())
     expect(lines.value.map(l => l.text)).toEqual(["first", "second", "third"])
 
-    // The lead artist is what LRCLIB can match, not the joined list.
     const url = String(vi.mocked(fetch).mock.calls[0]![0])
     expect(url).toContain("https://lrclib.net/api/search")
     expect(url).toContain("track_name=The+Chain")
@@ -88,8 +87,6 @@ describe("useLyrics", () => {
       expect(lines.value).toHaveLength(3)
       expect(activeIndex.value).toBe(0)
 
-      // The next sample is a second away; the local clock should cross the
-      // 3s line before Spotify reports again.
       vi.advanceTimersByTime(250)
       await nextTick()
       expect(activeIndex.value).toBe(1)
@@ -102,7 +99,6 @@ describe("useLyrics", () => {
     vi.mocked(fetch).mockResolvedValueOnce(json([record()]))
     await play(track({ progressMs: 2_900 }))
 
-    // 2.9s plus the built-in 120ms lead is already past the 3s line.
     expect(activeIndex.value).toBe(1)
 
     const { updateLyricsOffset } = useSettings()
@@ -143,7 +139,6 @@ describe("useLyrics", () => {
     await play(track())
     expect(lines.value).toHaveLength(3)
 
-    // Local files have no Spotify id; the title/artist pair is the fallback key.
     vi.mocked(fetch).mockResolvedValueOnce(json([record()]))
     await play(track({ id: "", name: "Local File" }))
     await play(track())
@@ -151,13 +146,11 @@ describe("useLyrics", () => {
     expect(lines.value).toHaveLength(3)
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
 
-    // Leave the track, come back: no second request.
     await play(track({ id: "t2", name: "Dreams" }))
     await play(track())
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3)
     expect(lines.value).toHaveLength(3)
 
-    // A cached empty answer also short-circuits.
     vi.mocked(fetch).mockClear()
     _resetLyrics()
     vi.mocked(fetch).mockResolvedValueOnce(json([]))
@@ -186,7 +179,6 @@ describe("useLyrics", () => {
     await play(track())
     expect(lines.value).toHaveLength(3)
 
-    // The 5-second poll swaps in a fresh track object with the same id.
     currentTrack.value = track({ progressMs: 1_200 })
     await nextTick()
     await flushPromises()
@@ -203,7 +195,6 @@ describe("useLyrics", () => {
     expect(vi.mocked(fetch)).not.toHaveBeenCalled()
     expect(lines.value).toEqual([])
 
-    // Switching the overlay back on picks the current track up again.
     vi.mocked(fetch).mockResolvedValueOnce(json([record()]))
     lyricsEnabled.value = true
     await nextTick()
@@ -211,7 +202,6 @@ describe("useLyrics", () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
     expect(lines.value).toHaveLength(3)
 
-    // And turning it off mid-song clears the screen.
     lyricsEnabled.value = false
     await nextTick()
     await flushPromises()
@@ -247,7 +237,6 @@ describe("useLyrics", () => {
   })
 
   it("clears the lines when playback stops and drops the oldest cache entries", async () => {
-    // Fresh Response per request: a body can only be read once.
     vi.mocked(fetch).mockImplementation(() => Promise.resolve(json([record()])))
 
     await play(track())
@@ -258,7 +247,6 @@ describe("useLyrics", () => {
     await flushPromises()
     expect(lines.value).toEqual([])
 
-    // Past the cache cap the oldest key is dropped; the newest still hits.
     for (let i = 0; i < 205; i++) {
       await play(track({ id: `bulk-${i}` }))
     }

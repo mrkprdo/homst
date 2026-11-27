@@ -16,8 +16,6 @@ test.describe("Announcements", () => {
 
     await expect(page.locator(".announcement-live__item")).toContainText("Dinner is ready")
 
-    // The screen already lists the message, so the global banner stays out of
-    // the way here. It appears as soon as you leave the announcement screen.
     await expect(page.locator(".announcement-card")).toHaveCount(0)
     await page.locator(".nav-logo").click()
     await expect(page.locator(".announcement-card--display")).toContainText("Dinner is ready")

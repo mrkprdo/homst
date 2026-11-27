@@ -37,10 +37,6 @@ afterEach(() => {
   _resetAnnouncements()
 })
 
-/* ══════════════════════════════════════════════════════════════════════
-   api/client upload failures
-   ══════════════════════════════════════════════════════════════════════ */
-
 describe("api/client upload", () => {
   it("rethrows aborts and maps network failures to ServerUnreachableError", async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new DOMException("aborted", "AbortError"))
@@ -53,10 +49,6 @@ describe("api/client upload", () => {
     expect(isServerUnreachable(error)).toBe(true)
   })
 })
-
-/* ══════════════════════════════════════════════════════════════════════
-   api/system error branches
-   ══════════════════════════════════════════════════════════════════════ */
 
 describe("api/system", () => {
   it("uses the server detail, then a status fallback", async () => {
@@ -78,10 +70,6 @@ describe("api/system", () => {
   })
 })
 
-/* ══════════════════════════════════════════════════════════════════════
-   householdCache: storage denied
-   ══════════════════════════════════════════════════════════════════════ */
-
 describe("householdCache", () => {
   it("treats denied storage as an incomplete household", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementationOnce(() => {
@@ -90,10 +78,6 @@ describe("householdCache", () => {
     expect(readHouseholdComplete()).toBe(false)
   })
 })
-
-/* ══════════════════════════════════════════════════════════════════════
-   motion: numeric string transforms and the stub chain
-   ══════════════════════════════════════════════════════════════════════ */
 
 describe("motion low-power stubs", () => {
   it("formats numeric strings with their CSS unit and exposes the stub chain", () => {
@@ -105,10 +89,6 @@ describe("motion low-power stubs", () => {
     expect((animation as any).complete()).toBe(animation)
   })
 })
-
-/* ══════════════════════════════════════════════════════════════════════
-   pushStore: a fake IndexedDB that covers open/upgrade/read/error paths
-   ══════════════════════════════════════════════════════════════════════ */
 
 interface FakeDbOptions {
   rows?: unknown[]
@@ -209,10 +189,6 @@ describe("pushStore IndexedDB", () => {
   })
 })
 
-/* ══════════════════════════════════════════════════════════════════════
-   useAnnouncements: in-place updates and corrupt storage
-   ══════════════════════════════════════════════════════════════════════ */
-
 function announcement(id: string, createdAt = "2026-06-01T18:00:00Z") {
   return {
     id,
@@ -235,9 +211,6 @@ describe("useAnnouncements residual", () => {
     expect(store.announcements.value[0]!.message).toBe("message a")
   })
 })
-/* ══════════════════════════════════════════════════════════════════════
-   usePush: environment and non-Error failure paths
-   ══════════════════════════════════════════════════════════════════════ */
 
 function setServiceWorker(value: unknown) {
   Object.defineProperty(navigator, "serviceWorker", { configurable: true, value })
@@ -295,20 +268,12 @@ describe("usePush residual", () => {
   })
 })
 
-/* ══════════════════════════════════════════════════════════════════════
-   useServerReachability: no browser
-   ══════════════════════════════════════════════════════════════════════ */
-
 describe("useServerReachability without a browser", () => {
   it("assumes reachable when fetch is unavailable", async () => {
     vi.stubGlobal("fetch", undefined)
     await expect(checkServerReachable()).resolves.toBe(true)
   })
 })
-
-/* ══════════════════════════════════════════════════════════════════════
-   useSpotify: an expired token whose refresh is refused is discarded
-   ══════════════════════════════════════════════════════════════════════ */
 
 describe("useSpotify token refresh", () => {
   it("drops an expired token when Spotify returns no access token", async () => {
@@ -329,10 +294,6 @@ describe("useSpotify token refresh", () => {
     }
   })
 })
-
-/* ══════════════════════════════════════════════════════════════════════
-   useSettings: preset fallback and widget-layout resync
-   ══════════════════════════════════════════════════════════════════════ */
 
 describe("useSettings residual", () => {
   it("falls back to the preset accent when the stored one is unavailable", () => {
@@ -367,10 +328,6 @@ describe("useSettings residual", () => {
     }
   })
 })
-
-/* ----------------------------------------------------------------------
-   module-init failures run last: vi.resetModules() replaces the registry
-   ---------------------------------------------------------------------- */
 
 describe("module init with denied storage", () => {
   it("starts with no announcement dismissals when localStorage throws", async () => {

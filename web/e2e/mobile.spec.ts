@@ -8,10 +8,6 @@ import {
   addMockTask,
 } from "./mocks"
 
-/**
- * Mobile PWA shell. Mobile layout is chosen from the user agent, so we present
- * an iPhone UA and drive the touch-first interface.
- */
 test.use({
   userAgent:
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
@@ -20,7 +16,6 @@ test.use({
   hasTouch: true,
 })
 
-/** An event on the selected day (today). The agenda shows past times too. */
 function todayEvent(overrides: Record<string, unknown>) {
   const start = new Date()
   start.setHours(12, 0, 0, 0)
@@ -35,8 +30,6 @@ test.describe("Mobile shell", () => {
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page)
     setMockComplete(true)
-    // The holiday mock is dated today/tomorrow and useEvents folds holidays into
-    // the event list — clear it so empty-state assertions are deterministic.
     await page.route("**/api/v1/holidays", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
     )
@@ -58,7 +51,6 @@ test.describe("Mobile shell", () => {
     await expect(page.locator(".mc-month-panel")).toBeVisible()
     expect(await page.locator(".mc-month-day").count()).toBeGreaterThanOrEqual(28)
 
-    // Collapsing from the month label folds down to the selected week.
     await page.locator(".mc-month-label").click()
     await expect(page.locator(".mobile-calendar")).toHaveAttribute("data-expanded", "false")
     await expect(page.locator(".mc-month-panel")).not.toBeVisible()
@@ -160,7 +152,6 @@ test.describe("Mobile shell", () => {
     await expect(page.locator(".ms-detail-overlay")).toBeVisible()
     await expect(page.locator(".ms-detail-overlay")).toContainText("Deep linked event")
 
-    // The query is consumed so a reload does not reopen the sheet.
     expect(new URL(page.url()).search).toBe("")
   })
 

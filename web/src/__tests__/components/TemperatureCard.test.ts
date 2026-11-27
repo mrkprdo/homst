@@ -126,11 +126,9 @@ describe("TemperatureCard", () => {
     expect(tiles[0]!.find(".room-spark").exists()).toBe(true)
     const line = tiles[0]!.find(".room-spark-line").attributes("d") ?? ""
     expect(line).toMatch(/^M0 /)
-    // Smooth curve: one cubic Bézier per segment, no straight polyline joins.
     expect(line.match(/ C/g)).toHaveLength(2)
     expect(line).not.toContain(" L")
     expect(tiles[0]!.find(".room-spark-area").attributes("d")).toMatch(/Z$/)
-    // A single sample is not a line yet, and rooms without history get none.
     expect(tiles[1]!.find(".room-spark").exists()).toBe(false)
     expect(tiles[2]!.find(".room-spark").exists()).toBe(false)
     wrapper.unmount()

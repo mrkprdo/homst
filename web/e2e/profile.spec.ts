@@ -20,7 +20,6 @@ test.describe("Profile & Events", () => {
     await page.waitForTimeout(500)
   })
 
-  // ── Profile Drawer ──
   test("profile drawer opens and shows house name", async ({ page }) => {
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)
@@ -38,7 +37,6 @@ test.describe("Profile & Events", () => {
   test("profile shows onboarding member names", async ({ page }) => {
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)
-    // Members from mock API: Alice, Bob, Carol
     const inputs = page.locator(".md-member-row input")
     await expect(inputs).toHaveCount(3)
     await expect(inputs.nth(0)).toHaveValue("Alice")
@@ -141,8 +139,6 @@ test.describe("Profile & Events", () => {
     await expect(page.locator(".md-value").nth(1)).toContainText("456 Oak Ave")
   })
 
-  // ── Save Changes Button ──
-
   test("Save Changes appears for an unsaved inline edit", async ({ page }) => {
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)
@@ -150,9 +146,7 @@ test.describe("Profile & Events", () => {
     await page.locator(".md-edit").first().click()
     await page.waitForTimeout(200)
     await page.locator(".md-input").first().fill("Edited Name")
-    // The typed draft is not saved yet, so the full-save action is offered.
     await expect(page.locator(".md-save-btn")).toBeVisible()
-    // The inline Save persists it immediately and clears the dirty state.
     await page.getByRole("button", { name: "Save", exact: true }).click()
     await expect(page.locator(".md-save-btn")).not.toBeVisible()
   })
@@ -180,7 +174,6 @@ test.describe("Profile & Events", () => {
   test("Save Changes button persists new member", async ({ page }) => {
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)
-    // Add new member (makes 4th)
     const addBtns = page.locator(".md-add-link")
     const addMemberBtn = addBtns.filter({ hasText: "Add member" })
     await addMemberBtn.click()
@@ -206,7 +199,6 @@ test.describe("Profile & Events", () => {
     await page.waitForTimeout(500)
     await expect(page.locator(".md-member-row")).toHaveCount(3)
 
-    // Remove the middle member (Bob) and save.
     await page.locator(".md-member-row").nth(1).locator(".member-remove").click()
     await expect(page.locator(".md-member-row")).toHaveCount(2)
     await page.locator(".md-save-btn").click()
@@ -216,7 +208,6 @@ test.describe("Profile & Events", () => {
     await page.locator(".close-btn").click()
     await page.waitForTimeout(400)
 
-    // Reopening the drawer refetches; the deleted member must stay gone.
     await page.reload()
     await page.waitForTimeout(500)
     await page.locator(".nav-item--profile").click()
@@ -234,7 +225,6 @@ test.describe("Profile & Events", () => {
     await page.locator(".md-edit").first().click()
     await page.waitForTimeout(200)
     await page.locator(".md-input").first().fill("Confirm Test")
-    // Do not use the inline Save: the full-save path must fold the draft in.
     await page.locator(".md-save-btn").click()
     await page.locator(".md-confirm-panel").getByRole("button", { name: "Save" }).click()
     await page.waitForTimeout(500)
@@ -252,12 +242,10 @@ test.describe("Profile & Events", () => {
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)
 
-    // Hover over first member's color button to show popover
     const colorBtn = page.locator(".member-color-btn").first()
     await colorBtn.hover()
     await page.waitForTimeout(200)
 
-    // Click a different color (scope to first member's popover)
     const firstRow = page.locator(".md-member-row").first()
     const colorOpts = firstRow.locator(".color-opt")
     await expect(colorOpts).toHaveCount(25)
@@ -269,18 +257,15 @@ test.describe("Profile & Events", () => {
     await page.waitForTimeout(500)
     await expect(page.locator(".drawer")).toBeVisible()
 
-    // Close
     await page.locator(".close-btn").click()
     await page.waitForTimeout(400)
     await expect(page.locator(".drawer")).not.toBeVisible()
 
-    // Reopen
     await page.locator(".nav-item--profile").click()
     await page.waitForTimeout(500)
     await expect(page.locator(".member-detail")).toBeVisible()
   })
 
-  // ── Events with Members ──
   async function goToCalendar(page: any) {
     await page.locator(".app-nav button").nth(1).click()
     await page.waitForTimeout(300)
@@ -303,7 +288,6 @@ test.describe("Profile & Events", () => {
       await page.waitForTimeout(400)
     }
 
-    // All created successfully, drawer closed
     await expect(page.locator(".drawer")).not.toBeVisible()
   })
 

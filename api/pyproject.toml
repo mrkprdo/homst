@@ -54,9 +54,6 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-# SQLAlchemy's asyncio extension drives the DBAPI through greenlets; without
-# greenlet-aware tracing, coverage stops recording once an endpoint hits the
-# database, so router bodies look untested even when they run.
 concurrency = ["greenlet", "thread"]
 source = ["app"]
 

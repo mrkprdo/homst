@@ -191,7 +191,6 @@ def test_google_credential_validation():
             "https://accounts.google.com/o/oauth2/iframerpc?x=1", COOKIES
         )
     with pytest.raises(NestAuthError):
-        # Userinfo spoof: the real host is evil.example, not Google.
         nest._validate_google_credentials(
             "https://accounts.google.com@evil.example/o/oauth2/iframerpc?action=issueToken",
             COOKIES,
@@ -219,7 +218,6 @@ async def test_save_load_and_clear_credentials(db_session):
     creds = await nest._load_credentials(db_session)
     assert creds == {"type": "nest", "access_token": "legacy"}
 
-    # Saving again updates existing rows rather than adding duplicates.
     await save_credentials(db_session, account_type="nest", access_token="legacy2")
     creds = await nest._load_credentials(db_session)
     assert creds == {"type": "nest", "access_token": "legacy2"}
@@ -384,10 +382,8 @@ async def test_history_records_throttles_and_prunes(db_session):
     history = await nest._record_history(db_session, rooms, now)
     assert history == {"kryptonite.a": [[now - 600, 20.0], [now, 20.5]]}
 
-    # A fetch inside the sample interval adds nothing.
     assert await nest._record_history(db_session, rooms, now + 60) == history
 
-    # Once the interval passes a new sample lands, and the window stays 12 h.
     later = await nest._record_history(db_session, rooms, now + nest.HISTORY_SAMPLE_SECONDS)
     assert later["kryptonite.a"][-1] == [now + nest.HISTORY_SAMPLE_SECONDS, 20.5]
     cutoff = now + nest.HISTORY_SAMPLE_SECONDS - nest.HISTORY_WINDOW_SECONDS

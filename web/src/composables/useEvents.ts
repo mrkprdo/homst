@@ -41,8 +41,6 @@ const loading   = ref(false)
 const initialized = ref(false)
 
 const fetchedMonths    = new Set<string>()
-// Months whose fetch has completed (vs merely been requested). Lets views keep
-// their existing content instead of flashing a skeleton for cached months.
 const loadedMonths     = new Set<string>()
 const holidaysFetched  = ref(false)
 const calendarsFetched = ref(false)
@@ -81,7 +79,6 @@ async function ensureCalendars() {
 
 async function ensureDefaultCalendar(): Promise<string> {
   await ensureCalendars()
-  // Skip local-only sentinel calendars (holidays) that have no DB backing
   const real = calendars.value.find(c => c.id !== HOLIDAYS_CAL_ID)
   if (real) return real.id
   const cal = await calendarApi.createCalendar({ name: "Personal", color: "sage", source: "internal" }).catch(() => null)
@@ -123,7 +120,6 @@ async function ensureMonth(year: number, month: number) {
   loadedMonths.add(key)
 }
 
-/** Whether a month's events have finished loading at least once. */
 function isMonthLoaded(year: number, month: number): boolean {
   return loadedMonths.has(monthKey(year, month))
 }

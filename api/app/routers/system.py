@@ -55,10 +55,6 @@ def _require_update_header(request: Request) -> None:
 
     origin = request.headers.get("origin")
     if origin:
-        # The bundled reverse proxy forwards Host without the public port
-        # (for example :8443), while the browser always includes it in Origin.
-        # Compare host names only; the custom header above already stops
-        # cross-site form posts.
         forwarded_host = request.headers.get("x-forwarded-host", "").split(",")[0]
         origin_host = _host_only(origin)
         request_host = _host_only(

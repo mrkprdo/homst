@@ -4,13 +4,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
-# DB-backed text limits (see app/models/all.py).
 NAME_MAX = 255
 COLOR_MAX = 50
 DESCRIPTION_MAX = 20000
 
 
-# ── Members ──
 class MemberCreate(BaseModel):
     name: str = Field(max_length=NAME_MAX)
     avatar_url: Optional[str] = None
@@ -37,7 +35,6 @@ class MemberResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Household ──
 class HouseholdResponse(BaseModel):
     id: UUID
     name: str
@@ -51,7 +48,6 @@ class HouseholdSettingsUpdate(BaseModel):
     settings: Optional[dict] = None
 
 
-# ── Nest ──
 class NestCredentials(BaseModel):
     account_type: Literal["google", "nest"]
     issue_token: Optional[str] = Field(None, max_length=20000)
@@ -59,7 +55,6 @@ class NestCredentials(BaseModel):
     access_token: Optional[str] = Field(None, max_length=5000)
 
 
-# ── Calendar ──
 class CalendarCreate(BaseModel):
     name: str = Field(max_length=NAME_MAX)
     color: str = Field("sage", max_length=COLOR_MAX)
@@ -157,7 +152,6 @@ class EventResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Tasks ──
 class TaskListCreate(BaseModel):
     name: str = Field(max_length=NAME_MAX)
     color: str = Field("sage", max_length=COLOR_MAX)
@@ -207,7 +201,6 @@ class TaskMove(BaseModel):
     position: int
 
 
-# ── Photos ──
 class PhotoUpdate(BaseModel):
     selected: bool
 
@@ -219,7 +212,6 @@ class PhotoResponse(BaseModel):
     created_at: datetime
 
 
-# ── Holidays ──
 class HolidaySyncRequest(BaseModel):
     country_code: str = Field(pattern=r"^[A-Za-z]{2}$")
     province: Optional[str] = Field(None, max_length=100)
@@ -256,11 +248,9 @@ class TaskResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Announcements ──
 class AnnouncementCreate(BaseModel):
     message: str = Field(min_length=1, max_length=500)
     created_by: Optional[UUID] = None
-    # None means "until someone removes it"; the default matches the composer.
     duration_minutes: Optional[int] = Field(default=30, ge=1, le=10080)
     send_push: bool = True
 
@@ -277,7 +267,6 @@ class AnnouncementResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Notifications ──
 class NotificationTestRequest(BaseModel):
     """Send a test reminder through the HUD / Web Push channels."""
 
@@ -288,7 +277,6 @@ class NotificationTestResponse(BaseModel):
     results: dict[str, str]
 
 
-# ── Web Push ──
 class PushSubscriptionKeys(BaseModel):
     p256dh: str
     auth: str
@@ -308,7 +296,6 @@ class VapidKeyResponse(BaseModel):
     key: str
 
 
-# ── Smart import (AI) ──
 class AiConfigUpdate(BaseModel):
     """Write-only key update. The key is never returned by any endpoint."""
 
@@ -357,16 +344,10 @@ class AiChatMessage(BaseModel):
 
 class AiParseRequest(BaseModel):
     text: str = Field("", max_length=100_000)
-    # A data URL. The router re-encodes the image before it is forwarded.
     image: Optional[str] = Field(None, max_length=16_000_000)
     timezone: Optional[str] = Field(None, max_length=64)
-    # Answers to the questions the harness asked last time. The model applies
-    # them and re-emits the complete event list.
     clarifications: list[AiClarification] = Field(default_factory=list, max_length=12)
-    # Earlier turns, oldest first. Follow-up messages ("make it 3pm") are
-    # resolved against these instead of starting from scratch.
     history: list[AiChatMessage] = Field(default_factory=list, max_length=24)
-    # When set, this is an edit of an existing event rather than a new import.
     focus_event_id: Optional[UUID] = None
 
 
@@ -444,22 +425,14 @@ class AiParseResponse(BaseModel):
     deletes: list[AiEventDelete] = []
     skipped: int = 0
     model: str
-    # A short, model-authored sentence confirming what it found or asking for
-    # the one detail it still needs. The UI shows this as the chat response.
     reply: str = ""
-    # Raw assistant output (the JSON answer) and any reasoning the model
-    # streamed alongside it. Shown in a collapsed panel for transparency.
     response: str = ""
     reasoning: Optional[str] = None
     warnings: list[str] = []
-    # Questions the harness needs answered before the import is final.
     questions: list[AiQuestion] = []
     conflicts: list[AiConflict] = []
     needs_input: bool = False
-    # What the model thought the source was ("email", "calendar_grid", ...).
-    # The UI uses "other" to tell a normal chat reply from an import attempt.
     document_kind: str = "other"
-    # Click-to-action ids chosen by the model ("add_manually", "done", ...).
     actions: list[str] = []
 
 
@@ -483,8 +456,6 @@ class AiConversationTurn(BaseModel):
     role: Literal["user", "assistant"]
     text: str = Field("", max_length=20_000)
     image_name: Optional[str] = Field(None, max_length=255)
-    # Stored copy of the screenshot, served from /uploads. Only the URL is kept
-    # here: the bytes live on the uploads volume, never inside this record.
     image_url: Optional[str] = Field(None, max_length=512)
     raw_response: Optional[str] = Field(None, max_length=20_000)
     reply: Optional[str] = Field(None, max_length=600)

@@ -1048,7 +1048,6 @@ describe("AiImportPanel", () => {
     expect(uploadBody.name).toBe("shot.png")
     expect(uploadBody.image).toContain("data:image/png;base64,")
 
-    // The transcript stores the URL, never the bytes.
     const saved = fetchMock.mock.calls
       .filter(call => String(call[0]).endsWith("/ai/conversations"))
       .map(call => JSON.parse(String((call[1] as RequestInit).body)))[0]!
@@ -1071,7 +1070,6 @@ describe("AiImportPanel", () => {
 
     await send(wrapper, "Dinner Friday")
 
-    // The import is unaffected: the picture is simply not kept.
     expect(wrapper.text()).toContain("2 events ready")
     const saved = fetchMock.mock.calls
       .filter(call => String(call[0]).endsWith("/ai/conversations"))
@@ -1764,7 +1762,6 @@ describe("AiImportPanel", () => {
     expect(wrapper.findAll(".ai-conflict")).toHaveLength(1)
     expect(wrapper.text()).toContain("Will be removed when saved")
 
-    // Undo the replacement, then replace both drafts that hit the same event.
     await findButton(wrapper, "Keep it")!.trigger("click")
     expect(wrapper.findAll(".ai-conflict")).toHaveLength(2)
     await replaceButtons()[0]!.trigger("click")

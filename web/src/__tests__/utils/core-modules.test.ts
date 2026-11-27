@@ -141,7 +141,6 @@ describe("router lazy routes", () => {
 describe("router", () => {
   beforeEach(() => {
     invalidateSettings()
-    // Replace lazy route components with lightweight stubs so route transitions don't load full views
     for (const r of router.getRoutes()) {
       if (r.components) {
         r.components.default = { template: "<div />" } as any
@@ -178,7 +177,6 @@ describe("router", () => {
     await router.push("/onboarding?attempt=1")
     expect(router.currentRoute.value.path).toBe("/")
 
-    // Cached branch (fetched === true)
     await router.push("/onboarding?attempt=2")
     expect(router.currentRoute.value.path).toBe("/")
 
@@ -237,7 +235,6 @@ describe("lib/motion", () => {
     expect(el1.style.transform).toContain("rotate(45deg)")
     expect(el1.style.transform).toContain("scale(2)")
 
-    // Selector & NodeList & single Element & null targets
     animate(".m-target", { opacity: 0.5 } as any)
     expect(el1.style.opacity).toBe("0.5")
     animate(document.querySelectorAll(".m-target"), { opacity: 0.8 } as any)
@@ -249,7 +246,6 @@ describe("lib/motion", () => {
     animate(null as any, { opacity: 0 } as any)
     animate(123 as any, { opacity: 0 } as any)
 
-    // Stub chainable methods
     expect(stub.complete()).toBe(stub)
     expect(stub.cancel()).toBe(stub)
     expect(stub.revert()).toBe(stub)
@@ -260,7 +256,6 @@ describe("lib/motion", () => {
     await new Promise(r => setTimeout(r, 30))
     expect(completed).toBe(true)
 
-    // setTimeout fallback when requestAnimationFrame is unavailable
     const origRAF = globalThis.requestAnimationFrame
     // @ts-expect-error testing fallback
     globalThis.requestAnimationFrame = undefined

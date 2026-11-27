@@ -34,7 +34,6 @@ NEST_APP_LAUNCH_URL = f"https://{NEST_HOST}/api/0.1/user/{{user_id}}/app_launch"
 NEST_SESSION_URL = f"https://{NEST_HOST}/session"
 NEST_USER_AGENT = "Nest/5.87.0 (iOScom.nestlabs.jasper.release) os=26.4"
 
-# Only the buckets needed for temperatures; app_launch returns just these.
 NEST_BUCKET_TYPES = [
     "device",
     "shared",
@@ -63,8 +62,6 @@ ERROR_CACHE_TTL_SECONDS = 20
 SESSION_FALLBACK_SECONDS = 60 * 60
 SENSOR_OFFLINE_AFTER_SECONDS = 4 * 60 * 60
 
-# Rolling sparkline history: never keep more than 12 hours, and one sample
-# every 5 minutes is plenty of resolution for a tile-sized line graph.
 HISTORY_WINDOW_SECONDS = 12 * 60 * 60
 HISTORY_SAMPLE_SECONDS = 5 * 60
 
@@ -588,7 +585,6 @@ async def _fetch_rooms(
     try:
         buckets = await _app_launch(client, session)
     except NestAuthError:
-        # The session can go stale before its advertised expiry. Re-auth once.
         _session = None
         _session_expires_at = 0.0
         session = await _get_nest_session(client, creds, db)

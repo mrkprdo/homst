@@ -1,25 +1,16 @@
-/** One timed lyric line. `timeMs` is relative to the start of the track. */
 export interface LyricLine {
   timeMs: number
   text: string
 }
 
-// [mm:ss], [mm:ss.xx], [mm:ss.xxx] and the rarer [mm:ss:xx] spelling.
 const STAMP = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g
-// Enhanced LRC adds per-word timings inside the line; they are not displayable.
 const WORD_STAMP = /<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>/g
 
-/** Convert an LRC fraction ("3" = 300ms, "34" = 340ms, "345" = 345ms) to ms. */
 function fractionMs(frac: string | undefined): number {
   if (!frac) return 0
   return Number(frac.padEnd(3, "0"))
 }
 
-/**
- * Parse an LRC document into timed lines. Metadata tags (`[ar:…]`), blank
- * lines and word-level timings are dropped; lines carrying several timestamps
- * repeat at each one. The result is sorted by time.
- */
 export function parseLrc(raw: string | null | undefined): LyricLine[] {
   if (!raw) return []
 
@@ -42,10 +33,6 @@ export function parseLrc(raw: string | null | undefined): LyricLine[] {
   return out.sort((a, b) => a.timeMs - b.timeMs)
 }
 
-/**
- * Index of the line that is playing at `positionMs` — the last line whose
- * timestamp has passed. `-1` before the first line (intros).
- */
 export function activeLineIndex(lines: LyricLine[], positionMs: number): number {
   let low = 0
   let high = lines.length - 1

@@ -14,15 +14,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Member contact details for reminder delivery
     op.add_column("members", sa.Column("email", sa.String(255), nullable=True))
     op.add_column("members", sa.Column("phone", sa.String(32), nullable=True))
     op.add_column("members", sa.Column("sms_carrier", sa.String(255), nullable=True))
 
-    # Per-event reminder offset (minutes before start)
     op.add_column("events", sa.Column("reminder_minutes", sa.Integer(), nullable=True))
 
-    # Idempotency ledger for delivered reminders
     op.create_table(
         "reminder_log",
         sa.Column("id", sa.String(36), primary_key=True),

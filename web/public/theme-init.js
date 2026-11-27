@@ -1,16 +1,3 @@
-/*
- * Pre-paint theme bootstrap.
- *
- * The Vue app resolves the household theme only after it has loaded settings,
- * which means a display set to dark (or auto-dark while the OS is light) used
- * to paint the light token background first, then flip. This tiny classic
- * script runs from <head> after the stylesheets and before the module bundle,
- * so the first frame already has the right classes and accent.
- *
- * It is intentionally dependency-free and defensive: a private-mode or
- * disabled localStorage must never break the app shell. Keep it in sync with
- * the keys written by App.vue (cacheThemeFlags / cacheAccent).
- */
 ;(function () {
   var root = document.documentElement
 
@@ -54,11 +41,9 @@
       }
       if (palette.lighter) root.style.setProperty("--color-accent-glow", palette.lighter)
     } catch (error) {
-      // Ignore a corrupt cache; the app re-applies the palette on mount.
     }
   }
 
-  // Match the browser/PWA window chrome to the first painted background.
   try {
     var bg = window.getComputedStyle(root).getPropertyValue("--color-bgBase").trim()
     var meta = document.querySelector('meta[name="theme-color"]')

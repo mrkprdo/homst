@@ -17,10 +17,6 @@ from app.models.all import PushSubscription
 from app.system_state import ImageRef, is_managed, merge_update_prefs
 from app.updater.state import StateStore, default_state
 
-# ══════════════════════════════════════════════════════════════════════
-# system_state
-# ══════════════════════════════════════════════════════════════════════
-
 
 def test_image_ref_parsing_covers_empty_digest_and_implicit_latest():
     assert ImageRef.parse(None) == ImageRef("", None, None)
@@ -62,11 +58,6 @@ def test_merge_update_prefs_ignores_bad_values():
     assert merge_update_prefs({"checkIntervalMinutes": 60})["checkIntervalMinutes"] == 60
 
 
-# ══════════════════════════════════════════════════════════════════════
-# auto_theme
-# ══════════════════════════════════════════════════════════════════════
-
-
 def test_auto_theme_accepts_naive_times_and_rejects_non_finite_coordinates():
     from app.auto_theme import auto_theme_state, solar_elevation
 
@@ -82,11 +73,6 @@ def test_auto_theme_accepts_naive_times_and_rejects_non_finite_coordinates():
     assert auto_theme_state(
         {"theme": "auto", "lat": float("nan"), "lon": 0}
     ) == {}
-
-
-# ══════════════════════════════════════════════════════════════════════
-# notifications/push
-# ══════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.asyncio
@@ -188,11 +174,6 @@ async def test_deliver_push_without_subscriptions(db_session):
     ) == (False, "no push subscriptions")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# updater/state
-# ══════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.asyncio
 async def test_state_store_survives_corrupt_files_and_clears_missing_journal(tmp_path):
     (tmp_path / "state.json").write_text("{not json", encoding="utf-8")
@@ -200,15 +181,10 @@ async def test_state_store_survives_corrupt_files_and_clears_missing_journal(tmp
     store = StateStore(str(tmp_path))
 
     assert (await store.snapshot())["current_version"] is None
-    await store.clear_journal()  # journal exists the first time
-    await store.clear_journal()  # already gone -> FileNotFoundError swallowed
+    await store.clear_journal()
+    await store.clear_journal()
     assert await store.journal() is None
     assert default_state()["history"] == []
-
-
-# ══════════════════════════════════════════════════════════════════════
-# routers: publish failures must never fail a write
-# ══════════════════════════════════════════════════════════════════════
 
 
 async def _make_task_list(client, name="List"):
@@ -316,14 +292,12 @@ async def test_announcement_push_skips_without_devices_and_survives_errors(
 
     monkeypatch.setattr(announcements_router, "publish_event", boom)
 
-    # No push subscriptions: the push helper returns early.
     r = await client.post(
         "/api/v1/announcements",
         json={"message": "No devices", "send_push": True},
     )
     assert r.status_code == 201
 
-    # A broken push service must not fail the announcement.
     from app.notifications import push as push_module
 
     async def explode(*_args, **_kwargs):
@@ -336,15 +310,9 @@ async def test_announcement_push_skips_without_devices_and_survives_errors(
     )
     assert r.status_code == 201
 
-    # Deleting still succeeds when the broadcast fails.
     assert (
         await client.delete(f"/api/v1/announcements/{r.json()['id']}")
     ).status_code == 200
-
-
-# ══════════════════════════════════════════════════════════════════════
-# routers/system helper branches
-# ══════════════════════════════════════════════════════════════════════
 
 
 def test_host_only_handles_empty_and_port_values():

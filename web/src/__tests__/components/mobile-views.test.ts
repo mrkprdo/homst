@@ -51,7 +51,6 @@ describe("MobileShell", () => {
     const w = mount(MobileShell)
     await flushPromises()
 
-    // Trigger beforeinstallprompt event + installApp
     const promptEvt = new Event("beforeinstallprompt") as any
     promptEvt.prompt = vi.fn()
     promptEvt.userChoice = Promise.resolve({ outcome: "accepted" })
@@ -61,13 +60,11 @@ describe("MobileShell", () => {
     if (installBtn.exists()) await installBtn.trigger("click")
     await flushPromises()
 
-    // Click event item → opens EventDetailPanel sheet → close
     await w.find(".mc-event").trigger("click")
     expect(w.find(".ms-detail-overlay").exists()).toBe(true)
     await w.find(".ms-detail-close").trigger("click")
     expect(w.find(".ms-detail-overlay").exists()).toBe(false)
 
-    // Switch to Tasks tab → click task item → opens TaskDetailPanel sheet → close
     const tabs = w.findAll(".ms-tab")
     await tabs[1]!.trigger("click")
     expect(w.text()).toContain("Buy milk")
@@ -75,7 +72,6 @@ describe("MobileShell", () => {
     expect(w.find(".ms-detail-overlay").exists()).toBe(true)
     await w.find(".ms-detail-close").trigger("click")
 
-    // Profile & QuickAdd modals
     await w.find(".ms-profile-btn").trigger("click")
     expect(w.findComponent(MobileProfile).exists()).toBe(true)
     w.findComponent(MobileProfile).vm.$emit("close")
@@ -86,7 +82,6 @@ describe("MobileShell", () => {
     w.findComponent(MobileQuickAdd).vm.$emit("close")
     await nextTick()
 
-    // Announcement sheet opens from the app bar.
     await w.find(".ms-announce-btn").trigger("click")
     expect(w.findComponent(MobileAnnouncements).exists()).toBe(true)
     w.findComponent(MobileAnnouncements).vm.$emit("close")
@@ -180,11 +175,10 @@ describe("MobileCalendarView", () => {
     expect(w.emitted("selectEvent")).toHaveLength(2)
 
     const navBtns = w.findAll(".mc-nav-btn")
-    await navBtns[0]!.trigger("click") // prevMonth
-    await navBtns[1]!.trigger("click") // nextMonth
-    await w.find(".mc-today-chip").trigger("click") // goToToday
+    await navBtns[0]!.trigger("click")
+    await navBtns[1]!.trigger("click")
+    await w.find(".mc-today-chip").trigger("click")
 
-    // Fold the month down to the selected week before using the week strip.
     await w.find(".mc-month-label").trigger("click")
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
     expect(w.findAll(".mc-week-strip .mc-day-btn")).toHaveLength(7)
@@ -199,19 +193,15 @@ describe("MobileCalendarView", () => {
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
     expect(w.findAll(".mc-month-day").length % 7).toBe(0)
     expect(w.findAll(".mc-month-day").length).toBeGreaterThanOrEqual(28)
-    // The folded layer stays mounted for the animation but is inert.
     expect(w.find(".mc-week-strip").attributes("inert")).toBeDefined()
     expect(w.find(".mc-week-strip").attributes("aria-hidden")).toBe("true")
 
-    // Tapping a month cell moves the agenda to that day.
     await w.findAll(".mc-month-day")[10]!.trigger("click")
     expect(w.findAll(".mc-month-day.active")).toHaveLength(1)
 
-    // Horizontal wheel gestures are not a fold.
     await w.find(".mobile-calendar").trigger("wheel", { deltaY: 0, deltaX: 120 })
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
 
-    // Multi-touch gestures are not a fold either.
     await w.find(".mobile-calendar").trigger("touchstart", {
       touches: [{ clientY: 200 }, { clientY: 180 }],
     })
@@ -221,18 +211,15 @@ describe("MobileCalendarView", () => {
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
     await w.find(".mobile-calendar").trigger("touchend")
 
-    // Scroll forward (swipe up / wheel down) folds to the selected week.
     await w.find(".mobile-calendar").trigger("wheel", { deltaY: 120, deltaX: 0 })
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
     expect(w.findAll(".mc-week-strip .mc-day-btn")).toHaveLength(7)
     expect(w.find(".mc-month-panel").attributes("inert")).toBeDefined()
     expect(w.find(".mc-week-strip").attributes("inert")).toBeUndefined()
 
-    // Scroll back the other way unfolds the full month again.
     await w.find(".mobile-calendar").trigger("wheel", { deltaY: -120, deltaX: 0 })
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
 
-    // Touch swipes use the same gesture model.
     await w.find(".mobile-calendar").trigger("touchstart", { touches: [{ clientY: 200 }] })
     await w.find(".mobile-calendar").trigger("touchmove", {
       touches: [{ clientY: 160 }, { clientY: 140 }],
@@ -242,17 +229,14 @@ describe("MobileCalendarView", () => {
     await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 140 }] })
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
 
-    // Another upward swipe while folded keeps it folded.
     await w.find(".mobile-calendar").trigger("touchstart", { touches: [{ clientY: 200 }] })
     await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 140 }] })
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
     await w.find(".mobile-calendar").trigger("touchend")
 
-    // A move without a start is ignored.
     await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 200 }] })
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
 
-    // Swiping back down unfolds it; another downward swipe while unfolded is a no-op.
     await w.find(".mobile-calendar").trigger("touchstart", { touches: [{ clientY: 140 }] })
     await w.find(".mobile-calendar").trigger("touchmove", { touches: [{ clientY: 200 }] })
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
@@ -261,13 +245,11 @@ describe("MobileCalendarView", () => {
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
     await w.find(".mobile-calendar").trigger("touchend")
 
-    // Plain scrolling also folds forward and unfolds on the way back to the top.
     const agenda = w.find(".mc-agenda")
     agenda.element.scrollTop = 80
     await agenda.trigger("scroll")
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("false")
 
-    // While folded the arrows move by week instead of by month.
     const navBtns = w.findAll(".mc-nav-btn")
     await navBtns[0]!.trigger("click")
     await navBtns[1]!.trigger("click")
@@ -277,7 +259,6 @@ describe("MobileCalendarView", () => {
     await agenda.trigger("scroll")
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
 
-    // Already at the top: no phantom unfold on a 0 → 0 scroll event.
     await agenda.trigger("scroll")
     expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
   })
@@ -315,12 +296,10 @@ describe("MobileCalendarView", () => {
       await flushPromises()
       expect(w.find(".mobile-calendar").attributes("data-expanded")).toBe("true")
 
-      // Dec 31 2026 is a Thursday, so the collapsed week spans into 2027.
       await w.find(".mc-month-label").trigger("click")
       expect(w.find(".mc-month-label").text()).toContain("2026")
       expect(w.find(".mc-month-label").text()).toContain("2027")
 
-      // Expand and pick Jan 1 from the adjacent-month cell.
       await w.find(".mc-month-label").trigger("click")
       const jan1 = w.findAll(".mc-month-day").find(d =>
         d.attributes("aria-label")?.includes("January 1, 2027"),
@@ -329,7 +308,6 @@ describe("MobileCalendarView", () => {
       await jan1!.trigger("click")
       expect(w.find(".mc-agenda-date").text()).toContain("Tomorrow")
 
-      // The minute tick keeps "today" honest.
       vi.advanceTimersByTime(60_000)
       await nextTick()
       w.unmount()
@@ -369,7 +347,6 @@ describe("MobileTasksView", () => {
     const w = mount(MobileTasksView)
     await flushPromises()
 
-    // Open Done section (starts closed)
     const headers = w.findAll(".mt-section-header")
     await headers[2]!.trigger("click")
     expect(w.text()).toContain("T-done")
@@ -379,7 +356,6 @@ describe("MobileTasksView", () => {
     await items[2]!.trigger("click")
     expect(w.emitted("selectTask")?.map(e => e[0])).toEqual(["t1", "t3"])
 
-    // Collapse todo & doing
     await headers[0]!.trigger("click")
     await headers[1]!.trigger("click")
   })
@@ -407,9 +383,7 @@ describe("MobileProfile", () => {
     const w = mount(MobileProfile)
     await flushPromises()
 
-    // Push is unsupported in jsdom → the subscription toggle is disabled…
     expect(w.find(".ui-toggle").attributes("disabled")).toBeDefined()
-    // …but the global test still fires (screens + any subscribed phones).
     expect(w.find(".mp-test-btn").attributes("disabled")).toBeUndefined()
     expect(w.text()).toContain("Notifications")
     expect(w.text()).toContain("HTTPS certificate")
@@ -441,17 +415,14 @@ describe("MobileQuickAdd", () => {
       await w.findAll(".mqa-tab").find(tab => tab.text() === "Event")!.trigger("click")
       await nextTick()
 
-      // Fill event title, apply duration chip, set recurrence + count, submit
       await w.find('input[placeholder="Event title"]').setValue("Party")
-      // Pin the start time so the quick-duration test is deterministic near midnight.
       await w.find('input[type="time"]').setValue("10:00")
       const durChips = w.findAll(".mqa-duration-chip")
-      await durChips[1]!.trigger("click") // 30m
+      await durChips[1]!.trigger("click")
 
       const selects = w.findAll("select")
       await selects[1]!.setValue("weekly")
       await nextTick()
-      // Assigned to · Repeat · End repeat · Remind me
       const allSelects = w.findAll("select")
       await allSelects[2]!.setValue("count")
       await nextTick()
@@ -462,12 +433,11 @@ describe("MobileQuickAdd", () => {
       })
       vi.advanceTimersByTime(900)
 
-      // Switch to Task tab, create task when no list exists (creates General list first)
       const tabs = w.findAll(".mqa-tab")
       await tabs.find(tab => tab.text() === "Task")!.trigger("click")
       await w.find('input[placeholder="Task title"]').setValue("Vacuum")
       const prioBtns = w.findAll(".mqa-priority-btn")
-      await prioBtns[2]!.trigger("click") // high
+      await prioBtns[2]!.trigger("click")
 
       vi.mocked(fetch).mockImplementation(async (url, opts) => {
         const u = String(url)

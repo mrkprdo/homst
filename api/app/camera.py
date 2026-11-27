@@ -31,13 +31,9 @@ from app.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
-# The public playlist path is stable; the file it serves is resolved through
-# the ``current`` pointer so a restart can publish a new run atomically.
 PLAYLIST_NAME = "index.m3u8"
 CURRENT_RUN_FILE = "current"
 RUN_ID_PATTERN = re.compile(r"^[a-f0-9]{8}$")
-# Each run prefixes its segments with its run id. Restarting ffmpeg must never
-# reuse a filename while a slow client may still be fetching the old one.
 SEGMENT_PATTERN = re.compile(r"^seg_[a-f0-9]{8}_\d{6,}\.ts$")
 LEGACY_SEGMENT_PATTERN = re.compile(r"^seg_\d+\.ts$")
 TOKEN_PATTERN = re.compile(r"^[a-f0-9]{16}$")
@@ -45,12 +41,8 @@ TOKEN_PATTERN = re.compile(r"^[a-f0-9]{16}$")
 START_TIMEOUT = 10.0
 POLL_INTERVAL = 0.2
 LOCK_TTL_SECONDS = 20
-# A restart can spend up to STOP_TIMEOUT + START_TIMEOUT; hold the election
-# long enough that no other worker can start a competing ffmpeg mid-restart.
 RESTART_LOCK_TTL_SECONDS = 60
 REFRESH_SECONDS = 5
-# Playlist requests arrive from every viewer, so only renew the shared lock
-# when a meaningful part of its TTL has elapsed instead of once per request.
 OWNER_REFRESH_INTERVAL = REFRESH_SECONDS / 2
 STOP_TIMEOUT = 5.0
 
@@ -61,7 +53,6 @@ ROTATIONS = {0, 90, 180, 270}
 OWNER_KEY = "homst:camera:owner"
 WORKER_ID = uuid.uuid4().hex
 
-# Shared by every gunicorn worker in the same container.
 CAMERA_ROOT = Path(tempfile.gettempdir()) / "homst-camera"
 
 HEALTH_CHECK_INTERVAL = 5.0
@@ -69,29 +60,16 @@ HEALTH_STALL_THRESHOLD = 15.0
 HEALTH_RETRY_INTERVAL = 60.0
 MAX_HEALTH_RETRIES = 3
 
-# One conservative rendition: the camera card is a small tile, and some
-# household clients are low-powered (older Raspberry Pis). 540p at 15 fps with
-# a capped bitrate keeps decode and Wi-Fi load well below 720p20.
 VIDEO_WIDTH = 960
 VIDEO_HEIGHT = 540
 VIDEO_FPS = 15
 VIDEO_BITRATE = "1200k"
 VIDEO_BUFSIZE = "2400k"
 
-# Keep a long enough live window that a client on a slow link can fall behind
-# without the segment it needs being deleted. The extra delete threshold keeps
-# a few more segments on disk after they leave the playlist.
-#
-# 60 × 2s = a two-minute window. Clients are allowed to drift up to 60s behind
-# live (liveMaxLatencyDurationCount in useCameraStream.ts), so the playlist has
-# to stay comfortably ahead of the slowest viewer that is still keeping up.
 HLS_SEGMENT_SECONDS = 2
 HLS_LIST_SIZE = 60
 HLS_DELETE_THRESHOLD = 8
 
-# A restarted run leaves its old segments on disk so a client that is still
-# behind the live edge can finish downloading them. They are pruned once that
-# grace window has passed.
 RUN_RETENTION_SECONDS = 300
 
 
@@ -304,7 +282,6 @@ def _prune_runs(token: str, keep_run: str) -> None:
             if path.is_file() and path.stat().st_mtime < cutoff:
                 path.unlink()
         except OSError:
-            # A concurrent reader or cleanup pass is harmless.
             continue
 
 
@@ -321,7 +298,6 @@ def _read_ffmpeg_log(directory: Path, source: str) -> str:
     except OSError:
         return ""
     text = text.replace(source, "camera")
-    # ffmpeg may echo the URL in a normalized form; strip userinfo anyway.
     text = re.sub(r"(rtsps?|https?)://[^/\s@]+@", r"\1://***@", text)
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     return lines[-1][:240] if lines else ""
@@ -381,7 +357,6 @@ class CameraHealthMonitor:
             return True
         self._attempts += 1
         if self._attempts > MAX_HEALTH_RETRIES:
-            # Give up on rapid retries and fall back to one restart a minute.
             self._attempts = 0
             await asyncio.sleep(HEALTH_RETRY_INTERVAL)
         await self._stream.restart()
@@ -394,13 +369,8 @@ class CameraHealthMonitor:
                 default=0.0,
             )
         except OSError:
-            # A transient filesystem blip is not a camera failure.
             return True
         if newest == 0.0:
-            # Startup owns the first segment timeout. After that, no segments
-            # at all means ffmpeg died or its output was removed: restart even
-            # though there is no mtime to compare. A dead process is always a
-            # stall, so recovery does not wait for the grace window.
             if not self._stream.is_running:
                 return False
             return time.monotonic() - self._started_at <= HEALTH_STALL_THRESHOLD
@@ -465,13 +435,7 @@ class CameraStream:
                     return output_dir(token)
                 self._owner_refreshed_at = time.monotonic()
 
-            # We own the lock. Restart if the source changed or ffmpeg died.
             if not running or self._source != source:
-                # Keep the election key while ffmpeg is torn down and rebuilt.
-                # Releasing it first lets another worker claim ownership and
-                # start a second ffmpeg against the same camera. A freshly
-                # claimed key already has a full TTL, so only an existing
-                # owner needs the longer restart lease.
                 if owner == WORKER_ID:
                     await self._lease_restart(redis)
 
@@ -483,8 +447,6 @@ class CameraStream:
                     await self._stop_locked()
                     raise
                 if previous_token and previous_token != token:
-                    # The old source's published run is no longer reachable
-                    # through the API, so nothing needs it any more.
                     shutil.rmtree(output_dir(previous_token), ignore_errors=True)
                 try:
                     await redis.set(OWNER_KEY, WORKER_ID, ex=LOCK_TTL_SECONDS)
@@ -505,7 +467,6 @@ class CameraStream:
             failed = True
             raise CameraError("Camera streaming is unavailable.", 503) from exc
         finally:
-            # Run cleanup even while the CameraError above propagates.
             if failed:
                 await self._stop_locked()
         self._owner_refreshed_at = time.monotonic()
@@ -538,8 +499,6 @@ class CameraStream:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + START_TIMEOUT
         while loop.time() < deadline:
-            # Re-resolve the published playlist on every poll: another worker
-            # may publish a new run while this worker is waiting.
             target = path if path is not None else playlist_path(token)
             if _playlist_ready(target):
                 return
@@ -566,12 +525,6 @@ class CameraStream:
         directory.mkdir(parents=True, exist_ok=True)
         self._cleanup_stale_runs(token)
 
-        # Every run gets its own segment names and playlist inside the same
-        # stable directory. ffmpeg keeps writing there for its whole lifetime;
-        # publishing the run only flips the ``current`` pointer, so viewers
-        # keep playing the previous run until the replacement is live. Renaming
-        # the directory ffmpeg is writing into (the old approach) makes ffmpeg
-        # fail on the very next segment with ENOENT.
         run_id = uuid.uuid4().hex[:8]
         playlist = run_playlist_path(token, run_id)
 
@@ -620,9 +573,6 @@ class CameraStream:
             "-hls_delete_threshold",
             str(HLS_DELETE_THRESHOLD),
             "-hls_flags",
-            # discont_start marks every run as a discontinuity: a restarted
-            # ffmpeg begins a fresh timestamp timeline, and players must
-            # re-probe it instead of appending new frames at the old offsets.
             "delete_segments+omit_endlist+independent_segments+discont_start",
             "-hls_segment_filename",
             str(directory / f"seg_{run_id}_%06d.ts"),
@@ -658,15 +608,11 @@ class CameraStream:
             if detail:
                 logger.warning("Camera ffmpeg failed: %s", detail)
             _remove_run(token, run_id)
-            # The published run is still on disk and remains playable; only
-            # this worker's failed attempt and its election are discarded.
             await self._stop_locked(keep_monitor=keep_monitor, keep_output=True)
             if detail:
                 raise CameraError(f"{exc} ffmpeg: {detail}") from exc
             raise
 
-        # The run is producing segments. Point clients at it without touching
-        # the files the previous run is still serving.
         _publish_run(token, run_id)
         _prune_runs(token, run_id)
 
@@ -678,9 +624,6 @@ class CameraStream:
             if not source or not token:
                 return
 
-            # The election may have moved to another worker while this one was
-            # unhealthy. Never start a competing ffmpeg in that case: just
-            # stop the local process and let the new owner serve viewers.
             redis = None
             try:
                 redis = await get_redis()
@@ -731,8 +674,6 @@ class CameraStream:
                 redis = await get_redis()
                 owner = _as_text(await redis.get(OWNER_KEY))
                 if owner != WORKER_ID:
-                    # Handoff: keep the shared key and output while stopping,
-                    # otherwise this worker would delete the new owner's files.
                     async with self._get_lock():
                         await self._stop_locked(keep_owner=True)
                     return
@@ -796,9 +737,6 @@ class CameraStream:
             redis = await get_redis()
             owner = _as_text(await redis.get(OWNER_KEY))
         except Exception:
-            # Without Redis this worker cannot prove it still owns the output.
-            # Leave it alone: pruning removes stale runs later, while deleting a
-            # live owner's directory would kill its ffmpeg mid-stream.
             logger.warning("Could not release camera stream ownership", exc_info=True)
             return
 

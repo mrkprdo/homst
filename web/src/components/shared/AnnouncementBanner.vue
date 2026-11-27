@@ -12,10 +12,6 @@ const ui = useUi()
 const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | undefined
 
-/**
- * The announcement screen already lists every active message. A second banner
- * there would cover the composer, so it is suppressed until you leave.
- */
 const onAnnouncementScreen = computed(
   () => ui.activePanel.value === "announcements" || ui.announcementsOpen.value,
 )
@@ -96,7 +92,6 @@ function timeLabel(a: Announcement): string {
   z-index: 340;
   pointer-events: none;
   background: color-mix(in srgb, var(--color-bgBase) 4%, transparent);
-  /* Prefixed first: Lightning CSS drops the standard property if it comes first. */
   -webkit-backdrop-filter: blur(1.5px);
   backdrop-filter: blur(1.5px);
 }
@@ -216,7 +211,6 @@ function timeLabel(a: Announcement): string {
   outline-offset: 2px;
 }
 
-/* ── Wall display: larger cards with a breathing accent glow ── */
 .announcement-card--display {
   gap: var(--space-5);
   padding: var(--space-6);

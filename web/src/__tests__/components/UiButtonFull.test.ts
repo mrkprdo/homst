@@ -4,10 +4,6 @@ import UiButton from "@/components/ui/UiButton.vue"
 import EventChip from "@/components/ui/EventChip.vue"
 import { setLowPower } from "@/lib/motion"
 
-/**
- * In low-power mode `animate()` applies the final state synchronously, which
- * lets us assert that the pointer handlers really executed.
- */
 function dispatchPointer(el: Element, type: string) {
   el.dispatchEvent(new MouseEvent(type, { bubbles: true }))
 }
@@ -55,7 +51,6 @@ describe("UiButton pointer feedback", () => {
     expect(el.style.transform).toContain("scaleX(1.06)")
     await wrapper.trigger("keyup", { key: "Enter" })
 
-    // Repeated keys and unrelated keys must not re-trigger the press.
     await wrapper.trigger("keydown", { key: " ", repeat: true })
     await wrapper.trigger("keydown", { key: "a" })
     await wrapper.trigger("keyup", { key: "a" })

@@ -60,7 +60,6 @@ describe("SettingsPanel — guest Wi-Fi", () => {
     expect(useSettings().wifiSsid.value).toBe("Cedar Guest")
     expect(useSettings().wifiPassword.value).toBe("new-secret")
 
-    // A change streamed from another screen mirrors into the form.
     useSettings().applyWifiSettings({ ssid: "OtherNet", password: "pw2", encryption: "WEP", hidden: true })
     await flushPromises()
     expect((wrapper.findAll(".wifi-input")[0]!.element as HTMLInputElement).value).toBe("OtherNet")

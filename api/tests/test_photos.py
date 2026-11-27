@@ -31,7 +31,6 @@ def _png_chunk(kind: bytes, payload: bytes) -> bytes:
 def _png_with_dimensions(width: int, height: int) -> bytes:
     """Return a valid PNG whose IHDR claims ``width`` x ``height`` pixels."""
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    # Valid (tiny) RGB payload; the header is what the guards look at first.
     raw = b"".join(b"\x00" + b"\x00\x00\x00" * 2 for _ in range(2))
     return (
         b"\x89PNG\r\n\x1a\n"
@@ -42,7 +41,6 @@ def _png_with_dimensions(width: int, height: int) -> bytes:
 
 
 def _stored_path(url: str) -> str:
-    # url looks like /uploads/photos/<filename>
     filename = url.rsplit("/", 1)[-1]
     return os.path.join(UPLOAD_DIR, filename)
 
@@ -64,7 +62,6 @@ async def test_upload_scales_large_image_down(client):
         with Image.open(path) as img:
             assert img.width == MAX_PHOTO_EDGE
             assert img.height == 960
-            # Aspect ratio preserved: 4000:3000 == 1280:960
             assert img.width / img.height == pytest.approx(4000 / 3000, rel=1e-2)
     finally:
         if os.path.exists(path):
@@ -124,8 +121,6 @@ async def test_uploaded_photo_is_served_with_a_long_browser_cache(client):
     try:
         served = await client.get(photo["url"])
         assert served.status_code == 200
-        # Filenames are UUIDs, so the bytes never change: the client may reuse
-        # its copy for a week without revalidating.
         assert served.headers["cache-control"] == "public, max-age=604800"
     finally:
         if os.path.exists(path):
@@ -167,7 +162,6 @@ async def test_upload_rejects_oversized_body(client):
 @pytest.mark.asyncio
 async def test_upload_rejects_decompression_bomb(client):
     before = _uploaded_files()
-    # Far more pixels than Pillow's own bomb guard allows.
     bomb = _png_with_dimensions(30000, 30000)
     resp = await client.post(
         "/api/v1/photos",
@@ -180,7 +174,6 @@ async def test_upload_rejects_decompression_bomb(client):
 @pytest.mark.asyncio
 async def test_upload_rejects_absurd_pixel_count(client):
     before = _uploaded_files()
-    # Below Pillow's bomb threshold but above the application's 40 MP cap.
     huge = _png_with_dimensions(6400, 6400)
     resp = await client.post(
         "/api/v1/photos",

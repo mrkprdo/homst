@@ -44,18 +44,12 @@ def _country_code(country: str | None) -> str | None:
 async def _geocode_address(address: str | None, province: str | None, country: str | None) -> dict:
     code = _country_code(country)
 
-    # Candidate queries, most specific first. The country is passed as the
-    # `countryCode` filter parameter, NEVER appended to the name — appending a
-    # 2-letter code like "CA" makes Open-Meteo read it as a US state
-    # (e.g. "Ontario, CA" resolves to Ontario, California instead of Canada).
     candidates: list[str] = []
     full = ", ".join(filter(None, [address, province]))
     if full:
         candidates.append(full)
     if address:
         candidates.append(address)
-        # Street addresses aren't geocodable by Open-Meteo (city-level only) —
-        # fall back to the city portion (last comma segment).
         city = address.rsplit(",", 1)[-1].strip()
         if city and city not in candidates:
             candidates.append(city)
@@ -74,8 +68,6 @@ async def _geocode_address(address: str | None, province: str | None, country: s
                 data = resp.json()
                 results = data.get("results") or []
                 for r in results:
-                    # When a country code is known, only accept results from it —
-                    # prevents "Ontario" from matching Ontario, California.
                     if code and (r.get("country_code") or "").upper() != code:
                         continue
                     return {"lat": r["latitude"], "lon": r["longitude"]}
@@ -107,9 +99,6 @@ async def update_settings(
             else:
                 merged["camera"] = camera
 
-        # Only re-geocode when one of the address inputs changed. Unrelated
-        # settings (theme, notifications, update preferences) shouldn't make an
-        # external geocoding request or take a network round-trip to save.
         address_changed = any(
             key in req.settings
             for key in ("address", "holidayProvince", "holidayCountry")
@@ -122,13 +111,9 @@ async def update_settings(
             )
             merged.update(coords)
 
-    # Sunrise/sunset times are derived display data, never stored settings.
     merged.pop("autoSunrise", None)
     merged.pop("autoSunset", None)
 
-    # Resolve the scheduled appearance before saving. This gives the client
-    # that picked "auto" the current day/night state immediately and stores it
-    # so the worker only broadcasts real sunrise/sunset transitions.
     auto_state = auto_theme_state(merged)
     if auto_state:
         merged["autoThemeDark"] = auto_state["autoThemeDark"]
@@ -138,8 +123,6 @@ async def update_settings(
     hh.settings = merged
     await db.commit()
 
-    # A camera change invalidates the running HLS stream: release the shared
-    # lock so the next playlist request starts ffmpeg with the new source.
     if req.settings is not None and "camera" in req.settings:
         await release_camera_stream(force=True)
 
@@ -162,6 +145,5 @@ def _public_settings(settings: dict) -> dict:
 async def get_settings(db: AsyncSession = Depends(get_db)):
     hh = await _get_or_create_household(db)
     settings = dict(hh.settings or {})
-    # Keep the resolved state fresh for clients that reload between flips.
     settings.update(auto_theme_state(settings))
     return _public_settings(settings)

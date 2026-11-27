@@ -23,8 +23,6 @@ from app.version import VERSION
 
 DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 
-# The worker cron ticks every minute; this gate keeps the actual release check
-# at the household's configured interval (5 minutes by default).
 _last_update_check = 0.0
 
 
@@ -87,8 +85,6 @@ async def check_auto_update(ctx):
     if not managed:
         return
 
-    # Force the release feed here: the card can use its normal cache, but the
-    # background check should actually hit GitHub at the configured interval.
     feed = await fetch_releases(force=True)
     latest = feed.latest
     if not latest:
@@ -183,11 +179,8 @@ class WorkerSettings:
         apply_auto_theme,
     ]
     cron_jobs = [
-        # Reminder scan: runs at second 0 of every minute.
         cron(dispatch_reminders),
-        # Sunrise/sunset appearance flips; only publishes on a real change.
         cron(apply_auto_theme),
-        # Update availability check; the configured interval is enforced in code.
         cron(check_auto_update),
     ]
     redis_settings = RedisSettings.from_dsn(app_settings.redis_url)

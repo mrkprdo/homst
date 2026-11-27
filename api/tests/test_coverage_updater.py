@@ -14,10 +14,6 @@ from app.routers import system as system_router
 from app.updater.spec import _binds_from_mounts, _normalized, _override, merge_container_spec
 from app.updates import ReleaseFeed, _feed_from_cache, mature_releases, parse_release
 
-# ══════════════════════════════════════════════════════════════════════
-# updater_client
-# ══════════════════════════════════════════════════════════════════════
-
 
 class _Response:
     def __init__(self, status_code=200, payload=None, text=""):
@@ -112,7 +108,6 @@ async def test_updater_client_install_and_retry_errors(monkeypatch):
         await updater_client.retry_rollback()
     assert (exc.value.status_code, exc.value.detail) == (409, "busy")
 
-    # A body that is not JSON falls back to the raw text.
     _patch_client(monkeypatch, _Response(500, ValueError("bad json"), text="gateway"))
     with pytest.raises(updater_client.UpdaterError) as exc:
         await updater_client.install("0.3.0", latest=False)
@@ -121,11 +116,6 @@ async def test_updater_client_install_and_retry_errors(monkeypatch):
     _patch_client(monkeypatch, _Response(202, {"id": "job-1"}))
     assert await updater_client.install("0.3.0", latest=True) == {"id": "job-1"}
     assert await updater_client.retry_rollback() == {"id": "job-1"}
-
-
-# ══════════════════════════════════════════════════════════════════════
-# updates: parsing + cache + network branches
-# ══════════════════════════════════════════════════════════════════════
 
 
 class _FeedResponse:
@@ -181,8 +171,6 @@ def _patch_feed(monkeypatch, cached, response):
     _FeedClient.shared = response
     _FeedClient.last_headers = None
     if hasattr(updates._FETCH_LOCK, "_locked"):
-        # The real lock is not held between tests; only a lock instance can be
-        # replaced, so callers never assign here.
         pass
     return saved
 
@@ -317,7 +305,6 @@ async def test_load_and_save_cache_fall_back_to_memory(monkeypatch):
     await updates._save_cache({"releases": []})
     assert (await updates._load_cache()) == {"releases": []}
 
-    # Expired memory cache is ignored.
     monkeypatch.setattr(updates, "_MEM_CACHE_AT", 0.0)
     monkeypatch.setattr(updates, "_MEM_CACHE", {"stale": True})
     assert await updates._load_cache() is None
@@ -353,7 +340,6 @@ def test_release_parsing_edge_cases():
     assert parse_release({"tag_name": "v1.2.3", "name": None})["name"] == "1.2.3"
     assert parse_release({"tag_name": "v1.2.3", "body": None})["notes"] == ""
 
-    # A timestamp without an offset is treated as UTC.
     older = mature_releases(
         [{"version": "1.0.0", "published_at": "2020-01-01T00:00:00"}],
         now=datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -363,11 +349,6 @@ def test_release_parsing_edge_cases():
     feed = _feed_from_cache({})
     assert feed.releases == [] and feed.checked_at == 0.0
     assert ReleaseFeed().latest is None
-
-
-# ══════════════════════════════════════════════════════════════════════
-# updater/spec edge cases
-# ══════════════════════════════════════════════════════════════════════
 
 
 def test_spec_normalization_and_bind_fallbacks():
@@ -414,11 +395,6 @@ def test_spec_keeps_custom_hostname_and_skips_empty_volumes():
     assert payload["HostConfig"]["Binds"] == ["/src:/dst:ro"]
     assert "Volumes" not in payload
     assert "NetworkingConfig" not in payload
-
-
-# ══════════════════════════════════════════════════════════════════════
-# workers
-# ══════════════════════════════════════════════════════════════════════
 
 
 class _Result:
@@ -548,11 +524,6 @@ async def test_auto_theme_swallows_publish_errors(monkeypatch):
     monkeypatch.setattr(worker, "publish_event", boom)
     await worker.apply_auto_theme(None, now=datetime(2026, 10, 21, 16, 0, tzinfo=timezone.utc))
     assert household.settings["autoThemeDark"] is False
-
-
-# ══════════════════════════════════════════════════════════════════════
-# routers/system remaining branches
-# ══════════════════════════════════════════════════════════════════════
 
 
 def _feed(version="0.3.0"):

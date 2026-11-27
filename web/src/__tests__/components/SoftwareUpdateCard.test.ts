@@ -228,8 +228,6 @@ describe("SoftwareUpdateCard", () => {
       })
     }
 
-    // The reloaded page reads the same finished job from the server, but the
-    // acknowledgement keeps the "update complete" notice from coming back.
     fetchMock.mockResolvedValueOnce(json(finished))
     const reloaded = mount(SoftwareUpdateCard)
     await flushPromises()

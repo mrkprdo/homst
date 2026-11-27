@@ -19,10 +19,6 @@ function getIndicatorMetrics(value: T) {
   const activeBtn = groupEl.value.querySelector(`[data-value="${value}"]`) as HTMLElement | null
   if (!activeBtn) return null
 
-  // offsetLeft/offsetWidth are layout metrics: they stay stable while an
-  // ancestor (e.g. the panel enter transition) is scaled, unlike
-  // getBoundingClientRect. offsetLeft is also relative to the group's padding
-  // box — the same origin the absolutely-positioned indicator uses.
   return { left: activeBtn.offsetLeft, width: activeBtn.offsetWidth }
 }
 
@@ -39,7 +35,6 @@ function animateIndicator(value: T) {
   const metrics = getIndicatorMetrics(value)
   if (!metrics || !indicatorEl.value) return
 
-  // Apply width instantly; only translate is animated to avoid layout thrashing.
   indicatorEl.value.style.width = `${metrics.width}px`
   indicatorEl.value.style.opacity = "1"
   animate(indicatorEl.value, {
@@ -52,7 +47,6 @@ watch(() => props.modelValue, (val) => {
   nextTick(() => animateIndicator(val))
 })
 
-// Re-position when font size changes
 watch(() => settings.fontSize.value, () => {
   nextTick(() => positionIndicator(props.modelValue))
 })
@@ -66,8 +60,6 @@ onMounted(() => {
     lastWidth = groupEl.value?.offsetWidth ?? 0
   })
 
-  // A responsive column change or rotation resizes the control without
-  // changing the model, so re-measure the pill whenever the width moves.
   if (typeof ResizeObserver !== "undefined" && groupEl.value) {
     resizeObserver = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? 0
@@ -144,8 +136,6 @@ function select(value: T) {
   white-space: nowrap;
 }
 
-/* The pill is compact, the target is not. Expand vertically only so adjacent
-   options never steal each other's taps. */
 .segmented-btn::after {
   content: "";
   position: absolute;

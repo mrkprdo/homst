@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-/* ── in-memory localStorage (Node's own global shadows jsdom's) ─────────────── */
 const _ls = new Map<string, string>()
 const _memLs: Storage = {
   get length() { return _ls.size },
@@ -59,7 +58,6 @@ function setNavigator(ua: string, cores?: number, deviceMemory?: number) {
   }
 }
 
-/** Re-evaluate the module-level low-power detection. */
 async function freshMotion() {
   vi.resetModules()
   return await import("@/lib/motion")
@@ -140,7 +138,6 @@ describe("lib/motion — low-power detection at import time", () => {
     expect(desktop.isLowPower).toBe(false)
     expect(desktop.isCheapCompositor()).toBe(false)
 
-    // A small x86 mini-PC kiosk (4 cores, 4 GB in Chromium) also qualifies.
     localStorage.clear()
     setNavigator("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 4, 4)
     const miniPc = await freshMotion()
@@ -152,7 +149,6 @@ describe("lib/motion — low-power detection at import time", () => {
     setNavigator("Mozilla/5.0 (X11; Linux aarch64)", 4)
     localStorage.setItem(ANIMATIONS_ENABLED_KEY, "true")
     const motion = await freshMotion()
-    // Motion is a taste setting; frame-copy effects are a hardware budget.
     expect(motion.isLowPower).toBe(false)
     expect(motion.isPerformanceMode()).toBe(true)
   })

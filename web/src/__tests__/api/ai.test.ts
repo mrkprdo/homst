@@ -466,7 +466,6 @@ describe("aiApi conversations", () => {
       name: "shot.png",
     })
 
-    // A server that answers without a url must not break the transcript.
     fetchMock.mockResolvedValueOnce(json({}))
     expect(await aiApi.uploadImage({ image: "data:image/png;base64,abc" }))
       .toEqual({ name: "", url: "" })

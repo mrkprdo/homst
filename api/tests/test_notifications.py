@@ -45,9 +45,6 @@ async def _seed_event(
     return event
 
 
-# ── Event reminder field ─────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_create_event_with_reminder(client):
     r = await client.post("/api/v1/calendars", json={"name": "Personal", "color": "sage"})
@@ -78,9 +75,6 @@ async def test_update_event_can_clear_reminder(client):
     assert r.json()["reminder_minutes"] is None
 
 
-# ── Message formatting ───────────────────────────────────────────────
-
-
 def test_format_lead_phrases():
     assert format_lead(30) == "30 min"
     assert format_lead(60) == "1 hour"
@@ -90,11 +84,8 @@ def test_format_lead_phrases():
 
 def test_format_start_uses_household_timezone():
     start = datetime(2030, 6, 1, 18, 0, tzinfo=UTC)
-    assert "2:00 PM" in format_start(start, "America/Toronto")  # EDT in June
+    assert "2:00 PM" in format_start(start, "America/Toronto")
     assert "6:00 PM" in format_start(start, "UTC")
-
-
-# ── Occurrence expansion ─────────────────────────────────────────────
 
 
 def _event(start_at, recurrence=None):
@@ -113,7 +104,7 @@ def test_occurrences_non_recurring():
 
 
 def test_occurrences_weekly_with_until():
-    start = datetime(2030, 6, 3, 18, 0, tzinfo=UTC)  # a Monday
+    start = datetime(2030, 6, 3, 18, 0, tzinfo=UTC)
     until = (start + timedelta(days=21)).isoformat()
     ev = _event(start, {"freq": "weekly", "until": until})
     occs = occurrences_between(ev, start, start + timedelta(days=60))
@@ -133,9 +124,6 @@ def test_occurrences_monthly_clamps_short_months():
     occs = occurrences_between(ev, start, start + timedelta(days=90))
     assert occs[0] == start
     assert occs[1] == datetime(2030, 2, 28, 9, 0, tzinfo=UTC)
-
-
-# ── Due detection & dispatch ─────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -170,7 +158,6 @@ async def test_dispatch_hud_and_idempotency(db_session):
     assert len(hud_calls) == 1
     assert hud_calls[0]["title"] == "Soccer practice"
 
-    # Second run at the same instant must not re-send.
     logs2 = await dispatch_due_reminders(db_session, now, deliver_hud=fake_hud)
     assert logs2 == []
     assert len(hud_calls) == 1
@@ -178,7 +165,6 @@ async def test_dispatch_hud_and_idempotency(db_session):
 
 @pytest.mark.asyncio
 async def test_dispatch_recurring_occurrence_reminds(db_session):
-    # Weekly event that started last week — its *next* occurrence is due soon.
     now = datetime.now(UTC)
     start = now - timedelta(days=7) + timedelta(minutes=30)
     await _seed_event(
@@ -195,9 +181,6 @@ async def test_dispatch_recurring_occurrence_reminds(db_session):
     logs = await dispatch_due_reminders(db_session, now, deliver_hud=fake_hud)
     assert [log.channel for log in logs] == ["hud"]
     assert len(hud_calls) == 1
-
-
-# ── Test endpoint ────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio

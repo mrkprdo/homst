@@ -56,7 +56,6 @@ async def test_stores_a_screenshot_and_serves_it(client, written):
 
     served = await client.get(body["url"])
     assert served.status_code == 200
-    # UUID filenames never change, so the browser may reuse its copy.
     assert served.headers["cache-control"] == "public, max-age=604800"
 
 
@@ -71,7 +70,7 @@ async def test_keeps_the_label_but_names_the_file_with_a_uuid(client, written):
     path = _stored_path(body["url"])
     written.append(path)
     stem = os.path.basename(path).removesuffix(".png")
-    uuid.UUID(stem)  # the file on disk is a fresh uuid, never the user's name
+    uuid.UUID(stem)
     assert body["name"] == "my shot .png"
 
 

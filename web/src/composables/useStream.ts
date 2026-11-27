@@ -20,7 +20,6 @@ import { mapAnnouncement } from "@/api/announcements"
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected"
 
-/** Phones use the mobile shell and must never show kiosk update prompts. */
 const isDisplayClient = typeof navigator === "undefined"
   || !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
 
@@ -32,7 +31,6 @@ let eventSource:    EventSource | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 const maxBackoff = 30000
 
-/** How many times the stream has opened, and how many resyncs the server has asked for. */
 let opens = 0
 let syncFrames = 0
 
@@ -53,7 +51,6 @@ async function refreshAllStores() {
 }
 
 let refreshInFlight: Promise<void> | null = null
-/** Coalesce overlapping resync triggers into a single reload. */
 function requestRefresh() {
   if (!refreshInFlight) {
     refreshInFlight = refreshAllStores().finally(() => { refreshInFlight = null })
@@ -61,7 +58,6 @@ function requestRefresh() {
   return refreshInFlight
 }
 
-/** Let the software-update card follow state changes made on another client. */
 function notifyUpdateChanged() {
   window.dispatchEvent(new CustomEvent("homst:update-changed"))
 }
@@ -86,10 +82,6 @@ function connect() {
     reconnectAttempt.value = 0
   }
 
-  // The server subscribes us to the household channel and immediately asks for a
-  // resync. The first request is the page's initial connect (already covered by
-  // the mount-time fetches); anything after that means we were disconnected —
-  // server restart, network blip — and may have missed events.
   source.addEventListener("sync.required", () => {
     syncFrames++
     if (opens > 1 || syncFrames > 1) {
@@ -130,14 +122,10 @@ function connect() {
       const data = JSON.parse(e.data)
       const settings = data.settings
       if (!settings || typeof settings !== "object") return
-      // Theme, accent, text size, warm lighting, notification prefs and the
-      // room name all ride this event — apply them live so every screen in the
-      // fleet follows a change made on any other client.
       applyHouseholdSettings(settings)
       if (settings.widgetLayout) {
         window.dispatchEvent(new CustomEvent(HOME_LAYOUT_EVENT, { detail: settings.widgetLayout }))
       }
-      // Update-check preferences changed on another screen; refresh the card.
       if (settings.updates) {
         notifyUpdateChanged()
         const autoInstall = settings.updates.autoInstall
@@ -177,7 +165,6 @@ function connect() {
   })
 
   source.onerror = () => {
-    // Ignore late errors from a stream that a newer connect() already replaced.
     if (eventSource !== source) return
     connected.value = false
     status.value = "disconnected"

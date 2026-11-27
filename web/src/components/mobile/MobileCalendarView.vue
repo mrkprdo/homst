@@ -19,7 +19,6 @@ const { members, ensureLoaded: loadMembers } = useMembers()
 
 const now = ref(new Date())
 const selectedDate = ref(new Date())
-/** Month grid at full height, or folded down to the selected day's week. */
 const monthExpanded = ref(true)
 
 let nowInterval: ReturnType<typeof setInterval> | null = null
@@ -63,7 +62,6 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 }
 
-/** The visible month follows the selected day, so navigating never strands it. */
 const monthStart = computed(
   () => new Date(selectedDate.value.getFullYear(), selectedDate.value.getMonth(), 1),
 )
@@ -76,7 +74,6 @@ const monthRowCount = computed(() => {
     monthStart.value.getMonth() + 1,
     0,
   ).getDate()
-  // Monday = 0 … Sunday = 6
   const leadingDays = (monthStart.value.getDay() + 6) % 7
   return Math.ceil((leadingDays + daysInMonth) / 7)
 })
@@ -101,10 +98,6 @@ function formatEventTime(iso: string) {
 
 const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-// ── Events for the visible month ──
-// Expand once over the whole grid window, then bucket occurrences by day. Every
-// cell and the agenda read from the same index, so a scroll or a tap never
-// re-scans the recurrence list.
 const EXPAND_LEAD_DAYS = 31
 const MAX_EVENT_DAYS = 366
 
@@ -130,15 +123,12 @@ const eventsByDay = computed(() => {
 
     let end = ev.endAt ? new Date(ev.endAt) : new Date(start)
     if (Number.isNaN(end.getTime()) || end.getTime() < start.getTime()) end = new Date(start)
-    // Legacy all-day events store end_at === start_at; treat them as covering
-    // exactly their start day.
     if (ev.allDay && end.getTime() <= start.getTime()) {
       end = new Date(start.getTime() + 1)
     }
 
     const cursor = startOfDay(start)
     const lastDay = startOfDay(end)
-    // Start at the window edge when the event began before it.
     if (cursor.getTime() < min) cursor.setTime(min)
 
     for (let i = 0; cursor.getTime() <= lastDay.getTime() && i < MAX_EVENT_DAYS; i++) {
@@ -160,7 +150,6 @@ function eventsForDate(date: Date): Event[] {
   return eventsByDay.value.get(dayKey(date)) ?? []
 }
 
-// ── Month grid ──
 interface MonthCell {
   date: Date
   key: string
@@ -211,7 +200,6 @@ function monthCellLabel(cell: MonthCell): string {
   return `${label}, ${count}${cell.isSelected ? ", selected" : ""}`
 }
 
-// ── Selected week strip (collapsed state) ──
 const selectedWeekStart = computed(() => getMonday(selectedDate.value))
 
 const weekDays = computed(() => {
@@ -243,7 +231,6 @@ const weekDays = computed(() => {
   return days
 })
 
-// ── Labels + navigation ──
 const navLabel = computed(() => {
   if (monthExpanded.value) {
     return selectedDate.value.toLocaleDateString("en-US", { month: "long", year: "numeric" })
@@ -308,10 +295,6 @@ function toggleMonth() {
   monthExpanded.value = !monthExpanded.value
 }
 
-// ── Scroll to fold / unfold ──
-// Swipe (or wheel) forward through the agenda → fold the month down to the
-// selected week. Swipe back the other way → unfold the full month. Tracking the
-// gesture itself means this works even when the agenda is too short to scroll.
 const agendaEl = ref<HTMLElement | null>(null)
 const GESTURE_THRESHOLD = 24
 const WHEEL_THRESHOLD = 8
@@ -331,7 +314,6 @@ function onAgendaScroll() {
   if (monthExpanded.value) {
     if (top > GESTURE_THRESHOLD) collapseMonth()
   } else if (top === 0 && top < lastAgendaScrollTop) {
-    // Reaching the top while scrolling back unfolds the month again.
     expandMonth()
   }
   lastAgendaScrollTop = top
@@ -354,7 +336,7 @@ function onTouchStart(e: TouchEvent) {
 function onTouchMove(e: TouchEvent) {
   if (touchStartY === null || e.touches.length !== 1) return
   const y = e.touches[0]!.clientY
-  const delta = touchStartY - y // positive = swipe up / forward
+  const delta = touchStartY - y
   if (delta > GESTURE_THRESHOLD) {
     if (monthExpanded.value) {
       collapseMonth()
@@ -372,7 +354,6 @@ function onTouchEnd() {
   touchStartY = null
 }
 
-// ── Data loading ──
 const prefetched = { year: -1, month: -1 }
 
 function prefetchMonthOf(date: Date) {
@@ -468,7 +449,6 @@ const eventCountLabel = computed(() => {
       :class="{ 'is-collapsed': !monthExpanded }"
       :style="{ '--mc-month-rows': monthRowCount }"
     >
-      <!-- Full month -->
       <div
         class="mc-month-panel"
         :aria-hidden="monthExpanded ? undefined : 'true'"
@@ -506,7 +486,6 @@ const eventCountLabel = computed(() => {
         </div>
       </div>
 
-      <!-- Selected week -->
       <div
         class="mc-week-strip"
         role="group"
@@ -591,7 +570,6 @@ const eventCountLabel = computed(() => {
   min-height: 0;
 }
 
-/* ── Month + Today ── */
 .mc-toolbar {
   display: flex;
   align-items: center;
@@ -679,9 +657,6 @@ const eventCountLabel = computed(() => {
   background: var(--color-accent-light);
 }
 
-/* ── Calendar body: month grid ↔ selected week ── */
-/* Both poses stay mounted in the same grid cell; the body height animates and
-   the two layers cross-fade, so folding the month also glides the agenda up. */
 .mc-calendar-body {
   --mc-month-row-h: 44px;
   --mc-month-dow-h: 20px;
@@ -823,7 +798,6 @@ const eventCountLabel = computed(() => {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-textInverse) 45%, transparent);
 }
 
-/* ── Week strip ── */
 .mc-week-strip {
   display: flex;
   grid-area: calendar;
@@ -924,7 +898,6 @@ const eventCountLabel = computed(() => {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-textInverse) 45%, transparent);
 }
 
-/* ── Day agenda ── */
 .mc-agenda {
   display: flex;
   flex-direction: column;
@@ -1021,7 +994,6 @@ const eventCountLabel = computed(() => {
   flex-shrink: 0;
 }
 
-/* ── Empty / loading ── */
 .mc-state {
   display: flex;
   flex-direction: column;
@@ -1057,7 +1029,6 @@ const eventCountLabel = computed(() => {
   color: var(--color-textSecondary);
 }
 
-/* ── Focus ── */
 .mc-nav-btn:focus-visible,
 .mc-month-label:focus-visible,
 .mc-today-chip:focus-visible,

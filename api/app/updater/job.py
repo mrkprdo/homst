@@ -42,9 +42,6 @@ def _is_older(candidate: str | None, current: str | None) -> bool:
 
 
 def _image_version(image: dict[str, Any], container: dict[str, Any] | None = None) -> str | None:
-    # The image's own HOMST_VERSION env is baked from the Docker build arg and
-    # is not affected by registry/metadata labelling. Prefer it; fall back to
-    # the OCI label and finally a container-level override.
     env = (image.get("Config") or {}).get("Env") or []
     for item in env:
         key, _, value = item.partition("=")
@@ -108,9 +105,6 @@ class UpdateManager:
         if version and version != state.get("current_version"):
             changes["current_version"] = version
 
-        # A hold is only meaningful while the held version is newer than what
-        # is actually running. Clear it after a manual install of that version
-        # (or anything newer).
         held = state.get("held_version")
         if held and version:
             try:
@@ -148,7 +142,6 @@ class UpdateManager:
         rollback = await self._inspect_optional(journal.get("rollback_name") or "")
 
         if phase in ("pulling", "prepared"):
-            # The old container was never stopped.
             job = {
                 **(job or {}),
                 "state": "failed",
@@ -164,8 +157,6 @@ class UpdateManager:
             await self.store.clear_journal()
             return
 
-        # The updater died around the stop/rename step. The container may be
-        # the old one under its original name, possibly stopped. Restore it.
         new_container_id = journal.get("new_container_id")
         old_is_target = bool(target) and (
             not new_container_id or target.get("Id") != new_container_id
@@ -340,9 +331,6 @@ class UpdateManager:
             old_image_ref = (old_container.get("Config") or {}).get("Image")
             old_image = await self.docker.inspect_image(old_container["Image"])
 
-            # Rollbacks prefer the retained local image: they should work even
-            # if the registry is offline, and the previous build is exactly what
-            # we want. Updates always pull the exact stable tag.
             cached_image: dict[str, Any] | None = None
             if old_version and _is_older(version, old_version):
                 try:
@@ -482,7 +470,6 @@ class UpdateManager:
                     "The new container did not pass its health check in time."
                 )
 
-            # Success: keep the old image. Only now move the local latest tag.
             if latest:
                 try:
                     await self.docker.tag_image(new_ref, self.image_repo, "latest")
@@ -552,7 +539,6 @@ class UpdateManager:
         except Exception as exc:
             logger.exception("Update to %s failed", version)
             error = str(exc)
-            # If the old container was not stopped yet, the running build is intact.
             old_stopped = bool(
                 journal
                 and journal.get("phase")
@@ -689,8 +675,6 @@ class UpdateManager:
         try:
             previous = await self._inspect_optional(rollback_name)
             if not previous:
-                # If the old container never got renamed, it is still running
-                # under its original ID; leave it alone.
                 if old_container:
                     try:
                         current_old = await self.docker.inspect_container(

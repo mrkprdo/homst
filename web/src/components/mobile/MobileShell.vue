@@ -65,7 +65,6 @@ const isStandalone =
   window.matchMedia("(display-mode: standalone)").matches ||
   (window.navigator as { standalone?: boolean }).standalone === true
 
-/** iOS never fires beforeinstallprompt, so it gets written instructions instead. */
 const isIos =
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
@@ -92,7 +91,6 @@ async function installApp() {
   if (!prompt) return
   await prompt.prompt()
   await prompt.userChoice
-  // Either answer closes the banner — the native sheet already asked.
   showInstallBanner.value = false
   installPrompt.value = null
 }
@@ -120,8 +118,6 @@ function closeTaskDetail() {
   ui.closeDrawer()
 }
 
-// Notification taps (and other entry points) can open a detail drawer without
-// going through this shell's local click handlers.
 watch(
   () => ui.drawer.value.type,
   (type) => {
@@ -130,9 +126,6 @@ watch(
     } else if (type === "task-detail") {
       showTaskDetail.value = true
     } else if (type === "quick-add" && ui.drawer.value.aiEventId) {
-      // Event detail's "Smart edit" opens in the desktop drawer. The
-      // mobile shell has its own detail sheets, so translate that request into
-      // its Smart quick-add sheet instead.
       aiResume.value = {
         conversationId: ui.drawer.value.aiConversationId ?? undefined,
         eventId: ui.drawer.value.aiEventId,
@@ -147,7 +140,6 @@ watch(
   { immediate: true },
 )
 
-// Detail panels can close themselves (delete, etc.) — keep the sheet in sync.
 watch(
   () => ui.isDrawerOpen.value,
   (open) => {
@@ -337,7 +329,6 @@ watch(
   background: var(--color-bgBase);
 }
 
-/* ── App bar ── */
 .ms-appbar {
   display: flex;
   align-items: center;
@@ -413,7 +404,6 @@ watch(
   outline-offset: 2px;
 }
 
-/* ── Install banner ── */
 .ms-install-banner {
   display: flex;
   align-items: center;
@@ -490,7 +480,6 @@ watch(
   cursor: pointer;
 }
 
-/* ── Content ── */
 .ms-main {
   flex: 1;
   min-height: 0;
@@ -517,7 +506,6 @@ watch(
   }
 }
 
-/* ── Bottom navigation ── */
 .ms-nav {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -593,7 +581,6 @@ watch(
   box-shadow: inset 0 3px 8px var(--shadow-accent-drop);
 }
 
-/* ── Detail sheets ── */
 .ms-detail-overlay {
   position: fixed;
   inset: 0;
@@ -675,7 +662,6 @@ watch(
   overscroll-behavior: contain;
 }
 
-/* Detail panels use small desktop action buttons — keep touch targets at 48px. */
 .ms-detail-body :deep(.ui-btn) {
   min-height: 48px;
 }

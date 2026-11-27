@@ -23,11 +23,9 @@ let inFlight: Promise<boolean> | null = null
 
 export function invalidateSettings() {
   fetched = false
-  // Pick up the cached answer again; a failed fetch must not erase it.
   isComplete = readHouseholdComplete()
 }
 
-/** Fetch the authoritative flag, but never hang on an unreachable host. */
 async function fetchSettings(): Promise<boolean> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 4000)
@@ -41,22 +39,13 @@ async function fetchSettings(): Promise<boolean> {
       isComplete = data?.isComplete ?? false
       writeHouseholdComplete(isComplete)
     }
-    // 401/403 → user not authenticated; allow /onboarding, block /
   } catch {
-    // Backend unavailable (away from the LAN). Keep the last known answer so
-    // an installed PWA can still open its cached views and notification inbox.
   } finally {
     clearTimeout(timer)
   }
   return isComplete
 }
 
-/**
- * A phone that has used HOMST before already knows the household is set up.
- * Let it navigate immediately instead of holding the whole SPA on a blank
- * page while a request to the unreachable LAN host times out. The refresh
- * still runs in the background and corrects a genuinely reset household.
- */
 function ensureSettings(): Promise<boolean> {
   if (fetched) return Promise.resolve(isComplete)
 

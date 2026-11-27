@@ -43,7 +43,6 @@ const taskResponse = (o: Record<string, unknown> = {}) => ({
   ...o,
 })
 
-/** Every write returns `body`; every read returns an empty list. */
 function mockWrites(body: unknown) {
   vi.mocked(fetch).mockImplementation((async (_input: any, init?: any) => {
     const method = (init?.method ?? "GET").toUpperCase()
@@ -78,8 +77,7 @@ describe("EventDetailPanel — edit-mode fields & validation", () => {
 
     try {
       mb.upsertMember(member("m1", "Alice"))
-      mb.upsertMember(member("m2", "")) // unnamed → "Unnamed" fallback
-      // all-day, no end, recurrence without until/count, assignee not in members
+      mb.upsertMember(member("m2", ""))
       ev.upsertEvent(event({ allDay: true, endAt: null, recurrence: { freq: "daily" }, assigneeId: "ghost" }))
       ui.openDrawer("event-detail", "e1")
       await nextTick()
@@ -89,16 +87,13 @@ describe("EventDetailPanel — edit-mode fields & validation", () => {
       expect(w.text()).toContain("Daily")
       expect(w.text()).toContain("Unassigned")
 
-      // .ics export button
       await w.find('[aria-label="Download .ics"]').trigger("click")
       expect(anchorClick).toHaveBeenCalled()
 
-      // Enter edit mode → startEdit's "forever" fallback (no until / no count)
       await btn(w, "Edit").trigger("click")
       await nextTick()
       expect(w.find(".edp-form").exists()).toBe(true)
 
-      // v-model handlers: title, assignee, repeat, end-repeat, reminder, notes
       await inputs(w)[0]!.vm.$emit("update:modelValue", "")
       await selects(w)[0]!.vm.$emit("update:modelValue", "m2")
       await selects(w)[1]!.vm.$emit("update:modelValue", "weekly")
@@ -108,28 +103,23 @@ describe("EventDetailPanel — edit-mode fields & validation", () => {
       await selects(w)[3]!.vm.$emit("update:modelValue", "")
       await areas(w)[0]!.vm.$emit("update:modelValue", "Notes")
 
-      // Clear the start → unparsable dates + `min` falls back to undefined
       await inputs(w)[1]!.vm.$emit("update:modelValue", "")
       await nextTick()
       expect(inputs(w)[3]!.props("min")).toBeUndefined()
 
-      // Save is blocked while the range is invalid
       await btn(w, "Save").trigger("click")
       await nextTick()
       expect(w.find(".edp-form").exists()).toBe(true)
 
-      // All-day range with end before start → all-day error copy
       await inputs(w)[1]!.vm.$emit("update:modelValue", "2026-05-20")
       await inputs(w)[2]!.vm.$emit("update:modelValue", "2026-05-18")
       await nextTick()
       expect(w.text()).toContain("End date must be after the start date")
 
-      // Times input ignores junk (`Number(v) || 0`)
       await selects(w)[2]!.vm.$emit("update:modelValue", "count")
       await nextTick()
       await inputs(w)[3]!.vm.$emit("update:modelValue", "nonsense")
 
-      // Until input (date mode) feeds the recurrence end
       await selects(w)[2]!.vm.$emit("update:modelValue", "date")
       await nextTick()
       await inputs(w)[3]!.vm.$emit("update:modelValue", "2026-06-01")
@@ -147,9 +137,8 @@ describe("EventDetailPanel — edit-mode fields & validation", () => {
       expect(saved.recurrence.freq).toBe("weekly")
       expect(typeof saved.recurrence.until).toBe("string")
       expect(saved.all_day).toBe(true)
-      expect(saved.title).toBe("Event") // empty title falls back to the stored one
+      expect(saved.title).toBe("Event")
 
-      // Re-enter: "forever" end-repeat builds an empty recurrence end
       await btn(w, "Edit").trigger("click")
       await nextTick()
       await inputs(w)[1]!.vm.$emit("update:modelValue", "2026-05-20")
@@ -164,7 +153,6 @@ describe("EventDetailPanel — edit-mode fields & validation", () => {
       const lastPatch = vi.mocked(fetch).mock.calls.filter(c => (c[1] as any)?.method === "PATCH").at(-1)!
       expect(JSON.parse((lastPatch[1] as any).body).recurrence).toEqual({ freq: "monthly" })
 
-      // "Does not repeat" stores null
       await btn(w, "Edit").trigger("click")
       await nextTick()
       await inputs(w)[1]!.vm.$emit("update:modelValue", "2026-05-20")
@@ -218,7 +206,7 @@ describe("TaskDetailPanel — edit-mode fields & fallbacks", () => {
     const ui = useUi()
 
     mb.upsertMember(member("m1", "Alice"))
-    mb.upsertMember(member("m2", "")) // unnamed
+    mb.upsertMember(member("m2", ""))
     tk.upsertTask(task({ startAt: "2026-05-15T00:00:00Z", assigneeId: "m1", description: "notes" }))
     ui.openDrawer("task-detail", "t1")
     await nextTick()
@@ -226,7 +214,6 @@ describe("TaskDetailPanel — edit-mode fields & fallbacks", () => {
     const w = mount(TaskDetailPanel)
     expect(w.text()).toContain("Alice")
 
-    // Edit → v-model handlers, then cancel
     await btn(w, "Edit").trigger("click")
     await nextTick()
     expect(w.find(".tdp-form").exists()).toBe(true)
@@ -241,9 +228,8 @@ describe("TaskDetailPanel — edit-mode fields & fallbacks", () => {
     await btn(w, "Cancel").trigger("click")
     await nextTick()
     expect(w.find(".tdp-form").exists()).toBe(false)
-    expect(w.text()).toContain("Task") // unchanged
+    expect(w.text()).toContain("Task")
 
-    // Edit → blank optional fields → nulls in the payload
     await btn(w, "Edit").trigger("click")
     await nextTick()
     await inputs(w)[0]!.vm.$emit("update:modelValue", "")

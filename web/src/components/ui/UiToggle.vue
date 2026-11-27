@@ -16,7 +16,6 @@ function animateKnob(on: boolean) {
   })
 }
 
-// Animate knob on modelValue change
 watch(() => props.modelValue, (val) => animateKnob(val))
 
 function onClick() {
@@ -54,8 +53,6 @@ function onClick() {
   background: var(--color-primary);
 }
 
-/* The switch is 30px tall by design, but the row is not: expand the hit area
-   vertically so a finger does not have to land on the visual pill. */
 .ui-toggle::after {
   content: "";
   position: absolute;

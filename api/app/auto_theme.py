@@ -11,10 +11,8 @@ from datetime import date, datetime, time, timedelta, timezone
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-# Upper limb of the sun at the horizon, including refraction.
 DARK_ELEVATION = -0.833
 
-# One scan step for finding sunrise/sunset transitions.
 _SCAN_STEP = timedelta(minutes=1)
 
 
@@ -57,7 +55,6 @@ def solar_elevation(lat: float, lon: float, when: datetime) -> float:
         + 0.00148 * math.sin(3 * gamma)
     )
 
-    # True solar time (minutes) and hour angle (degrees).
     true_solar_time = (minutes + eqtime + 4.0 * lon) % 1440.0
     hour_angle = math.radians(true_solar_time / 4.0 - 180.0)
 
@@ -82,8 +79,6 @@ def _sun_times(
     start = datetime.combine(day, time.min, tzinfo=tz).astimezone(timezone.utc)
     end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
 
-    # Walk the local day so DST changes and odd offsets need no special cases.
-    # A 1-minute step is enough for a schedule that flips on the minute.
     previous_dark = is_dark(lat, lon, start)
     sunrise: datetime | None = None
     sunset: datetime | None = None
@@ -97,7 +92,6 @@ def _sun_times(
         previous_dark = dark
         current += _SCAN_STEP
 
-    # Return in the household's local timezone so clients can format directly.
     return (
         sunrise.astimezone(tz) if sunrise else None,
         sunset.astimezone(tz) if sunset else None,

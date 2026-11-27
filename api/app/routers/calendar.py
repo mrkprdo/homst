@@ -31,8 +31,6 @@ async def _ensure_household(db: AsyncSession) -> None:
     await db.commit()
 
 
-# ── Calendars ──
-
 @router.get("/calendars", response_model=list[CalendarResponse])
 async def list_calendars(db: AsyncSession = Depends(get_db)):
     await _ensure_household(db)
@@ -73,8 +71,6 @@ async def subscribe_calendar(req: SubscribeCalendarRequest, db: AsyncSession = D
     )
     db.add(cal)
     await db.commit()
-    # TODO: publish event so ARQ worker picks it up and syncs iCal feed
-    # Example: publish_event(DEFAULT_HOUSEHOLD_ID, "calendar.subscribed", {"id": cal.id})
     return cal
 
 
@@ -111,8 +107,6 @@ async def delete_calendar(calendar_id: UUID, db: AsyncSession = Depends(get_db))
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Calendar not found")
-    # Reminder history references events, so it has to go first on databases
-    # whose foreign key predates ON DELETE CASCADE.
     await db.execute(
         delete(ReminderLog).where(
             ReminderLog.event_id.in_(
@@ -125,8 +119,6 @@ async def delete_calendar(calendar_id: UUID, db: AsyncSession = Depends(get_db))
     await db.commit()
     return {"message": "Calendar deleted"}
 
-
-# ── Events ──
 
 def _event_to_response(ev: Event) -> EventResponse:
     return EventResponse(
@@ -173,9 +165,6 @@ async def list_events(
             query = query.where(Event.calendar_id.in_(ids))
     if from_date:
         dt_from = datetime.fromisoformat(from_date.replace("Z", "+00:00"))
-        # A recurring series keeps producing occurrences long after its base
-        # row's end_at, so those rows have to be fetched for any window that
-        # overlaps the series (the frontend expands them into real dates).
         query = query.where(
             or_(
                 func.coalesce(Event.end_at, Event.start_at) >= dt_from,
@@ -318,8 +307,6 @@ async def delete_event(event_id: UUID, db: AsyncSession = Depends(get_db)):
     ev = result.scalar_one_or_none()
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-    # Delete the reminder ledger first so this works even on an older database
-    # where reminder_log_event_id_fkey has no ON DELETE CASCADE.
     await db.execute(delete(ReminderLog).where(ReminderLog.event_id == str(event_id)))
     await db.execute(delete(Event).where(Event.id == str(event_id)))
     await db.commit()

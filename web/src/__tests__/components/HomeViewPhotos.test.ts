@@ -5,7 +5,6 @@ import { setCheapCompositor, setLowPower, setPerformanceMode } from "@/lib/motio
 import { useSettings } from "@/composables/useSettings"
 import HomeView from "@/components/home/HomeView.vue"
 
-/** Flush the async canvas cover without relying on timers (some tests fake them). */
 async function settle() {
   for (let i = 0; i < 30; i += 1) await Promise.resolve()
   await nextTick()
@@ -107,7 +106,6 @@ describe("HomeView photo backdrops", () => {
 
   it("drops the faded-out frame after the cross-dissolve", async () => {
     vi.useFakeTimers()
-    // Align the time-derived slideshow to a photo boundary, like the kiosk.
     vi.setSystemTime(Math.floor(Date.now() / 15_000) * 15_000)
     stubImage()
     stubCanvasCover()

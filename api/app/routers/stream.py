@@ -53,7 +53,6 @@ async def stream(request: Request, db: AsyncSession = Depends(get_db)):
                     await pubsub.close()
                     pubsub = r.pubsub()
                     await pubsub.subscribe(channel)
-                    # Anything published during the gap was missed — resync.
                     yield sync_required()
         finally:
             await pubsub.unsubscribe(channel)

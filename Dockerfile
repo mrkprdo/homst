@@ -1,14 +1,7 @@
 # syntax=docker/dockerfile:1
-#
-# HOMST — the whole app in one image:
-#   nginx (HTTPS + built SPA)  ·  FastAPI (gunicorn)  ·  ARQ worker  ·  Redis
-#
-# Postgres stays a sidecar — see docker-compose.prod.yml.
-# Processes + TLS bootstrap live in docker/.
 
 ARG HOMST_VERSION=dev
 
-# ── SPA build ────────────────────────────────────────────────────────
 FROM oven/bun:1-alpine AS web
 
 WORKDIR /src
@@ -17,11 +10,9 @@ COPY web/package.json web/bun.lock* web/
 RUN cd web && bun install --frozen-lockfile
 COPY web/ web/
 
-# Design tokens are generated (gitignored) — produce them before the build
 RUN cd packages/design-tokens && bun build.ts \
  && cd /src/web && bun run build
 
-# ── Python dependencies ──────────────────────────────────────────────
 FROM python:3.12-slim AS python-deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
@@ -36,7 +27,6 @@ COPY api/pyproject.toml api/
 COPY api/app/ api/app/
 RUN /opt/venv/bin/pip install --no-cache-dir ./api
 
-# ── Runtime ──────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
 ARG HOMST_VERSION
@@ -67,8 +57,6 @@ COPY docker/init-secrets.sh /docker/init-secrets.sh
 COPY docker/homst-cert /usr/local/bin/homst-cert
 RUN chmod +x /docker/entrypoint.sh /docker/init-secrets.sh /usr/local/bin/homst-cert
 
-# Unprivileged user for the API + worker; nginx master stays root and drops
-# workers to www-data.
 RUN groupadd --system homst \
  && useradd --system --gid homst --home-dir /app --shell /usr/sbin/nologin homst \
  && mkdir -p /app/uploads/photos /etc/ssl/homst \

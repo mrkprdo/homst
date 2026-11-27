@@ -197,15 +197,12 @@ async function poll() {
       return
     }
     if (data.job && (data.job.state === "success" || data.job.state === "up_to_date")) {
-      // The update is live. Refresh automatically so this page loads the
-      // matching frontend instead of staying on the previous release's UI.
       rememberDismissedJob()
       window.location.reload()
       return
     }
     await load()
   } catch {
-    // The app is restarting; keep the last known phase visible and retry.
     pollFailures += 1
     restarting.value = true
     if (pollFailures >= 180) {
@@ -229,9 +226,6 @@ function dismissJob() {
 }
 
 function reloadPage() {
-  // The server keeps reporting the finished job, so a plain reload would
-  // bring the "update complete" notice straight back. A reload applies the
-  // update — acknowledge the job first, exactly like Dismiss does.
   rememberDismissedJob()
   window.location.reload()
 }
@@ -306,12 +300,11 @@ function jobTitle(next: SystemJob): string {
 }
 
 function onUpdateChanged() {
-  // Another display started, dismissed or finished an update; mirror it here.
   void load()
 }
 
 onMounted(() => {
-  try { dismissedJob = localStorage.getItem(DISMISSED_UPDATE_JOB_KEY) ?? "" } catch { /* ignore */ }
+  try { dismissedJob = localStorage.getItem(DISMISSED_UPDATE_JOB_KEY) ?? "" } catch {}
   window.addEventListener("homst:update-changed", onUpdateChanged)
   load()
 })
@@ -601,7 +594,6 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-/* The Futur theme recolours .selected-badge, so channel meanings need to win. */
 .channel-badge--nightly { background: var(--color-bgSubtle) !important; color: var(--color-textSecondary) !important; }
 .channel-badge--pinned {
   background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bgSurface)) !important;
@@ -642,7 +634,6 @@ onUnmounted(() => {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-md);
-  /* Adaptive tint: a fixed light token would wash out in dark mode. */
   background: color-mix(in srgb, var(--color-primary) 14%, var(--color-bgSurface));
 }
 

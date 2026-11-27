@@ -28,8 +28,6 @@ test.describe("Events", () => {
     await page.waitForTimeout(500)
   }
 
-  // ── Event Creation ──
-
   test("create event via quick-add closes drawer", async ({ page }) => {
     await goToCalendar(page)
     await createEvent(page, "New Event")
@@ -80,8 +78,6 @@ test.describe("Events", () => {
     await expect(page.locator(".drawer")).not.toBeVisible()
   })
 
-  // ── Event Detail Drawer (from day view, scrolled to top) ──
-
   async function scrollDayToTop(page: any) {
     await page.evaluate(() => {
       const el = document.querySelector(".day-view") as HTMLElement
@@ -90,19 +86,8 @@ test.describe("Events", () => {
     await page.waitForTimeout(300)
   }
 
-  // Note: EventChip @pointerdown/@pointerup handlers may intercept clicks
-  // causing UI interaction tests below to be flaky. Verified: chips render,
-  // events appear in all views, overflow works.
-  // Note: Event chip visibility in month/week/day views is covered by
-  // profile.spec.ts and calendar.spec.ts tests. Calendar chip rendering
-  // depends on store reactivity timing across mock boundaries.
-
 })
 
-// ── Event Detail & Edit ──
-// Separate describe so beforeEach can pre-populate the event BEFORE onboarding
-// (HomeView fetches events on mount via prefetchAround, caching the month key —
-// events added after that point are invisible to CalendarView's ensureMonth guard).
 test.describe("Event Detail & Edit", () => {
   test.describe.configure({ mode: "serial" })
 
@@ -110,7 +95,7 @@ test.describe("Event Detail & Edit", () => {
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page)
-    addMockEvent({ id: "ev-edit-test", title: CHIP_TITLE, reminder_minutes: 30 }) // must be before home view mounts
+    addMockEvent({ id: "ev-edit-test", title: CHIP_TITLE, reminder_minutes: 30 })
     await page.goto("/onboarding")
     await page.locator("input").first().fill("Test Home")
     await page.getByRole("button", { name: "Next" }).click()
@@ -119,7 +104,6 @@ test.describe("Event Detail & Edit", () => {
     await page.getByRole("button", { name: "Next" }).click()
     await page.getByRole("button", { name: "Confirm" }).click()
     await page.waitForTimeout(500)
-    // Navigate to calendar so the chip is visible before each test
     await page.locator(".app-nav button").nth(1).click()
     await page.waitForTimeout(800)
   })
@@ -154,9 +138,7 @@ test.describe("Event Detail & Edit", () => {
     await openChip(page)
     await page.getByRole("button", { name: "Edit", exact: true }).click()
     await page.waitForTimeout(200)
-    // Title input pre-populated
     await expect(page.locator(".edp-form .ui-input").first()).toHaveValue(CHIP_TITLE)
-    // Assignee select present (members were created during onboarding)
     await expect(page.locator(".edp-form .ui-select").first()).toBeVisible()
     await expect(page.locator(".edp-form .ui-select").first()).toContainText("No one")
     await expect(page.locator(".edp-form .ui-select").first()).toContainText("Alice")
@@ -178,7 +160,6 @@ test.describe("Event Detail & Edit", () => {
     await openChip(page)
     await page.getByRole("button", { name: "Edit", exact: true }).click()
     await page.waitForTimeout(200)
-    // Select Alice (index 1 = first non-empty member option)
     await page.locator(".edp-form .ui-select").first().selectOption({ index: 1 })
     await page.getByRole("button", { name: "Save" }).click()
     await page.waitForTimeout(500)
@@ -213,7 +194,6 @@ test.describe("Event Detail & Edit", () => {
   })
 })
 
-// ── Reminder defaults ──
 test.describe("Reminder defaults", () => {
   test("new events prefill the household default reminder", async ({ page }) => {
     await setupApiMocks(page)

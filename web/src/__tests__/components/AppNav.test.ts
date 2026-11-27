@@ -105,7 +105,6 @@ describe("AppNav auto-hide", () => {
   const pointerMove = (clientX: number) =>
     window.dispatchEvent(new MouseEvent("pointermove", { clientX, bubbles: true }))
 
-  /** jsdom has no PointerEvent, so tag a MouseEvent with the pointer type. */
   const pointerEvent = (type: string, clientX: number, pointerType: string) => {
     const event = new MouseEvent(type, { clientX, bubbles: true })
     Object.defineProperty(event, "pointerType", { value: pointerType })
@@ -143,7 +142,6 @@ describe("AppNav auto-hide", () => {
     const wrapper = mount(AppNav)
     await nextTick()
 
-    // Resting on the rail keeps it open with no pending timer.
     pointerMove(30)
     vi.advanceTimersByTime(700)
     await nextTick()

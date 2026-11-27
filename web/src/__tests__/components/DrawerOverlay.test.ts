@@ -145,7 +145,6 @@ describe("DrawerOverlay", () => {
   })
 
   it("keeps Tab focus inside the drawer", async () => {
-    // jsdom has no layout, so the visibility filter needs a hit rectangle.
     vi.spyOn(Element.prototype, "getClientRects").mockReturnValue(
       [{ width: 10, height: 10 }] as unknown as DOMRectList,
     )
@@ -185,7 +184,6 @@ describe("DrawerOverlay", () => {
 
   it("ignores a keydown that arrives after the drawer starts closing", async () => {
     const ui = await mountOpen()
-    // Flip the state and dispatch before the watcher can remove the listener.
     ui.isDrawerOpen.value = false
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
     await nextTick()

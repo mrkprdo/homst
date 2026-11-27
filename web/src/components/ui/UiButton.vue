@@ -11,9 +11,6 @@ const props = defineProps<{
 
 const btnEl = ref<HTMLElement | null>(null)
 
-// A press is a real press, not any pointer that happens to leave the button.
-// The old pointerleave release made the button pop every time a mouse passed
-// over it, which read as a broken hover state.
 let pressed = false
 
 function press() {
@@ -40,10 +37,7 @@ function release() {
 }
 
 function onPointerDown(e: PointerEvent) {
-  // Ignore right/middle-click on mouse; pen and touch always have button 0.
   if (e.pointerType === "mouse" && e.button !== 0) return
-  // Capture keeps pointerup on this button even if the pointer slides off,
-  // so a drag release cannot leave the button stuck in its pressed shape.
   if (typeof e.pointerId === "number") {
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
   }
@@ -109,7 +103,6 @@ function onKeyUp(e: KeyboardEvent) {
   pointer-events: none;
 }
 
-/* ── Sizes ── */
 .ui-btn--md {
   min-width: 48px;
   min-height: 48px;
@@ -126,9 +119,6 @@ function onKeyUp(e: KeyboardEvent) {
 
 .ui-btn--sm .ui-btn__inner { font-size: var(--text-label-size); }
 
-/* Compact pills keep their 30px visual height, but the hit area grows to a
-   fingertip. Horizontal expansion is small so side-by-side actions in a
-   settings row do not steal each other's taps. */
 .ui-btn--sm::after {
   content: "";
   position: absolute;
@@ -136,7 +126,6 @@ function onKeyUp(e: KeyboardEvent) {
   border-radius: var(--radius-full);
 }
 
-/* ── Variants ── */
 .ui-btn--primary {
   background: linear-gradient(165deg, var(--color-accent-light, #c5c8af), var(--color-accent-base, #b1b695) 55%, var(--color-accent-dark, #8e9277));
   color: var(--color-textInverse);
@@ -195,10 +184,6 @@ function onKeyUp(e: KeyboardEvent) {
   box-shadow: none;
 }
 
-/* The visible link is small by design; the hit area is not. Fitts's law and
-   the 44px touch-target rule both fail on a 20px-tall word, especially on the
-   wall display. The pseudo-element keeps the header visually quiet while
-   giving the shortcut a full-height target. */
 .ui-btn--link::after {
   content: "";
   position: absolute;
@@ -208,7 +193,6 @@ function onKeyUp(e: KeyboardEvent) {
 
 .ui-btn--link:hover { color: var(--color-primary); }
 
-/* ── States ── */
 .ui-btn:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

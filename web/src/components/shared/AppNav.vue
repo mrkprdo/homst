@@ -17,36 +17,19 @@ const navItems: { id: PanelView; icon: typeof PhCalendar; label: string }[] = [
   { id: "settings",      icon: PhGear,      label: "Settings"      },
 ]
 
-/**
- * Auto-hide keeps the rail off-screen on kiosk displays, leaving a thin sliver
- * at the left edge. Moving the pointer (or tapping on touch screens) into that
- * strip slides it back out, and it retreats once the pointer moves away.
- */
-const RAIL_PX = 72 // must match .app-nav width
-/** Width of the visible grab handle (also in the .app-nav--hidden transform). */
+const RAIL_PX = 72
 const HANDLE_PX = 4
-/** How far from the left edge counts as "reaching for the rail". */
 const HOT_ZONE_PX = 20
-/** Fingers are less precise than a cursor; widen the edge strip on touch. */
 const TOUCH_HOT_ZONE_PX = 40
-/**
- * Beat before the rail slides away after the pointer leaves it. Short enough
- * to feel like a hover-out; long enough to survive a quick re-entry.
- */
 const HIDE_DELAY_MS = 200
-/** Touch screens have no hover-out, so give the picker a moment. */
 const TOUCH_LINGER_MS = 5000
-/** Let the intro animation finish before the rail tucks itself away. */
 const FIRST_HIDE_MS = 3000
 
 const autoHide = computed(() => settings.navAutoHide.value)
 const hidden = ref(false)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
-/** Last known pointer x, so enabling the setting does not hide under the cursor. */
 let lastPointerX: number | null = null
-/** Hide only retires the rail for pointer users; keyboard focus holds it out. */
 let keyboardMode = false
-/** True while focus sits anywhere inside the rail. */
 let focusWithin = false
 
 function railWidth() {
@@ -70,7 +53,6 @@ function scheduleHide(delay = HIDE_DELAY_MS) {
   cancelHide()
   hideTimer = setTimeout(() => {
     hideTimer = null
-    // Tabbing into the rail must never leave focus on an off-screen button.
     if (keyboardMode && focusWithin) return
     hidden.value = true
   }, delay)
@@ -86,19 +68,12 @@ function onPointerMove(e: PointerEvent) {
   const target = e.target
   const overRail = target instanceof Node && navEl.value?.contains(target) === true
   if (overRail || e.clientX <= railWidth()) {
-    // On the rail: keep it out.
     cancelHide()
     return
   }
-  // Anywhere past the rail starts the retreat immediately.
   scheduleHide()
 }
 
-/**
- * A pointer that leaves the rail should not have to jiggle again to trigger
- * the hide (and if it stops just past the edge, no further move fires at all).
- * Touch is skipped: its implicit pointerleave would cut the tap-to-pick window.
- */
 function onPointerLeave(e: PointerEvent) {
   if (e.pointerType === "touch" || !autoHide.value || hidden.value) return
   scheduleHide()
@@ -108,7 +83,6 @@ function onPointerDown(e: PointerEvent) {
   keyboardMode = false
   if (!autoHide.value) return
   if (hidden.value) {
-    // Touch (and a determined mouse click) on the edge wakes the rail.
     const reach = e.pointerType === "mouse" ? HANDLE_PX + HOT_ZONE_PX : HANDLE_PX + TOUCH_HOT_ZONE_PX
     if (e.clientX <= reach) {
       showNav()
@@ -142,7 +116,6 @@ function onFocusOut(e: FocusEvent) {
 }
 
 onMounted(() => {
-  // Nav rail slides in from left with spring.
   animate(navEl.value!, {
     translateX: ["-4px", "0px"],
     opacity: [0, 1],
@@ -150,13 +123,11 @@ onMounted(() => {
     ease: springs.overlay,
     onComplete: () => {
       if (!navEl.value) return
-      // Hand the transform back to CSS so the auto-hide classes can take over.
       navEl.value.style.removeProperty("transform")
       navEl.value.style.opacity = "1"
     },
   })
 
-  // Items stagger in with spring — start 80ms after nav begins
   const items = navEl.value!.querySelectorAll(".nav-logo, .nav-item, .nav-item--profile")
   animate(items, {
     translateX: ["-10px", "0px"],
@@ -183,7 +154,6 @@ watch(autoHide, (on) => {
   cancelHide()
   hidden.value = false
   if (!on) return
-  // Leave it out if the pointer is already in the reveal strip.
   if (lastPointerX !== null && lastPointerX <= HANDLE_PX + HOT_ZONE_PX) return
   scheduleHide(FIRST_HIDE_MS)
 })
@@ -201,7 +171,6 @@ watch(autoHide, (on) => {
     @focusout="onFocusOut"
     @pointerleave="onPointerLeave"
   >
-    <!-- Logo / Home button -->
     <button
       class="nav-logo"
       :class="{ active: ui.activePanel.value === 'home' }"
@@ -217,7 +186,6 @@ watch(autoHide, (on) => {
       </svg>
     </button>
 
-    <!-- Nav items -->
     <button
       v-for="item in navItems"
       :key="item.id"
@@ -230,10 +198,8 @@ watch(autoHide, (on) => {
       <component :is="item.icon" :size="22" aria-hidden="true" />
     </button>
 
-    <!-- Spacer -->
     <div class="nav-spacer" />
 
-    <!-- Profile -->
     <button
       class="nav-item nav-item--profile"
       :class="{ active: ui.drawer.value.type === 'member-detail' }"
@@ -257,17 +223,13 @@ watch(autoHide, (on) => {
   box-shadow: inset -1px 0 0 var(--color-border);
   gap: var(--space-2);
   flex-shrink: 0;
-  /* Above the full-width lyrics wash (z-index 50) so the rail keeps its own
-     background; drawers, announcements and the HUD still sit above this. */
   position: relative;
   z-index: 60;
-  /* Initial state - anime.js takes over on mount */
   opacity: 0;
   transition: transform var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94),
               box-shadow var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-/* Auto-hide: float over the panel so the kiosk gets the full width back. */
 .app-nav--autohide {
   position: fixed;
   top: 0;
@@ -279,7 +241,6 @@ watch(autoHide, (on) => {
   border-radius: 0 4px 4px 0;
 }
 
-/* Leave the 4px edge handle (same surface as the rail) on screen. */
 .app-nav--autohide.app-nav--hidden {
   transform: translateX(calc(-100% + 4px));
 }
@@ -300,7 +261,6 @@ watch(autoHide, (on) => {
   padding: 0;
   transition: transform var(--duration-fast) cubic-bezier(0.25, 0.46, 0.45, 0.94),
               box-shadow var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  /* Hidden until stagger reaches this element */
   opacity: 0;
 }
 
@@ -341,7 +301,6 @@ watch(autoHide, (on) => {
               background var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94),
               box-shadow var(--duration-base) cubic-bezier(0.25, 0.46, 0.45, 0.94),
               transform var(--duration-fast) cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  /* Hidden until stagger reaches this element */
   opacity: 0;
 }
 

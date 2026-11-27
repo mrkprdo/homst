@@ -39,18 +39,15 @@ describe("useEvents", () => {
 
   it("ensureDefaultCalendar returns existing real cal, creates Personal if only holiday cal, or falls back to 'default'", async () => {
     const ev = useEvents()
-    // Seed only the holiday sentinel calendar
     ev.upsertCalendar({
       id: "00000000-0000-0000-0000-000000000001", householdId: "h", name: "Holidays",
       color: "sky", source: "internal", feedUrl: null, isVisible: true, createdBy: null,
     })
-    // First call: getCalendars returns [], createCalendar fails → "default"
     vi.mocked(fetch)
       .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
       .mockRejectedValueOnce(new Error("fail"))
     expect(await ev.ensureDefaultCalendar()).toBe("default")
 
-    // Second call: calendars already fetched, createCalendar succeeds
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({
         id: "c-new", household_id: "h", name: "Personal", color: "sage",
@@ -58,7 +55,6 @@ describe("useEvents", () => {
       }), { status: 201 }),
     )
     expect(await ev.ensureDefaultCalendar()).toBe("c-new")
-    // Third call finds existing real calendar
     expect(await ev.ensureDefaultCalendar()).toBe("c-new")
   })
 
@@ -74,8 +70,8 @@ describe("useEvents", () => {
       return new Response(JSON.stringify([]), { status: 200 })
     })
 
-    await ev.prefetchAround(2026, 0)  // Jan → prev is Dec 2025
-    await ev.prefetchAround(2026, 11) // Dec → next is Jan 2027
+    await ev.prefetchAround(2026, 0)
+    await ev.prefetchAround(2026, 11)
     expect(ev.events.value.some(e => e.title === "NYD")).toBe(true)
 
     await ev.refresh()
@@ -113,7 +109,7 @@ describe("useTasks", () => {
 
     vi.mocked(fetch).mockRejectedValueOnce(new Error("net")).mockRejectedValueOnce(new Error("net"))
     await tk.ensureLoaded()
-    await tk.ensureLoaded() // cached no-op
+    await tk.ensureLoaded()
     await tk.refresh()
   })
 })
@@ -139,7 +135,7 @@ describe("useMembers", () => {
 
     vi.mocked(fetch).mockRejectedValueOnce(new Error("offline"))
     await mb.ensureLoaded()
-    await mb.ensureLoaded() // cached
+    await mb.ensureLoaded()
     await mb.refresh()
   })
 })
@@ -157,12 +153,10 @@ describe("useUi", () => {
       expect(ui.isDrawerOpen.value).toBe(true)
       expect(ui.drawer.value).toEqual({ type: "event-detail", id: "e1", date: "2026-05-01", time: "10:00" })
 
-      // Close guard blocks closing
       ui.registerCloseGuard(() => false)
       ui.closeDrawer()
       expect(ui.isDrawerOpen.value).toBe(true)
 
-      // Unregister guard → close succeeds and resets after 320ms
       ui.unregisterCloseGuard()
       ui.closeDrawer()
       expect(ui.isDrawerOpen.value).toBe(false)
@@ -209,7 +203,6 @@ describe("useSettings", () => {
     expect(s.accentColor.value).toBe("sage")
     expect(document.documentElement.classList.contains("futur")).toBe(false)
 
-    // Re-entering the preset remembers the accent last used there.
     s.updateThemePreset("futur")
     expect(s.accentColor.value).toBe("clay")
   })
@@ -252,7 +245,6 @@ describe("useSettings", () => {
     expect(s.returnHomeEnabled.value).toBe(false)
     expect(s.navAutoHide.value).toBe(true)
     expect(s.defaultReminderMinutes.value).toBe(30)
-    // The guard stays up through the watcher flush, then releases.
     expect(isApplyingRemoteSettings()).toBe(true)
     await nextTick()
     expect(isApplyingRemoteSettings()).toBe(false)
@@ -299,16 +291,13 @@ describe("useWeather", () => {
   it("geocodes address+province+country filtering mismatched country_code, and caches coords", async () => {
     const w = useWeather()
     vi.mocked(fetch)
-      // 1st candidate returns US match (filtered out for CA), then CA match
       .mockResolvedValueOnce(new Response(JSON.stringify({
         results: [
           { latitude: 34.0, longitude: -117.6, name: "Ontario", country_code: "US" },
           { latitude: 43.7, longitude: -79.4, name: "Toronto", country_code: "CA" },
         ],
       }), { status: 200 }))
-      // PATCH /household/settings
       .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }))
-      // Forecast fetch
       .mockResolvedValueOnce(new Response(JSON.stringify(openMeteoOk), { status: 200 }))
 
     await w.refresh({ address: "123 Main St, Toronto", province: "Ontario", country: "ca" })
@@ -317,13 +306,11 @@ describe("useWeather", () => {
 
   it("falls back to cached coords, geolocation, default NY, and handles retry / errors / autoRefresh", async () => {
     const w = useWeather()
-    // Cached coords branch
     localStorage.setItem("homst:weather-coords", JSON.stringify({ lat: 51.5, lon: -0.1 }))
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(openMeteoOk), { status: 200 }))
     await w.refresh({})
     expect(w.weather.value?.lat).toBe(51.5)
 
-    // Corrupt cache + geolocation success + daily missing triggers NY retry then null
     localStorage.setItem("homst:weather-coords", "{bad-json")
     Object.defineProperty(navigator, "geolocation", {
       configurable: true,
@@ -337,7 +324,6 @@ describe("useWeather", () => {
     await w.refresh({})
     expect(w.weather.value).toBeNull()
 
-    // Geolocation rejection → NY default; forecast HTTP error → sets error
     localStorage.clear()
     Object.defineProperty(navigator, "geolocation", {
       configurable: true,
@@ -397,7 +383,6 @@ describe("useSpotify", () => {
       sp.setClientId("0123456789abcdef0123456789abcdef")
       expect(sp.needsConfig()).toBe(false)
 
-      // Connect with pure-JS sha256 fallback (remove crypto.subtle temporarily)
       const origSubtle = crypto.subtle
       Object.defineProperty(crypto, "subtle", { configurable: true, value: undefined })
       try {
@@ -408,7 +393,6 @@ describe("useSpotify", () => {
       expect(localStorage.getItem("homst:spotify-code-verifier")).toBeTruthy()
       expect(window.location.href).toContain("https://accounts.spotify.com/authorize?")
 
-      // Simulate OAuth callback in URL + expiring token refresh + polling responses
       window.location.search = "?code=auth-code-xyz"
       const trackPayload = {
         progress_ms: 1000,
@@ -422,36 +406,28 @@ describe("useSpotify", () => {
         },
       }
       vi.mocked(fetch)
-        // handleCallback token exchange
         .mockResolvedValueOnce(new Response(JSON.stringify({
           access_token: "at-1", refresh_token: "rt-1", expires_in: 3600,
         }), { status: 200 }))
-        // initial fetchCurrentlyPlaying → 200 with track
         .mockResolvedValueOnce(new Response(JSON.stringify(trackPayload), { status: 200 }))
-        // next poll → 204 pauses
         .mockResolvedValueOnce(new Response(null, { status: 204 }))
-        // next poll → 401 disconnects
         .mockResolvedValueOnce(new Response(null, { status: 401 }))
 
       await sp.init()
-      await sp.init() // idempotent second call
+      await sp.init()
       await vi.advanceTimersByTimeAsync(10)
       expect(sp.connected.value).toBe(true)
       expect(sp.currentTrack.value?.name).toBe("Song")
 
-      // Elapsed timer advances progressMs
       vi.advanceTimersByTime(1000)
       expect(sp.currentTrack.value!.progressMs).toBeGreaterThanOrEqual(1000)
 
-      // 5s poll → 204
       await vi.advanceTimersByTimeAsync(5000)
       expect(sp.currentTrack.value?.isPlaying).toBe(false)
 
-      // 5s poll → 401
       await vi.advanceTimersByTimeAsync(5000)
       expect(sp.connected.value).toBe(false)
 
-      // Expired token refresh path
       localStorage.setItem("homst:spotify-token", JSON.stringify({
         accessToken: "old", refreshToken: "rt-1", expiresAt: Date.now() + 1000,
       }))

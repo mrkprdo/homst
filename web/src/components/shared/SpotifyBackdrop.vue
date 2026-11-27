@@ -7,25 +7,15 @@ import { syncVinyl } from "@/lib/vinyl"
 const { currentTrack } = useSpotify()
 const { musicBackground, musicBackgroundSpin } = useSettings()
 
-/**
- * Bind through a ref callback rather than onMounted: the disc mounts later
- * than the component (playback starts, and the node sits behind v-if).
- */
 function bindDisc(el: Element | ComponentPublicInstance | null) {
   syncVinyl(el as Element | null)
 }
 
-/**
- * A full-bleed record player behind the whole app: the album cover is the
- * record, sized past the viewport diagonal so no corner ever shows while it
- * spins. Only visible while Spotify is actually playing.
- */
 const active = computed(
   () => musicBackground.value && !!currentTrack.value?.isPlaying && !!currentTrack.value?.albumArt,
 )
 const art = computed(() => currentTrack.value?.albumArt ?? "")
 
-// The shells drop their opaque backgrounds while this class is present.
 watch(
   active,
   (on) => document.documentElement.classList.toggle("vinyl-backdrop", on),
@@ -57,13 +47,9 @@ onUnmounted(() => document.documentElement.classList.remove("vinyl-backdrop"))
   overflow: hidden;
   pointer-events: none;
   background: var(--color-bgBase);
-  /* Promote once so the fade and the spin stay on the compositor. */
   transform: translateZ(0);
 }
 
-/* 118vmax beats the viewport diagonal on every sane aspect ratio (a 16:9
-   screen needs ~114.7vmax), so the circular disc always covers the rectangle
-   behind it without allocating a needlessly huge compositor layer. */
 .vinyl-disc {
   position: absolute;
   top: 50%;
@@ -73,14 +59,11 @@ onUnmounted(() => document.documentElement.classList.remove("vinyl-backdrop"))
   border-radius: 50%;
   overflow: hidden;
   background: #0b0b0d;
-  /* Base transform centers the record even if the spin is ever paused. */
   transform: translate(-50%, -50%);
   animation: vinyl-spin var(--vinyl-spin-duration, 20s) linear infinite;
   will-change: transform;
 }
 
-/* "Show the cover, but keep it still" — the shared timeline sync skips paused
-   animations, so the angle just stays where it was. */
 .vinyl-disc--still {
   animation-play-state: paused;
 }
@@ -93,7 +76,6 @@ onUnmounted(() => document.documentElement.classList.remove("vinyl-backdrop"))
   opacity: 0.92;
 }
 
-/* Fine concentric grooves so the cover reads as a record, not a wallpaper. */
 .vinyl-grooves {
   position: absolute;
   inset: 0;
@@ -106,7 +88,6 @@ onUnmounted(() => document.documentElement.classList.remove("vinyl-backdrop"))
   );
 }
 
-/* Rotating light sweep — the sheen that makes vinyl look shiny. */
 .vinyl-sheen {
   position: absolute;
   inset: 0;
@@ -137,8 +118,6 @@ onUnmounted(() => document.documentElement.classList.remove("vinyl-backdrop"))
     inset 0 1px 2px rgba(255, 255, 255, 0.18);
 }
 
-/* Theme-colored veil: keeps the image as a background instead of a poster,
-   and darkens the edges so the app's surfaces stay legible on top. */
 .vinyl-veil {
   position: absolute;
   inset: 0;

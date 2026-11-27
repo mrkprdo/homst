@@ -68,13 +68,11 @@ describe("NowPlayingBar", () => {
 
     const wrapper = mount(NowPlayingBar)
 
-    // jsdom has no layout: give the box a narrow width and the copy a long one.
     const box = wrapper.find(".now-playing__text").element as HTMLElement
     const copy = wrapper.find(".now-playing__copy").element as HTMLElement
     Object.defineProperty(box, "clientWidth", { configurable: true, value: 120 })
     Object.defineProperty(copy, "offsetWidth", { configurable: true, value: 360 })
 
-    // The name watcher re-measures after the next render.
     useSpotify().currentTrack.value = { ...track, name: `${track.name}!` }
     await nextTick()
 

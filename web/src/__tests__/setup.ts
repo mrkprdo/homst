@@ -24,8 +24,6 @@ globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
 }
 
-// jsdom has no Media Source Extensions. The camera composable uses their
-// presence to decide whether hls.js can run, so tests need the API to exist.
 if (!("MediaSource" in window)) {
   Object.defineProperty(window, "MediaSource", {
     configurable: true,

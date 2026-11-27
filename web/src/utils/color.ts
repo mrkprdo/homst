@@ -1,8 +1,3 @@
-/**
- * Pick the text colour with the stronger contrast against a hex background.
- * Used for avatars and other user-coloured surfaces where member colours range
- * from pale peach to deep plum.
- */
 export function readableTextOn(hex: string): string {
   const value = hex.replace("#", "").trim()
   if (!/^[0-9a-f]{6}$/i.test(value)) return "var(--color-textInverse)"

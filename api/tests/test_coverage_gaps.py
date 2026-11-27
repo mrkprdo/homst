@@ -16,9 +16,6 @@ from app.models.all import Calendar, Event, Household
 DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 
 
-# ── helpers ──────────────────────────────────────────────────────────
-
-
 class _FakeResp:
     def __init__(self, *, json_data=None, status_code=200, text=""):
         self._json = json_data if json_data is not None else {}
@@ -75,11 +72,6 @@ async def _seed_external_event(db_session):
     return cal, ev
 
 
-# ══════════════════════════════════════════════════════════════════════
-# routers/stream.py
-# ══════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.asyncio
 async def test_stream_generator_decodes_and_dispatches(monkeypatch, db_session):
     from app.routers import stream as stream_mod
@@ -89,8 +81,8 @@ async def test_stream_generator_decodes_and_dispatches(monkeypatch, db_session):
             self.messages = [
                 {"data": '{"type": "event.created", "id": "1"}'},
                 {"data": b'{"type": "event.updated", "id": "2"}'},
-                {"data": ""},              # empty payload → skipped
-                {"data": "not json"},      # invalid JSON → yielded raw
+                {"data": ""},
+                {"data": "not json"},
             ]
 
         async def subscribe(self, channel):
@@ -134,11 +126,6 @@ async def test_stream_generator_decodes_and_dispatches(monkeypatch, db_session):
     assert out[3] == {"data": "not json"}
 
 
-# ══════════════════════════════════════════════════════════════════════
-# mdns.py
-# ══════════════════════════════════════════════════════════════════════
-
-
 def test_mdns_local_ip_returns_string():
     from app.mdns import HOMSTmDNS
 
@@ -175,7 +162,6 @@ async def test_mdns_start_stop(monkeypatch):
     assert seen["info"]["port"] == 9999
     assert seen["info"]["type_"] == "_homst._tcp.local."
 
-    # Second start is a no-op (already registered)
     await svc.start()
 
     await svc.stop()
@@ -192,7 +178,6 @@ async def test_mdns_start_without_zeroconf(monkeypatch):
     svc = mdns_mod.HOMSTmDNS(host="127.0.0.1")
     await svc.start()
     assert svc._zc is None
-    # stop on a never-started service is a no-op
     await svc.stop()
 
 
@@ -212,13 +197,8 @@ async def test_mdns_start_swallows_registration_errors(monkeypatch):
     monkeypatch.setattr(mdns_mod, "Zeroconf", _boom)
 
     svc = mdns_mod.HOMSTmDNS(host="127.0.0.1")
-    await svc.start()  # must not raise
+    await svc.start()
     assert svc._zc is None
-
-
-# ══════════════════════════════════════════════════════════════════════
-# workers/settings.py
-# ══════════════════════════════════════════════════════════════════════
 
 
 class _SessionCtx:
@@ -268,11 +248,6 @@ async def test_worker_dispatch_reminders_and_misc(monkeypatch, db_session, capsy
     assert worker_mod.WorkerSettings.on_startup is worker_mod.startup
 
 
-# ══════════════════════════════════════════════════════════════════════
-# notifications/senders.py
-# ══════════════════════════════════════════════════════════════════════
-
-
 def test_format_lead_more_phrases():
     from app.notifications.senders import format_lead
 
@@ -317,11 +292,6 @@ async def test_publish_hud_reminder_success_and_failure(monkeypatch):
     monkeypatch.setattr(senders, "publish_event", boom)
     ok, detail = await senders.publish_hud_reminder("hh-1", {})
     assert ok is False and "RuntimeError" in detail
-
-
-# ══════════════════════════════════════════════════════════════════════
-# main.py — startup helpers
-# ══════════════════════════════════════════════════════════════════════
 
 
 class _FakeConn:
@@ -444,11 +414,6 @@ async def test_lifespan_with_mdns(monkeypatch):
     assert calls == {"start": 1, "stop": 1}
 
 
-# ══════════════════════════════════════════════════════════════════════
-# routers/calendar.py — extra branches
-# ══════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.asyncio
 async def test_create_event_end_before_start_422(client):
     r = await client.post("/api/v1/calendars", json={"name": "C", "color": "sage"})
@@ -503,19 +468,15 @@ async def test_list_events_filters(client):
         "end_at": "2030-07-02T10:00:00Z",
     })
 
-    # calendar_ids filter
     r = await client.get(f"/api/v1/events?calendar_ids={cal_b}")
     assert [e["title"] for e in r.json()] == ["B1"]
 
-    # empty entries in calendar_ids are ignored
     r = await client.get(f"/api/v1/events?calendar_ids= , {cal_a} ,")
     assert [e["title"] for e in r.json()] == ["A1"]
 
-    # to filter (start_at <= to)
     r = await client.get("/api/v1/events?to=2030-06-01T00:00:00Z")
     assert [e["title"] for e in r.json()] == ["A1"]
 
-    # from filter uses coalesce(end_at, start_at)
     r = await client.get("/api/v1/events?from=2030-06-15T00:00:00Z")
     assert [e["title"] for e in r.json()] == ["B1"]
 
@@ -591,11 +552,6 @@ async def test_subscribe_calendar_default_name(client):
     assert r.json()["name"] == "Subscribed Calendar"
 
 
-# ══════════════════════════════════════════════════════════════════════
-# routers/tasks.py — extra branches
-# ══════════════════════════════════════════════════════════════════════
-
-
 async def _make_list(client, name="L"):
     r = await client.post("/api/v1/task-lists", json={"name": name, "color": "taupe", "position": 0})
     return r.json()["id"]
@@ -662,11 +618,6 @@ async def test_update_task_list_fields(client):
     assert r.json()["position"] == 5
 
 
-# ══════════════════════════════════════════════════════════════════════
-# routers/users.py — extra branches
-# ══════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.asyncio
 async def test_create_member_with_color_and_update_avatar(client):
     r = await client.post("/api/v1/household/members", json={
@@ -683,11 +634,6 @@ async def test_create_member_with_color_and_update_avatar(client):
     assert r.json()["avatar_url"] == "https://example.com/b.png"
     assert r.json()["color"] == "sky"
     assert r.json()["role"] == "admin"
-
-
-# ══════════════════════════════════════════════════════════════════════
-# routers/holidays.py — httpx error branches
-# ══════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.asyncio
@@ -733,11 +679,6 @@ async def test_fetch_nager_holidays_network_error(monkeypatch):
     assert exc.value.status_code == 502
 
 
-# ══════════════════════════════════════════════════════════════════════
-# routers/settings.py — normalization & geocoding
-# ══════════════════════════════════════════════════════════════════════
-
-
 def test_country_code_normalization():
     from app.routers.settings import _country_code
 
@@ -745,8 +686,8 @@ def test_country_code_normalization():
     assert _country_code("") is None
     assert _country_code("  ") is None
     assert _country_code(" ca ") == "CA"
-    assert _country_code("Canada") is None  # not 2 letters
-    assert _country_code("C1") is None      # not alphabetic
+    assert _country_code("Canada") is None
+    assert _country_code("C1") is None
 
 
 @pytest.mark.asyncio
@@ -768,7 +709,6 @@ async def test_geocode_address_success_filters_mismatched_country(monkeypatch):
     )
     coords = await settings_mod._geocode_address("123 Main St, Toronto", "Ontario", "ca")
     assert coords == {"lat": 43.7, "lon": -79.4}
-    # country code passed as filter, never appended to the query name
     assert sink[0]["params"]["countryCode"] == "CA"
     assert "CA" not in sink[0]["params"]["name"]
 
@@ -777,7 +717,6 @@ async def test_geocode_address_success_filters_mismatched_country(monkeypatch):
 async def test_geocode_address_skips_failed_and_returns_empty(monkeypatch):
     from app.routers import settings as settings_mod
 
-    # first candidate returns a non-success response, no later candidate matches
     monkeypatch.setattr(
         settings_mod.httpx,
         "AsyncClient",
@@ -846,11 +785,6 @@ async def test_update_settings_with_name(client):
 
     r = await client.get("/api/v1/household/settings")
     assert r.status_code == 200
-
-
-# ══════════════════════════════════════════════════════════════════════
-# routers/photos.py — list/update/delete branches
-# ══════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.asyncio

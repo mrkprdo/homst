@@ -31,8 +31,6 @@ describe("HomeView", () => {
 
   it("renders widgets, time-derived photo slideshow, weather icons, spotify states, and handles lock/drag/resize", async () => {
     vi.useFakeTimers()
-    // Keep today's date (HomeView captures `today = ref(new Date())` at import time)
-    // while aligning to a multiple of 15_000ms so floor(now / 5000) % 3 === 0
     const baseMs = Math.floor(Date.now() / 15_000) * 15_000
     vi.setSystemTime(baseMs)
     try {
@@ -68,7 +66,6 @@ describe("HomeView", () => {
         createdBy: null, createdAt: "", updatedAt: "",
       })
 
-      // Seed 3 selected photos + 1 unselected
       settings.photos.value = [
         { id: "p1", url: "/p1.jpg", selected: true },
         { id: "p2", url: "/p2.jpg", selected: true },
@@ -76,7 +73,6 @@ describe("HomeView", () => {
         { id: "p4", url: "/p4.jpg", selected: false },
       ]
 
-      // Mock household settings response with partial layout (missing spotify & photos → findFreeSlot)
       vi.mocked(fetch).mockImplementation(async (url) => {
         const u = String(url)
         if (u.includes("/household/settings")) {
@@ -105,15 +101,11 @@ describe("HomeView", () => {
       expect(wrapper.text()).toContain("TodoTask")
       expect(wrapper.text()).toContain("DoingTask")
 
-      // Photo slideshow: at baseMs (multiple of 15000), floor(baseMs/5000)%3 === 0 → /p1.jpg
       expect(wrapper.find(".photos-img").attributes("src")).toBe("/p1.jpg")
-      // Advance 5000ms → photoTimer (500ms interval) updates slideshowNow → floor((baseMs+5000)/5000)%3 === 1 → /p2.jpg
       await vi.advanceTimersByTimeAsync(5000)
       await nextTick()
       const slides = wrapper.findAll(".photos-img")
       expect(slides.at(-1)?.attributes("src")).toBe("/p2.jpg")
-      // The outgoing photo stays underneath while it fades out, so the new one
-      // dissolves over it instead of both dipping against the card background.
       expect(slides.length).toBe(2)
       expect(slides[0]!.attributes("src")).toBe("/p1.jpg")
       expect(slides[0]!.classes()).not.toContain("photos-img--dissolve")
@@ -121,9 +113,6 @@ describe("HomeView", () => {
       expect(slides[1]!.classes()).toContain("photos-img--dissolve")
       expect(slides[1]!.classes()).not.toContain("photos-img--outgoing")
 
-      // Every WMO branch gets its own scene treatment, including the splits
-      // that the old single-glyph map collapsed (freezing, showers, hail,
-      // overcast, and the calm fallback for unknown codes).
       const weatherCases: [number, boolean, ...string[]][] = [
         [0, true, "is-clear"],
         [1, true, "is-partly"],
@@ -155,7 +144,6 @@ describe("HomeView", () => {
       }
       expect(wrapper.text()).toContain("City")
 
-      // Spotify setup → submit client ID, then simulate playing track
       const spInput = wrapper.find(".spotify-setup-input")
       if (spInput.exists()) {
         await spInput.setValue("0123456789abcdef0123456789abcdef")
@@ -169,7 +157,6 @@ describe("HomeView", () => {
       await nextTick()
       expect(wrapper.text()).toContain("My Track")
 
-      // Unlock edit mode, drag & resize a widget, then lock again
       await wrapper.find(".lock-toggle").trigger("click")
       expect(wrapper.findAll(".drag-handle").length).toBeGreaterThan(0)
 
@@ -183,10 +170,8 @@ describe("HomeView", () => {
       window.dispatchEvent(new MouseEvent("pointermove", { clientX: 250, clientY: 250 }))
       window.dispatchEvent(new MouseEvent("pointerup"))
 
-      // Dispatch custom layout event
       window.dispatchEvent(new CustomEvent("homst:widget-layout-updated", { detail: [] }))
 
-      // Mini-calendar day click jumps to the calendar on that date
       const dayBtn = wrapper.find(".mini-cal-day:not(.mini-cal-day--empty)")
       const clickedDay = Number(dayBtn.find(".mini-cal-day__num").text())
       await dayBtn.trigger("click")
@@ -202,7 +187,6 @@ describe("HomeView", () => {
 
   it("navigates schedule days and returns to today after two minutes or a screen change", async () => {
     vi.useFakeTimers()
-    // Pin to midday so the two-minute fallback never crosses local midnight.
     const baseDate = new Date()
     baseDate.setHours(12, 0, 0, 0)
     const base = baseDate.getTime()
@@ -248,7 +232,6 @@ describe("HomeView", () => {
       expect(wrapper.text()).toContain("Tomorrow's Schedule")
       expect(scheduleText()).toContain("Tomorrow event")
 
-      // Keep going to any date, not just tomorrow.
       await next.trigger("click")
       await nextTick()
       const inTwoDays = new Date(base)
@@ -258,18 +241,15 @@ describe("HomeView", () => {
       expect(wrapper.find(".schedule-nav__date").text())
         .toBe(inTwoDays.toLocaleDateString("en-US", { month: "short", day: "numeric" }))
 
-      // Stays put while the two-minute window is open…
       await vi.advanceTimersByTimeAsync(119_000)
       await nextTick()
       expect(wrapper.text()).not.toContain("Today's Schedule")
 
-      // …then falls back to Today.
       await vi.advanceTimersByTimeAsync(1_000)
       await nextTick()
       expect(wrapper.text()).toContain("Today's Schedule")
       expect(scheduleText()).not.toContain("Tomorrow event")
 
-      // Leaving the home screen resets the picker as well.
       await next.trigger("click")
       await nextTick()
       expect(wrapper.text()).toContain("Tomorrow's Schedule")
@@ -279,13 +259,11 @@ describe("HomeView", () => {
 
       ui.setPanel("home")
 
-      // Crossing a month boundary fetches that month on demand.
       for (let i = 0; i < 40; i++) (next.element as HTMLButtonElement).click()
       await nextTick()
       await flushPromises()
       expect(wrapper.find(".schedule-nav__label").text()).not.toBe("Today")
 
-      // Tapping the date itself is the shortcut back to Today.
       await wrapper.find(".schedule-nav__active").trigger("click")
       await nextTick()
       expect(wrapper.find(".schedule-nav__label").text()).toBe("Today")
@@ -348,18 +326,15 @@ describe("HomeView", () => {
     await flushPromises()
     await nextTick()
 
-    // The mini calendar marks the base occurrence.
     expect(wrapper.findAll(".mini-cal-chip").map(chip => chip.text())).toContain("Weekly standup")
 
     const next = wrapper.find('[aria-label="Next day"]')
     for (let i = 0; i < 7; i++) (next.element as HTMLButtonElement).click()
     await nextTick()
 
-    // A week later is a real occurrence, so the schedule lists it…
     const row = wrapper.findAll(".schedule-row").find(r => r.text().includes("Weekly standup"))
     expect(row).toBeTruthy()
 
-    // …and opening it targets the base event so the detail panel can load it.
     await row!.trigger("click")
     expect(ui.calendarTarget.value?.eventId).toBe("rec-weekly")
 
@@ -412,7 +387,6 @@ describe("HomeView", () => {
       previous.setMonth(previous.getMonth() - 1)
       expect(monthLabel().text()).toBe(previous.toLocaleString("en-US", { month: "long", year: "numeric" }))
 
-      // The month title is the shortcut back to the live month.
       await monthLabel().trigger("click")
       await nextTick()
       expect(monthLabel().text()).toBe(currentMonth)
@@ -483,13 +457,11 @@ describe("HomeView", () => {
     window.dispatchEvent(new CustomEvent("homst:widget-layout-updated", { detail: LEGACY_LAYOUT }))
     await flushPromises()
 
-    // Spotify no longer covers the full-width calendar below it
     expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-row: 1 / span 1")
     expect(spotifyWidget(wrapper)!.attributes("style")).toContain("grid-column: 4 / span 2")
     expect(calendarWidget(wrapper)!.attributes("style")).toContain("grid-column: 1 / span 2")
     expect(calendarWidget(wrapper)!.attributes("style")).toContain("grid-row: 1 / span 3")
 
-    // The corrected layout is written back so the kiosk keeps it
     const patch = settingsPatch()
     expect(patch).toBeTruthy()
     const body = JSON.parse((patch![1] as RequestInit).body as string)

@@ -93,35 +93,30 @@ describe("MemberDetailPanel (full)", () => {
     expect(wrapper.text()).toContain("Members (2)")
     expect((wrapper.findAll(".md-member")[0]!.findAll("input")[0]!.element as HTMLInputElement).value).toBe("Alice")
 
-    // ── Edit house name ──
     await section(wrapper, "Household").find(".md-edit").trigger("click")
     await section(wrapper, "Household").find("input").setValue("New Name")
     await section(wrapper, "Household").findAll("button").find(b => b.text() === "Save")!.trigger("click")
     await flushPromises()
     expect(wrapper.text()).toContain("New Name")
 
-    // ── Edit address ──
     await section(wrapper, "Address").find(".md-edit").trigger("click")
     await section(wrapper, "Address").find("input").setValue("42 Oak Ave")
     await section(wrapper, "Address").findAll("button").find(b => b.text() === "Save")!.trigger("click")
     await flushPromises()
     expect(wrapper.text()).toContain("42 Oak Ave")
 
-    // ── Edit province ──
     await section(wrapper, "State / Province").find(".md-edit").trigger("click")
     await section(wrapper, "State / Province").find("input").setValue("Quebec")
     await section(wrapper, "State / Province").findAll("button").find(b => b.text() === "Save")!.trigger("click")
     await flushPromises()
     expect(wrapper.text()).toContain("Quebec")
 
-    // ── Edit country via select ──
     await section(wrapper, "Country").find(".md-edit").trigger("click")
     await section(wrapper, "Country").find("select").setValue("US")
     await section(wrapper, "Country").findAll("button").find(b => b.text() === "Save")!.trigger("click")
     await flushPromises()
     expect(wrapper.text()).toContain("United States")
 
-    // ── Edit weather coords ──
     await section(wrapper, "Weather Coordinates").find(".md-edit").trigger("click")
     const numInputs = section(wrapper, "Weather Coordinates").findAll('input[type="number"]')
     await numInputs[0]!.setValue("40.5")
@@ -130,19 +125,16 @@ describe("MemberDetailPanel (full)", () => {
     await flushPromises()
     expect(wrapper.text()).toContain("40.5000")
 
-    // ── Member edits: color and name ──
     const memberRows = wrapper.findAll(".md-member")
     await memberRows[0]!.findAll(".color-opt")[3]!.trigger("click")
     await memberRows[0]!.findAll("input")[0]!.setValue("Alicia")
     expect((memberRows[0]!.findAll("input")[0]!.element as HTMLInputElement).value).toBe("Alicia")
 
-    // ── Remove Bob, add a new member ──
     await memberRows[1]!.find(".member-remove").trigger("click")
     expect(wrapper.text()).toContain("Members (1)")
     await wrapper.findAll(".md-add-link").find(b => b.text().includes("Add member"))!.trigger("click")
     expect(wrapper.text()).toContain("Members (2)")
 
-    // ── Save Changes → confirm overlay ──
     expect(wrapper.find(".md-save-btn").exists()).toBe(true)
     await wrapper.find(".md-save-btn").trigger("click")
     expect(wrapper.text()).toContain("Save changes?")
@@ -150,7 +142,6 @@ describe("MemberDetailPanel (full)", () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain("Changes saved")
-    // Settings + member writes went out
     expect(patchCalls().some(([u]) => String(u).includes("/household/settings"))).toBe(true)
     expect(vi.mocked(fetch).mock.calls.some(([u, o]) =>
       String(u).includes("/household/members") && (o as RequestInit).method === "POST")).toBe(true)
@@ -161,7 +152,6 @@ describe("MemberDetailPanel (full)", () => {
     const wrapper = mount(MemberDetailPanel, { global: { stubs: { teleport: true } } })
     await flushPromises()
 
-    // Add links present when unset
     expect(wrapper.text()).toContain("+ Add address")
     expect(wrapper.text()).toContain("+ Add province")
     expect(wrapper.text()).toContain("+ Add country")
@@ -182,10 +172,8 @@ describe("MemberDetailPanel (full)", () => {
     await section(wrapper, "Country").findAll("button").find(b => b.text() === "Save")!.trigger("click")
     await flushPromises()
 
-    // Leave one local edit unsaved so the close guard has something to protect.
     await wrapper.findAll(".md-add-link").find(b => b.text().includes("Add member"))!.trigger("click")
 
-    // close guard blocks closing when dirty → Discard resets + closes
     const ui = useUi()
     ui.openDrawer("member-detail")
     await nextTick()
@@ -204,7 +192,6 @@ describe("MemberDetailPanel (full)", () => {
     const wrapper = mount(MemberDetailPanel, { global: { stubs: { teleport: true } } })
     await flushPromises()
 
-    // Typing a draft without pressing the inline Save must still be protected.
     await section(wrapper, "Household").find(".md-edit").trigger("click")
     await section(wrapper, "Household").find("input").setValue("Dirty")
 
@@ -215,12 +202,10 @@ describe("MemberDetailPanel (full)", () => {
     await nextTick()
     expect(wrapper.text()).toContain("Unsaved changes")
 
-    // Cancel keeps the drawer open
     await wrapper.find(".md-confirm-actions").findAll("button")
       .find(b => b.text() === "Cancel")!.trigger("click")
     expect(ui.isDrawerOpen.value).toBe(true)
 
-    // Save then close from the guard
     ui.closeDrawer()
     await nextTick()
     await wrapper.find(".md-confirm-actions").findAll("button")[0]!.trigger("click")
@@ -241,13 +226,11 @@ describe("MemberDetailPanel (full)", () => {
     await nextTick()
     expect(wrapper.find(".photo-item--selected").exists()).toBe(true)
 
-    // Toggle selection → inline photosApi.update
     await wrapper.find(".photo-item").trigger("click")
     await flushPromises()
     expect(vi.mocked(fetch).mock.calls.some(([u, o]) =>
       String(u).includes("/photos/p1") && (o as RequestInit).method === "PATCH")).toBe(true)
 
-    // Delete with confirmation
     await wrapper.find(".photo-delete").trigger("click")
     await nextTick()
     expect(wrapper.text()).toContain("Delete photo?")
@@ -256,7 +239,6 @@ describe("MemberDetailPanel (full)", () => {
     expect(settings.photos.value).toHaveLength(0)
     expect(wrapper.text()).toContain("No photos uploaded yet")
 
-    // Upload a file
     const fileInput = wrapper.find('input[type="file"]')
     const file = new File(["bytes"], "new.png", { type: "image/png" })
     Object.defineProperty(fileInput.element, "files", { value: [file], configurable: true })

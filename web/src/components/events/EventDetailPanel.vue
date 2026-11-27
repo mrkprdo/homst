@@ -21,7 +21,6 @@ const editing = ref(false)
 const deleting = ref(false)
 const saving = ref(false)
 
-// Edit form
 const editTitle         = ref("")
 const editDescription   = ref("")
 const editAllDay        = ref(false)
@@ -145,8 +144,6 @@ async function saveEdit() {
   if (!event.value || editTimeError.value) return
   saving.value = true
   try {
-    // All-day: single day → explicit null end (clears any stale multi-day end);
-    // multi-day → inclusive end-of-day so the event covers its final day.
     let endAt: string | null | undefined
     if (editAllDay.value) {
       endAt = editEnd.value && editEnd.value !== editStart.value
@@ -226,7 +223,6 @@ const reminderText = computed(() => {
 <template>
   <div v-if="event" class="edp">
 
-    <!-- ── View mode ── -->
     <template v-if="!editing">
       <h2 class="edp-title">{{ event.title }}</h2>
 
@@ -260,7 +256,6 @@ const reminderText = computed(() => {
 
       <p v-if="event.description" class="edp-desc">{{ event.description }}</p>
 
-      <!-- Delete confirm inline -->
       <div v-if="deleting" class="edp-delete-confirm">
         <PhWarning :size="16" class="edp-warn-icon" />
         <span>Delete this event?</span>
@@ -303,7 +298,6 @@ const reminderText = computed(() => {
       </div>
     </template>
 
-    <!-- ── Edit mode ── -->
     <template v-else>
       <div class="edp-form">
         <div class="edp-form-row">
@@ -415,7 +409,6 @@ const reminderText = computed(() => {
   line-height: 1.2;
 }
 
-/* ── Field list ── */
 .edp-fields {
   display: flex;
   flex-direction: column;
@@ -458,7 +451,6 @@ const reminderText = computed(() => {
 
 .edp-muted { color: var(--color-textMuted); }
 
-/* ── Description ── */
 .edp-desc {
   font-size: var(--text-body-size);
   color: var(--color-textPrimary);
@@ -469,7 +461,6 @@ const reminderText = computed(() => {
   white-space: pre-wrap;
 }
 
-/* ── Actions ── */
 .edp-actions {
   display: flex;
   flex-wrap: wrap;
@@ -517,7 +508,6 @@ const reminderText = computed(() => {
   outline-offset: 2px;
 }
 
-/* ── Delete confirm ── */
 .edp-delete-confirm {
   display: flex;
   flex-direction: column;
@@ -537,7 +527,6 @@ const reminderText = computed(() => {
   gap: var(--space-2);
 }
 
-/* ── Edit form ── */
 .edp-form {
   display: flex;
   flex-direction: column;

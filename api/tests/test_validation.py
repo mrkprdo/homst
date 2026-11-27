@@ -37,9 +37,6 @@ def _nager_year(year, country_code="US"):
     }]
 
 
-# ── Recurrence schema ────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_create_event_returns_valid_recurrence_unchanged(client):
     cal_id = await _make_calendar(client)
@@ -62,7 +59,6 @@ async def test_create_event_recurrence_without_optional_fields(client):
         "recurrence": {"freq": "daily"},
     })
     assert r.status_code == 201
-    # Optional fields stay absent rather than being serialised as null.
     assert r.json()["recurrence"] == {"freq": "daily"}
 
 
@@ -123,9 +119,6 @@ def test_recurrence_until_accepts_naive_and_zulu_timestamps():
     assert Recurrence(freq="daily", until=None).until is None
 
 
-# ── Holiday sync requests ────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_holiday_sync_normalizes_lowercase_country(client, monkeypatch):
     seen: list[str] = []
@@ -159,9 +152,6 @@ async def test_holiday_sync_rejects_overlong_province(client):
         "country_code": "US", "province": "x" * 101,
     })
     assert r.status_code == 422
-
-
-# ── Length limits ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -285,9 +275,6 @@ async def test_task_title_and_description_limits(client):
     assert r.status_code == 422
 
 
-# ── Reminder worker resilience ───────────────────────────────────────────────
-
-
 def test_occurrences_tolerate_garbage_until():
     start = datetime(2030, 6, 3, 18, 0, tzinfo=UTC)
     ev = _event(start, {"freq": "daily", "until": "garbage"})
@@ -317,17 +304,14 @@ def test_occurrences_tolerate_garbage_count(bad_count):
 def test_occurrences_clamp_out_of_range_count():
     start = datetime(2030, 6, 3, 18, 0, tzinfo=UTC)
 
-    # count=0 is clamped up to a single occurrence.
     zero = _event(start, {"freq": "daily", "count": 0})
     assert occurrences_between(zero, start, start + timedelta(days=3)) == [start]
 
-    # count="3" is parsed as a number.
     stringy = _event(start, {"freq": "daily", "count": "3"})
     assert occurrences_between(stringy, start, start + timedelta(days=9)) == [
         start + timedelta(days=i) for i in range(3)
     ]
 
-    # Huge counts are clamped rather than expanding forever.
     huge = _event(start, {"freq": "daily", "count": 10_000})
     assert len(occurrences_between(huge, start, start + timedelta(days=900))) == 400
 

@@ -9,7 +9,6 @@ type Wrapper = ReturnType<typeof mount>
 let wrapper: Wrapper | null = null
 
 beforeEach(() => {
-  // Skip the springs; card moves and overlays settle on the next frame.
   setLowPower(true)
 })
 
@@ -32,7 +31,6 @@ function nextFrame() {
   return new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 }
 
-/** Low-power mode skips the spring and finishes on the next frame. */
 async function settleClose() {
   await nextFrame()
   await nextFrame()
@@ -62,7 +60,6 @@ describe("card blow-up", () => {
     expect(document.activeElement).toBe(closeBtn)
 
     closeBtn.click()
-    // A second dismissal while the close animation runs is ignored.
     closeBtn.click()
 
     await settleClose()
@@ -76,7 +73,6 @@ describe("card blow-up", () => {
   it("ignores double-clicks while editing or on interactive controls", async () => {
     const wrapper = await mountHome()
 
-    // Layout editing owns the pointer; a drag must never blow a card up.
     await wrapper.find(".lock-toggle").trigger("click")
     await wrapper.find(".home-block").trigger("dblclick")
     await flushPromises()
@@ -84,12 +80,10 @@ describe("card blow-up", () => {
 
     await wrapper.find(".lock-toggle").trigger("click")
 
-    // Controls keep their own double-click behaviour.
     await wrapper.find('[aria-label="Next day"]').trigger("dblclick")
     await flushPromises()
     expect(document.querySelector(".card-blowup")).toBeNull()
 
-    // The empty canvas is not a card.
     await wrapper.find(".widget-canvas").trigger("dblclick")
     await flushPromises()
     expect(document.querySelector(".card-blowup")).toBeNull()
@@ -99,8 +93,6 @@ describe("card blow-up", () => {
 
   it("closes with Escape and keeps Tab inside the expanded card", async () => {
     const wrapper = await mountHome()
-    // The calendar card has controls inside, so the focus loop has somewhere
-    // to wrap to besides the close button.
     await wrapper.find(".mini-cal-weekdays").trigger("dblclick")
     await flushPromises()
     await nextTick()
@@ -109,11 +101,9 @@ describe("card blow-up", () => {
     const stage = document.querySelector(".card-blowup__stage")!
     expect(document.activeElement).toBe(closeBtn)
 
-    // Shift+Tab from the first control wraps to the last control in the card.
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true }))
     expect(stage.contains(document.activeElement)).toBe(true)
 
-    // Tab from the last control returns to the close button.
     const items = stage.querySelectorAll<HTMLElement>(
       "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
     )
@@ -121,7 +111,6 @@ describe("card blow-up", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }))
     expect(document.activeElement).toBe(closeBtn)
 
-    // Lost focus is pulled back inside instead of reaching the page behind.
     const outside = document.createElement("button")
     document.body.appendChild(outside)
     outside.focus()

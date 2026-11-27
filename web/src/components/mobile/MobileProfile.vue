@@ -41,14 +41,12 @@ watch(serverReachable, (reachable) => {
   if (reachable) testUnreachable.value = false
 })
 
-/** Toggling turns *this* device's push subscription on or off. */
 async function onPushToggle(enabled: boolean) {
   testResults.value = null
   if (enabled) await enablePush()
   else await disablePush()
 }
 
-/** Fire a reminder at every client: all open screens (HUD) and all phones (push). */
 async function sendTestPush() {
   testing.value = true
   testResults.value = null
@@ -277,7 +275,6 @@ function memberHex(member: { color?: string | null } | undefined) {
   color: var(--color-textSecondary);
 }
 
-/* ── Notifications / device setup rows ── */
 .mp-row {
   display: flex;
   align-items: center;

@@ -5,9 +5,6 @@ import { PhX } from "@phosphor-icons/vue"
 import { animate, ease } from "@/lib/motion"
 import { scheduleIdle } from "@/lib/idle"
 
-// Quick add pulls in the Smart-import panel, which is several thousand lines.
-// Keep it out of the boot bundle; the drawer opens it on demand and the idle
-// prefetch below means the first open is already warm.
 const loadQuickAdd = () => import("@/components/shared/QuickAddForm.vue")
 const QuickAddForm = defineAsyncComponent({ loader: loadQuickAdd, delay: 0 })
 const isTestEnv = (import.meta as any).env?.MODE === "test"
@@ -51,11 +48,6 @@ function focusableItems(): HTMLElement[] {
 
 let lastFocused: HTMLElement | null = null
 
-/**
- * Dialogs own the keyboard while they are open: Escape closes (through the
- * close guard, so unsaved work still prompts) and Tab cycles inside the
- * drawer instead of moving into the dashboard behind the backdrop.
- */
 function onDocumentKeydown(e: KeyboardEvent) {
   if (!ui.isDrawerOpen.value) return
 
@@ -78,8 +70,6 @@ function onDocumentKeydown(e: KeyboardEvent) {
   const first = items[0]!
   const last = items[items.length - 1]!
 
-  // If focus escaped the dialog (or is still on the dialog shell itself),
-  // pull it back to the correct end before the browser walks the page behind.
   if (!drawerEl.value?.contains(document.activeElement)) {
     e.preventDefault()
     ;(e.shiftKey ? last : first).focus()
@@ -102,12 +92,6 @@ watch(() => ui.isDrawerOpen.value, async (open) => {
     lastFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
     document.addEventListener("keydown", onDocumentKeydown, true)
 
-    // The open bounce overshoots past its target. Driving a progress variable
-    // lets CSS turn that overshoot into a stretch anchored to the right edge,
-    // instead of sliding the panel further left and revealing the page behind.
-    // `outBack` overshoots once and settles monotonically (a physical spring
-    // also dips below 1 after the overshoot, which would pull the panel away
-    // from the edge and show a strip of the page during the bounce).
     drawerEl.value.style.removeProperty("transform")
     if (!drawerEl.value.style.getPropertyValue("--drawer-p")) {
       drawerEl.value.style.setProperty("--drawer-p", "0")
@@ -120,8 +104,6 @@ watch(() => ui.isDrawerOpen.value, async (open) => {
 
     await nextTick()
     requestAnimationFrame(() => {
-      // Respect a field that asked for autofocus (Quick Add), otherwise give
-      // the dialog itself focus so the first Tab lands inside it.
       if (drawerEl.value?.contains(document.activeElement)) return
       drawerEl.value?.focus()
     })
@@ -166,7 +148,6 @@ onUnmounted(() => {
       tabindex="-1"
     >
       <div class="drawer-header">
-        <!-- Branded header for profile drawer -->
         <div v-if="ui.drawer.value.type === 'member-detail'" class="drawer-brand">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="32" height="32" aria-hidden="true">
             <rect width="100" height="100" rx="28" fill="#e0e8e8" />
@@ -224,8 +205,6 @@ onUnmounted(() => {
   width: min(480px, 100vw);
   background: var(--color-bgElevated);
   z-index: 101;
-  /* 0 = off-screen, 1 = resting open position. Values above 1 are the spring's
-     overshoot: the panel stretches left while its right edge stays pinned. */
   --drawer-p: 0;
   transform-origin: right center;
   transform:

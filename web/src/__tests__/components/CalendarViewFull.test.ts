@@ -23,7 +23,6 @@ function seedEvent(overrides: Partial<Event> & { id: string }) {
   useEvents().upsertEvent({ ...base, ...overrides })
 }
 
-/** Click the segmented control: 0 = month, 1 = week, 2 = day. */
 async function switchView(wrapper: ReturnType<typeof mount>, index: number) {
   const seg = wrapper.findComponent({ name: "UiSegmentedControl" })
   await seg.findAll(".segmented-btn")[index]!.trigger("click")
@@ -75,7 +74,6 @@ describe("CalendarView (assignees)", () => {
     })
 
     const wrapper = mount(CalendarView)
-    // Unassigned fallback: the plain title is shown, not a member prefix.
     expect(wrapper.text()).toContain("Mystery")
     expect(wrapper.text()).not.toContain("nobody")
   })
@@ -110,7 +108,6 @@ describe("CalendarView (month navigation)", () => {
 
     await adjacent[0]!.trigger("click")
     await nextTick()
-    // The grid now shows a different (neighbouring) month.
     expect(wrapper.findAll(".day-cell:not(.adjacent)").length).not.toBe(daysInCurrent)
   })
 
@@ -174,7 +171,6 @@ describe("CalendarView (event interaction)", () => {
     })
 
     const wrapper = mount(CalendarView)
-    // The first chip may be an expanded occurrence; open it and check the base id.
     await wrapper.findAllComponents({ name: "EventChip" })[0]!.trigger("click")
     expect(useUi().drawer.value.id).toBe("evt-rec")
   })
@@ -197,7 +193,6 @@ describe("CalendarView (event interaction)", () => {
   it("indexes an overnight event on both days it covers", () => {
     seedCalendar()
     const now = new Date()
-    // Mid-month so both cells are real month cells, not adjacent placeholders.
     const start = new Date(now.getFullYear(), now.getMonth(), 10, 22, 0)
     const end = new Date(now.getFullYear(), now.getMonth(), 11, 2, 0)
     seedEvent({
@@ -347,7 +342,6 @@ describe("CalendarView (week & day layout)", () => {
   it("clamps a multi-day event to the visible column", async () => {
     seedCalendar()
     const now = new Date()
-    // Started yesterday evening, ends early today — must clamp to today's column.
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 0)
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 1, 0)
     seedEvent({ id: "span-1", title: "Overnight", startAt: start.toISOString(), endAt: end.toISOString() })
@@ -357,7 +351,6 @@ describe("CalendarView (week & day layout)", () => {
     await nextTick()
     const blocks = wrapper.findAll(".week-event-block")
     expect(blocks.length).toBeGreaterThan(0)
-    // One column shows the tail end of the event clamped to the top of the day.
     const styles = blocks.map(b => b.attributes("style") ?? "")
     expect(styles.some(s => s.includes("top: 0px"))).toBe(true)
   })
@@ -393,7 +386,6 @@ describe("CalendarView (week & day layout)", () => {
   it("shows a week nav label and navigates weeks", async () => {
     const wrapper = mount(CalendarView)
     await switchView(wrapper, 1)
-    // The toolbar label cross-fades between views; let the transition settle.
     await new Promise((resolve) => setTimeout(resolve, 120))
     await nextTick()
     expect(wrapper.html()).toContain("–")
@@ -472,7 +464,6 @@ describe("CalendarView (lifecycle)", () => {
 
   it("moves both ways when an adjacent month cell is clicked", async () => {
     const wrapper = mount(CalendarView)
-    // Move to a month that has trailing next-month cells in its grid.
     await wrapper.findAll(".nav-arrow")[1]!.trigger("click")
     await nextTick()
     const nextCell = wrapper.findAll(".day-cell.adjacent").at(-1)!

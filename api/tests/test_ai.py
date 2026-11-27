@@ -132,9 +132,6 @@ async def configure(client, key: str = "oc_sk_test_secret_1234", provider: str =
     return response
 
 
-# ── Settings / status ──────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_status_unconfigured(client, monkeypatch):
     monkeypatch.setattr(settings, "opencode_api_key", "")
@@ -283,9 +280,6 @@ async def test_parse_ignores_a_non_string_household_timezone(client, monkeypatch
     fake_client(monkeypatch, response=completion('{"events": []}'))
     response = await client.post("/api/v1/ai/parse", json={"text": "x"})
     assert response.status_code == 200
-
-
-# ── Model list ─────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -466,9 +460,6 @@ async def test_invalid_stored_and_environment_models_fall_back(client, db_sessio
     assert body["model"] == ai.DEFAULT_MODEL
 
 
-# ── Test connection ────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_connection_requires_a_key(client, monkeypatch):
     monkeypatch.setattr(settings, "opencode_api_key", "")
@@ -517,9 +508,6 @@ async def test_connection_transport_error(client, monkeypatch):
     fake_client(monkeypatch, get_exc=httpx.ConnectError("nope"))
     response = await client.post("/api/v1/ai/test")
     assert response.status_code == 502
-
-
-# ── Parsing ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -605,7 +593,6 @@ async def test_parse_text_returns_validated_drafts(client, monkeypatch):
     assert second["all_day"] is True
     assert second["end_at"] is None
     assert second["confidence"] == 0.4
-    # No reminder in the source: the household default fills it in.
     assert second["reminder_minutes"] == 15
 
     assert captured["url"].endswith("/inference/openai/v1/chat/completions")
@@ -685,7 +672,6 @@ async def test_parse_go_provider_and_list_content(client, monkeypatch):
     response = await client.post("/api/v1/ai/parse", json={"text": "Coffee Monday"})
     assert response.status_code == 200
     event = response.json()["events"][0]
-    # An inverted end is repaired to start + 1 hour.
     assert event["end_at"] == "2026-05-04T09:00:00Z"
     assert "/inference/go/openai/v1/chat/completions" in captured["url"]
 
@@ -1093,9 +1079,6 @@ async def test_stream_endpoint_requires_config_and_input(client, monkeypatch):
     ).status_code == 422
 
 
-# ── Validation helpers ─────────────────────────────────────────────────────
-
-
 def test_coerce_helpers_cover_edge_values():
     tz = timezone.utc
     assert ai._coerce_datetime(datetime(2026, 1, 1, tzinfo=tz), tz) is not None
@@ -1170,17 +1153,14 @@ def test_validate_event_applies_or_skips_the_default_reminder():
     tz = timezone.utc
     base = {"title": "T", "start_at": "2026-01-01T09:00:00Z"}
 
-    # A missing reminder takes the household default.
     event, _, _ = ai._validate_event(base, tz, [], default_reminder=30)
     assert event["reminder_minutes"] == 30
 
-    # An explicit reminder always wins over the default.
     event, _, _ = ai._validate_event(
         {**base, "reminder_minutes": 60}, tz, [], default_reminder=30
     )
     assert event["reminder_minutes"] == 60
 
-    # -1 means the household asked for no reminder, even with a default set.
     event, _, _ = ai._validate_event(
         {**base, "reminder_minutes": -1}, tz, [], default_reminder=30
     )
@@ -1211,11 +1191,9 @@ def test_result_payload_defaults_new_events_and_keeps_a_focused_reminder():
     )
     assert new["events"][0]["reminder_minutes"] == 12
 
-    # With no household default, the agent still sets a one-hour reminder.
     fallback = ai._result_payload({"model": "m"}, answer, "", tz, [])
     assert fallback["events"][0]["reminder_minutes"] == 60
 
-    # Editing one event keeps its existing reminder instead of the default.
     focused = ai._result_payload(
         {"model": "m"},
         answer,

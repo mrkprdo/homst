@@ -130,7 +130,6 @@ class DockerClient:
                 "POST", f"/containers/{_quote(container_id)}/stop", params={"t": timeout}
             )
         except DockerError as exc:
-            # 304 = already stopped
             if exc.status_code not in (304, 404):
                 raise
 
@@ -149,7 +148,7 @@ class DockerClient:
         try:
             await self._request("POST", f"/containers/{_quote(container_id)}/start")
         except DockerError as exc:
-            if exc.status_code != 304:  # already started
+            if exc.status_code != 304:
                 raise
 
     async def remove_container(self, container_id: str, force: bool = True) -> None:

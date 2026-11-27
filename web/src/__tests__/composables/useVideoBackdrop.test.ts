@@ -68,7 +68,6 @@ describe("useVideoBackdrop", () => {
     api.canvas.value = fakeCanvas(() => rotatedContext)
     await nextTick()
 
-    // A quarter turn swaps the backing canvas axes.
     expect(api.canvas.value!.width).toBe(180)
     expect(api.canvas.value!.height).toBe(BACKDROP_MAX_DIMENSION)
     expect(rotatedContext.rotate).toHaveBeenCalledWith(Math.PI / 2)
@@ -145,8 +144,6 @@ describe("useVideoBackdrop", () => {
   it("keeps the slow cadence when the user re-enables animations", async () => {
     vi.useFakeTimers()
     setPerformanceMode(true)
-    // The animation toggle is a taste setting; a Pi that opts into motion must
-    // still not copy video frames into the canvas every 250ms while decoding.
     setLowPower(false)
     const { wrapper, video, api } = mountBackdrop()
     video.value = fakeVideo()

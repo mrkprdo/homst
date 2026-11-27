@@ -91,7 +91,6 @@ describe("useStream (full)", () => {
     const { members } = useMembers()
     mountStream()
 
-    // The API publishes snake_case member payloads — they must be mapped.
     latestES!.dispatch("member.joined", {
       id: "m1", household_id: "h1", name: "Zoe", avatar_url: null,
       color: "sage-base", role: "member", joined_at: "2026-05-01T00:00:00Z",
@@ -157,7 +156,6 @@ describe("useStream (full)", () => {
     expect(seen).toHaveLength(1)
     expect(seen[0]).toEqual([{ id: "datetime" }])
 
-    // No layout, or no settings at all — nothing is dispatched.
     latestES!.dispatch("settings.updated", { settings: { theme: "dark" } })
     latestES!.dispatch("settings.updated", {})
     expect(seen).toHaveLength(1)
@@ -273,7 +271,6 @@ describe("useStream (full)", () => {
     expect(status.value).toBe("disconnected")
     expect(first.closed).toBe(true)
 
-    // First backoff window is 1000ms.
     await vi.advanceTimersByTimeAsync(999)
     expect(latestES).toBe(first)
     await vi.advanceTimersByTimeAsync(1)
@@ -285,13 +282,10 @@ describe("useStream (full)", () => {
     fetchMock.mockClear()
     second.onopen?.()
     expect(status.value).toBe("connected")
-    // The server asks for a resync on reconnect → full store refresh.
     second.dispatch("sync.required", { type: "sync.required" })
     expect(fetchMock).toHaveBeenCalled()
 
     const urls = fetchMock.mock.calls.map((c) => String(c[0]))
-    // Household settings are refreshed too, so changes made while the kiosk
-    // was offline (theme, reminder default, widget layout) are not missed.
     expect(urls.some((u) => u.includes("/household/settings"))).toBe(true)
   })
 
@@ -302,7 +296,6 @@ describe("useStream (full)", () => {
 
     latestES!.onopen?.()
     latestES!.dispatch("sync.required", { type: "sync.required" })
-    // The mount-time fetches already cover the first connect.
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -320,7 +313,6 @@ describe("useStream (full)", () => {
     second.dispatch("sync.required", { type: "sync.required" })
     const afterFirst = fetchMock.mock.calls.length
     second.dispatch("sync.required", { type: "sync.required" })
-    // The in-flight reload absorbs the duplicate trigger.
     expect(fetchMock.mock.calls.length).toBe(afterFirst)
   })
 
@@ -335,7 +327,6 @@ describe("useStream (full)", () => {
     const second = latestES!
     expect(second).not.toBe(first)
 
-    // A delayed error from the old stream must not close the live connection.
     first.onerror?.()
     expect(second.closed).toBe(false)
 
@@ -353,7 +344,6 @@ describe("useStream (full)", () => {
     expect(second).not.toBe(first)
 
     second.onerror?.()
-    // Second attempt waits 2000ms, not 1000ms.
     await vi.advanceTimersByTimeAsync(1000)
     expect(latestES).toBe(second)
     await vi.advanceTimersByTimeAsync(1000)

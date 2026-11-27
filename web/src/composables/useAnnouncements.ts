@@ -18,7 +18,6 @@ export interface SendAnnouncementInput {
   sendPush?: boolean
 }
 
-/** Dismissals are local to this screen; removing from the composer is global. */
 const DISMISSED_KEY = "homst-dismissed-announcements"
 const MAX_STORED_DISMISSALS = 100
 
@@ -45,7 +44,6 @@ function persistDismissed() {
     const ids = Array.from(dismissed.value).slice(-MAX_STORED_DISMISSALS)
     localStorage.setItem(DISMISSED_KEY, JSON.stringify(ids))
   } catch {
-    // Storage may be unavailable (private mode) — dismissals become session-only.
   }
 }
 
@@ -74,7 +72,6 @@ export function isAnnouncementActive(a: Announcement, now = Date.now()): boolean
   return Number.isNaN(expiresAt) || expiresAt > now
 }
 
-/** Announcements this screen should show right now: active and not dismissed. */
 function visible(now = Date.now()): Announcement[] {
   return announcements.value.filter(
     a => isAnnouncementActive(a, now) && !dismissed.value.has(a.id),

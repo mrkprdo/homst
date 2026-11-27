@@ -47,7 +47,6 @@ test.describe("Settings", () => {
     const card = page.locator(".settings-card").filter({ hasText: "Reminders" })
     const cardBox = (await card.boundingBox())!
     const selectBox = (await card.locator("select.reminder-default-select").boundingBox())!
-    // The select must not overflow the card's right edge.
     expect(selectBox.x + selectBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1)
   })
 
@@ -151,8 +150,6 @@ test.describe("Settings", () => {
       }
       return [...spans.values()].map((span) => span.bottom - span.top)
     })
-    // Hand-pinned column breaks used to funnel every newer card into the last
-    // column; the tallest column must now stay close to the shortest one.
     expect(columnHeights).toHaveLength(3)
     expect(Math.max(...columnHeights)).toBeLessThanOrEqual(Math.min(...columnHeights) * 1.35)
   })
@@ -194,7 +191,6 @@ test.describe("Settings", () => {
     await page.mouse.move(700, 400)
     await expect(nav).toHaveClass(/app-nav--hidden/)
 
-    // Reaching for the left edge reveals the rail again.
     await page.mouse.move(5, 400)
     await expect(nav).not.toHaveClass(/app-nav--hidden/)
     await expect(page.locator('.nav-item[aria-label="Calendar"]')).toBeVisible()

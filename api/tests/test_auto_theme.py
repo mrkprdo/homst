@@ -6,14 +6,12 @@ import pytest
 from app.auto_theme import _sun_times, auto_theme_state, is_dark, solar_elevation
 from app.workers import settings as worker
 
-# ── Solar calculations ───────────────────────────────────────────────────────
-
 
 def test_solar_elevation_day_and_night():
     noon = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
     midnight = datetime(2026, 6, 21, 0, 0, tzinfo=timezone.utc)
 
-    assert solar_elevation(51.5, -0.12, noon) > 0  # London, summer noon
+    assert solar_elevation(51.5, -0.12, noon) > 0
     assert solar_elevation(51.5, -0.12, midnight) < 0
     assert is_dark(51.5, -0.12, midnight) is True
     assert is_dark(51.5, -0.12, noon) is False
@@ -71,9 +69,6 @@ def test_auto_state_falls_back_to_utc_for_bad_timezone():
     assert "autoSunrise" in state
 
 
-# ── Settings API ─────────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_settings_api_resolves_auto_theme(client):
     r = await client.patch(
@@ -98,7 +93,6 @@ async def test_settings_api_resolves_auto_theme(client):
     assert isinstance(data["autoThemeDark"], bool)
     assert "autoSunrise" in data and "autoSunset" in data
 
-    # Leaving auto drops the resolved flag so it cannot go stale.
     await client.patch("/api/v1/household/settings", json={"settings": {"theme": "light"}})
     r = await client.get("/api/v1/household/settings")
     assert "autoThemeDark" not in r.json()
@@ -114,9 +108,6 @@ async def test_settings_api_auto_without_coordinates(client):
 
     r = await client.get("/api/v1/household/settings")
     assert "autoThemeDark" not in r.json()
-
-
-# ── Worker ───────────────────────────────────────────────────────────────────
 
 
 class _Result:
@@ -170,7 +161,6 @@ async def test_worker_switches_every_client_at_sunset_and_sunrise(monkeypatch):
     )
     session, events = _patch_worker(monkeypatch, household)
 
-    # Noon in Toronto: the household is already marked dark, so flip to light.
     noon = datetime(2026, 10, 21, 16, 0, tzinfo=timezone.utc)
     await worker.apply_auto_theme(None, now=noon)
     assert household.settings["autoThemeDark"] is False
@@ -179,12 +169,10 @@ async def test_worker_switches_every_client_at_sunset_and_sunrise(monkeypatch):
     assert events[0][1] == "settings.updated"
     assert events[0][2]["settings"]["autoThemeDark"] is False
 
-    # Same state again: no duplicate push.
     await worker.apply_auto_theme(None, now=noon)
     assert session.commits == 1
     assert len(events) == 1
 
-    # Midnight in Toronto: push dark to every connected screen.
     midnight = datetime(2026, 10, 22, 4, 0, tzinfo=timezone.utc)
     await worker.apply_auto_theme(None, now=midnight)
     assert household.settings["autoThemeDark"] is True

@@ -104,7 +104,6 @@ onUnmounted(() => {
   backdrop-filter: blur(6px);
 }
 
-/* Browsers/kiosks without backdrop filtering still get a dimmed backdrop. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .update-prompt {
     background: rgba(0, 0, 0, 0.5);

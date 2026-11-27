@@ -110,7 +110,6 @@ async def test_update_check_prompts_displays_without_installing(monkeypatch):
     assert event_type == "system.update.available"
     assert payload["version"] == "0.3.0"
     assert payload["major"] is False
-    # New installs default to hands-off updates.
     assert payload["auto_install"] is True
 
 
@@ -183,7 +182,6 @@ async def test_update_check_respects_interval_and_rechecks_later(monkeypatch):
     await worker.check_auto_update(None)
     assert len(events) == 1
 
-    # Pretend the 5-minute window elapsed.
     monkeypatch.setattr(worker, "_last_update_check", time.monotonic() - 301)
     await worker.check_auto_update(None)
     assert len(events) == 2

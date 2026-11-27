@@ -146,8 +146,6 @@ def merge_container_spec(
         elif key not in new_image_config:
             config.pop(key, None)
 
-    # Preserve user/Compose labels, but refresh image labels (notably the
-    # version label) from the new image.
     labels = dict(old_config.get("Labels") or {})
     labels.update(new_image_config.get("Labels") or {})
     if new_image.get("Id") and "com.docker.compose.image" in labels:
@@ -187,7 +185,6 @@ def merge_container_spec(
 
     host_config = copy.deepcopy(old_container.get("HostConfig") or {})
     host_config.pop("ContainerIDFile", None)
-    # AutoRemove would remove the previous container before it can be restored.
     host_config["AutoRemove"] = False
     if not host_config.get("Binds"):
         binds = _binds_from_mounts(old_container.get("Mounts"))

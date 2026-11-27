@@ -18,11 +18,6 @@ withDefaults(defineProps<{
 </template>
 
 <style scoped>
-/* Nine static accent beads with a gradient highlight inside each one. A
-   brightness wave travels around the ring, so the shade shifts from bead to
-   bead without the circles themselves moving. Only opacity is animated, which
-   stays cheap while the camera stream is decoding. Callers provide the
-   accessible status text; the mark itself is decorative. */
 .ui-loader {
   --ui-loader-size: 36px;
   position: relative;
@@ -50,7 +45,6 @@ withDefaults(defineProps<{
   margin-top: calc(var(--ui-loader-size) * -0.115);
   margin-left: calc(var(--ui-loader-size) * -0.115);
   border-radius: 50%;
-  /* Accent shade rotates with each bead, so the ring reads as one lit object. */
   background: radial-gradient(
     circle at 32% 26%,
     var(--color-accent-light, #c5c8af),
@@ -67,14 +61,11 @@ withDefaults(defineProps<{
   animation-delay: calc(var(--i) * -0.1778s);
 }
 
-/* Low-power mode shortens every animation to a flicker. A loader still has to
-   communicate that work is in progress, and this only changes opacity. */
 :global(html.low-power .ui-loader__dot) {
   animation-duration: 1.6s !important;
   animation-iteration-count: infinite !important;
 }
 
-/* A bright head fades into a dim tail, then the head jumps to the next bead. */
 @keyframes ui-loader-bead {
   0% { opacity: 1; }
   22% { opacity: 0.62; }

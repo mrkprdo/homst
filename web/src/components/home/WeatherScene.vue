@@ -20,13 +20,11 @@ const condition = computed<Condition>(() => {
   if (code >= 80 && code <= 82) return "rain"
   if (code >= 85 && code <= 86) return "snow"
   if (code >= 95 && code <= 99) return "storm"
-  // Unknown/invalid codes stay calm instead of implying a thunderstorm.
   return "cloudy"
 })
 
 const night = computed(() => props.isDay === false)
 
-// Splits that used to collapse into the generic rain/snow icon.
 const freezing = computed(() => [56, 57, 66, 67].includes(props.code))
 const showers = computed(() => [80, 81, 82, 85, 86].includes(props.code))
 const hail = computed(() => [96, 99].includes(props.code))
@@ -37,8 +35,6 @@ const STARS = 18
 const GLINTS = 6
 const HAIL = 7
 
-// Deterministic scatter: the scene is ambient, so a stable composition on every
-// refresh matters more than true randomness.
 function spread(n: number, step: number, salt = 0): number {
   return (n * step + salt) % 100
 }
@@ -159,18 +155,7 @@ function hailStyle(n: number) {
 </template>
 
 <style scoped>
-/* A full-card weather window: the condition is the surface, not a badge.
-   Everything is bounded to the card, uses transform/opacity only, and falls
-   back to a composed still frame when motion is reduced.
 
-   --wx-u is 1% of the card's smaller side. Every sized element AND its offset
-   is expressed in it, so the whole scene scales as one proportional picture
-   at any grid size. Mixing %-of-card offsets with px-capped sizes used to push
-   the sun/clouds past the card edge once a card grew past the caps.
-
-   In portrait tiles the picture is centred in the extra height (see the
-   orientation query at the end) so a tall card doesn't leave a cloudy scene
-   stranded at the top with an empty lower half. */
 .weather-scene {
   --wx-u: min(1cqh, 1cqw);
   --wx-cloud: color-mix(in srgb, var(--color-info) 44%, var(--color-bgSurface));
@@ -182,7 +167,6 @@ function hailStyle(n: number) {
   opacity: 0.92;
 }
 
-/* ── Sky wash ─────────────────────────────────────────────────────────────── */
 .wx-wash {
   position: absolute;
   inset: 0;
@@ -234,7 +218,6 @@ function hailStyle(n: number) {
   );
 }
 
-/* Fixed slate keeps storms reading as weather, not as the warm accent wash. */
 .is-storm .wx-wash {
   background: linear-gradient(
     180deg,
@@ -254,13 +237,11 @@ function hailStyle(n: number) {
     linear-gradient(180deg, color-mix(in srgb, var(--color-sky-light) 30%, transparent), transparent 70%);
 }
 
-/* Showers keep a sun (or moon) break behind the cloud deck. */
 .is-showers .wx-celestial {
   display: block;
   opacity: 0.62;
 }
 
-/* ── Sun / moon ───────────────────────────────────────────────────────────── */
 .wx-celestial {
   position: absolute;
   top: calc(var(--wx-u) * -18);
@@ -333,7 +314,6 @@ function hailStyle(n: number) {
   display: block;
 }
 
-/* ── Stars ────────────────────────────────────────────────────────────────── */
 .wx-stars {
   position: absolute;
   inset: 0;
@@ -355,7 +335,6 @@ function hailStyle(n: number) {
   animation: wx-twinkle 3.6s ease-in-out infinite alternate;
 }
 
-/* ── Clouds ───────────────────────────────────────────────────────────────── */
 .wx-clouds {
   position: absolute;
   inset: 0;
@@ -445,7 +424,6 @@ function hailStyle(n: number) {
   opacity: 0.24;
 }
 
-/* ── Fog ──────────────────────────────────────────────────────────────────── */
 .wx-fog {
   position: absolute;
   inset: 0;
@@ -488,7 +466,6 @@ function hailStyle(n: number) {
   opacity: 0.6;
 }
 
-/* ── Rain ─────────────────────────────────────────────────────────────────── */
 .wx-rain {
   position: absolute;
   inset: 0;
@@ -521,7 +498,6 @@ function hailStyle(n: number) {
   height: calc(var(--wx-u) * 6);
 }
 
-/* ── Snow ─────────────────────────────────────────────────────────────────── */
 .wx-snow {
   position: absolute;
   inset: 0;
@@ -543,7 +519,6 @@ function hailStyle(n: number) {
   animation-iteration-count: infinite;
 }
 
-/* Freezing drizzle/rain leaves a few ice glints on the surface. */
 .wx-ice {
   position: absolute;
   inset: 0;
@@ -578,7 +553,6 @@ function hailStyle(n: number) {
   rotate: 90deg;
 }
 
-/* Hail rides with the thunderstorm. */
 .wx-hail {
   position: absolute;
   inset: 0;
@@ -608,7 +582,6 @@ function hailStyle(n: number) {
   100% { transform: translate3d(-1cqh, 108cqh, 0); opacity: 0; }
 }
 
-/* ── Storm ────────────────────────────────────────────────────────────────── */
 .wx-flash {
   position: absolute;
   inset: 0;
@@ -647,19 +620,11 @@ function hailStyle(n: number) {
   animation: wx-bolt 8s steps(1, end) infinite;
 }
 
-/* ── Portrait tiles ─────────────────────────────────────────────────────────
-   The picture is authored for the card's smaller side. When the tile is taller
-   than it is wide, anchor the artwork to the vertical centre instead of the top
-   edge so the sky stays composed instead of pooling above empty space. The
-   offsets include each cloud's overhang, keeping the painted mass centred even
-   though the tops sit above it. */
 @container w (orientation: portrait) {
   .wx-celestial {
     top: calc(50% - var(--wx-u) * 74);
   }
 
-  /* Clear skies have no cloud deck to anchor the picture, so the sun itself
-     moves into the centred band and its warmth follows it. */
   .is-clear .wx-celestial {
     top: calc(50% - var(--wx-u) * 50);
   }
@@ -700,7 +665,6 @@ function hailStyle(n: number) {
   }
 }
 
-/* ── Motion ───────────────────────────────────────────────────────────────── */
 @keyframes wx-breathe {
   from { opacity: 0.55; transform: scale(0.94); }
   to   { opacity: 0.9;  transform: scale(1.07); }
@@ -764,8 +728,6 @@ function hailStyle(n: number) {
   76%           { opacity: 0; }
 }
 
-/* A still, fully composed frame when motion is reduced or the display is weak.
-   Static drops/flakes keep their scattered positions via inline top/left. */
 @media (prefers-reduced-motion: reduce) {
   :global(html:not(.motion-on) .weather-scene *),
   :global(html:not(.motion-on) .weather-scene *::before),

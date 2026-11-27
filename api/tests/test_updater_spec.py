@@ -84,7 +84,7 @@ def test_spec_keeps_container_overrides_and_refreshes_image_defaults():
     assert payload["Image"] == "ghcr.io/mrkprdo/homst:0.3.0"
     assert "HOMST_VERSION=0.3.0" in payload["Env"]
     assert "CUSTOM=1" in payload["Env"]
-    assert payload["Cmd"] == ["container-cmd"]  # explicit container override wins
+    assert payload["Cmd"] == ["container-cmd"]
     assert payload["Entrypoint"] == ["container-entry"]
     assert payload["Labels"]["org.opencontainers.image.version"] == "0.3.0"
     assert payload["Labels"]["com.docker.compose.project"] == "homst-prod"

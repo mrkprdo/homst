@@ -34,9 +34,6 @@ from app.version import VERSION
 
 SETTING_KEY = "ai_config"
 
-# Provider id → the two OpenCode endpoints we use. ``chat`` is the
-# OpenAI-compatible completion API; ``models`` is a cheap endpoint for the
-# "Test connection" button (it validates the key without spending tokens).
 PROVIDERS: dict[str, dict[str, str]] = {
     "console": {
         "chat": "https://opencode.ai/inference/openai/v1/chat/completions",
@@ -55,8 +52,6 @@ MAX_EVENTS = 60
 MAX_TITLE_CHARS = 255
 MAX_DESCRIPTION_CHARS = 20_000
 MAX_REMINDER_MINUTES = 10_080
-# Smart import sets a reminder on every new event unless the message asks for a
-# specific lead or for none. One hour is the agent's sensible default.
 AGENT_DEFAULT_REMINDER_MINUTES = 60
 MAX_RAW_CHARS = 20_000
 MAX_QUESTIONS = 3
@@ -78,14 +73,9 @@ MAX_CONFLICT_EVENT_ID_CHARS = 64
 RECURRENCE_FREQS = {"daily", "weekly", "biweekly", "monthly", "yearly"}
 QUESTION_KINDS = {"clarification", "assignee", "conflict", "datetime"}
 DOCUMENT_KINDS = {"table", "calendar_grid", "email", "poster", "other"}
-# Buttons the model may offer under an assistant turn. The app re-checks each
-# one against the turn's state before showing it.
 TURN_ACTIONS = {"add_manually", "add_another", "done"}
 MAX_TURN_ACTIONS = 3
 
-# A clarification that asks for a date or time is better answered with a
-# calendar control than with free-text guesses. This catches models that still
-# label the question "clarification" and offer options such as "tomorrow morning".
 _DATETIME_QUESTION_RE = re.compile(
     r"\bwhen\b|\b(?:what|which)\b[^.?!]{0,40}\b(?:date|day|time|week)\b",
     re.IGNORECASE,
@@ -123,9 +113,6 @@ class AiTimeoutError(AiError):
 
     def __init__(self) -> None:
         super().__init__("OpenCode took too long to answer")
-
-
-# ── Stored configuration ───────────────────────────────────────────────────
 
 
 def _valid_provider(value: Any) -> str:
@@ -273,12 +260,8 @@ def _headers(api_key: str) -> dict[str, str]:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "User-Agent": f"homst/{VERSION}",
-        # Go requires a stable session id; it also helps prompt caching.
         "x-opencode-session": "homst-smart-import",
     }
-
-
-# ── Outbound requests ──────────────────────────────────────────────────────
 
 
 async def test_connection(config: dict) -> tuple[bool, str]:
@@ -423,8 +406,6 @@ def _parse_json_answer(answer: str) -> dict:
         raise AiUpstreamError("OpenCode did not return a JSON object")
     return payload
 
-
-# ── Prompt ─────────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """I'm HOMST's Smart Event Assistant. I extract calendar events
 from schedule images and pasted messages with evidence-backed accuracy.
@@ -1157,9 +1138,6 @@ def _find_conflicts(
     return conflicts
 
 
-# ── Input handling ─────────────────────────────────────────────────────────
-
-
 def _normalize_image(data_url: str) -> str:
     """Validate, orient and shrink an image; return a PNG data URL.
 
@@ -1368,7 +1346,6 @@ def _validate_event(
     else:
         wanted_reminder = _coerce_int(raw_reminder)
         if wanted_reminder == -1:
-            # Explicit opt-out, so never fall back to a configured default.
             reminder = None
         elif (
             wanted_reminder is not None
@@ -1393,8 +1370,6 @@ def _validate_event(
     if recurrence is not None:
         reason = raw.get("recurrence_reason")
         if not isinstance(reason, str) or len(reason.strip()) < 3:
-            # A repeat rule without a quoted source phrase is almost always the
-            # model turning a date table into a series. Never let that through.
             recurrence = None
             stripped = True
 
@@ -1491,7 +1466,6 @@ def _validate_update(
     if "end_at" in raw:
         end = _coerce_datetime(raw.get("end_at"), tz)
     elif start != old_start and old_end is not None:
-        # Moving an event without stating an end keeps its duration.
         end = old_end + (start - old_start)
     else:
         end = old_end
@@ -1674,8 +1648,6 @@ def validate_payload_ex(
     """Turn the model's answer into safe drafts plus questions and conflicts."""
     events = payload.get("events")
     if not isinstance(events, list):
-        # A pure command ("cancel the dentist") has no new events; accept the
-        # answer when it carries updates or deletes instead.
         if isinstance(payload.get("updates"), list) or isinstance(
             payload.get("deletes"), list
         ):
@@ -1749,8 +1721,6 @@ def validate_payload_ex(
     document = payload.get("document")
     if isinstance(document, dict):
         declared_rows = _coerce_int(document.get("dated_rows"))
-        # A one- or two-row miscount is common (headers/totals); only flag a
-        # material gap such as a 30-row table collapsed into 5 categories.
         if declared_rows is not None and declared_rows - len(events) >= 3:
             found = len(events)
             verb = "was" if found == 1 else "were"
@@ -1784,9 +1754,6 @@ def validate_payload(
         payload, tz, members
     )
     return drafts, skipped, warnings
-
-
-# ── Public entry points ────────────────────────────────────────────────────
 
 
 def _prepare_schedule(
@@ -1864,10 +1831,6 @@ def _result_payload(
     default_reminder_minutes: int | None = None,
 ) -> dict:
     payload = _parse_json_answer(answer)
-    # A new event starts from the household default reminder when one is set,
-    # otherwise the agent's one-hour default. When editing one focused event,
-    # keep the reminder it already had unless the model changes or explicitly
-    # clears it.
     if focus_event is not None:
         default_reminder = focus_event.get("reminder_minutes")
     elif default_reminder_minutes is not None:
@@ -1890,8 +1853,6 @@ def _result_payload(
         allowed=focus_event is None,
     )
     warnings = [*warnings, *action_warnings]
-    # An event the same answer updates or deletes is not a double-booking
-    # against the new draft; the change itself resolves it.
     touched = {item["event_id"] for item in [*updates, *deletes]}
     if touched:
         conflicts = [

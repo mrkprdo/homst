@@ -26,20 +26,10 @@ function transformOf(flip: Flip): string {
   return `translate(${flip.x}px, ${flip.y}px) scale(${flip.scaleX}, ${flip.scaleY})`
 }
 
-/**
- * Shared-element "blow up" view for dashboard cards.
- *
- * The real card element is moved into a fixed overlay rather than cloned, so
- * live content (camera video, photo slideshow, ticking clock, inner controls)
- * keeps working while it is expanded. A FLIP transform lifts it out of the
- * grid and settles it into the centre of the screen, then plays in reverse on
- * close before the node is put back where it came from.
- */
 export function useCardBlowup() {
   const active = ref(false)
   const ready = ref(false)
   const label = ref("Card")
-  /** The element the moved card is appended to. */
   const stageEl = ref<HTMLElement | null>(null)
   const closeEl = ref<HTMLElement | null>(null)
 
@@ -86,7 +76,6 @@ export function useCardBlowup() {
       return
     }
 
-    // Keep Tab cycling through the expanded card and its close button.
     if (e.shiftKey && focused === first) {
       e.preventDefault()
       last.focus()
@@ -96,14 +85,6 @@ export function useCardBlowup() {
     }
   }
 
-  /**
-   * Animate a transform-only FLIP between two states.
-   *
-   * Capable clients get the rubbery spring. Weak displays skip the full motion
-   * budget but still get one cheap compositor transform, so the card visibly
-   * grows instead of snapping; explicit "animations off" and reduced-motion
-   * preferences jump straight to the end.
-   */
   function runFlip(
     el: HTMLElement,
     from: Flip,
@@ -160,7 +141,6 @@ export function useCardBlowup() {
     complete()
   }
 
-  /** Put the card back and drop every trace of the overlay. */
   function restore() {
     flipGeneration++
     motionHandle?.cancel()
@@ -171,8 +151,6 @@ export function useCardBlowup() {
       el.style.transform = ""
       el.style.transformOrigin = ""
       if (sourceParent) {
-        // A null anchor appends, which covers the case where the original
-        // sibling was replaced while the card was expanded.
         const anchor = sourceNext && sourceNext.parentNode === sourceParent ? sourceNext : null
         sourceParent.insertBefore(el, anchor)
       }

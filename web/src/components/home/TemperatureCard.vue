@@ -44,17 +44,12 @@ function roomLabel(room: NestRoom) {
   return room.room || room.name
 }
 
-/** Where this room sits between the coolest and warmest reading (0–100). */
 function position(celsius: number) {
   if (!stats.value || stats.value.max === stats.value.min) return 50
   const p = ((celsius - stats.value.min) / (stats.value.max - stats.value.min)) * 100
   return Math.min(96, Math.max(4, p))
 }
 
-/**
- * Relative warmth scale: the selected accent's tint deepens from the coolest
- * room to the warmest, so the card always matches the household accent.
- */
 function tint(celsius: number) {
   return `${8 + position(celsius) * 0.12}%`
 }
@@ -72,7 +67,6 @@ function roomTitle(room: NestRoom) {
 
 const round1 = (value: number) => Math.round(value * 10) / 10
 
-/** Catmull-Rom spline through every sample, emitted as cubic Béziers. */
 function smoothPath(points: Array<{ x: number; y: number }>) {
   let d = `M${points[0]!.x} ${points[0]!.y}`
   for (let i = 0; i < points.length - 1; i++) {
@@ -89,10 +83,6 @@ function smoothPath(points: Array<{ x: number; y: number }>) {
   return d
 }
 
-/**
- * Subtle 12-hr trend drawn behind each tile's content. Each room scales to
- * its own min/max (with a 0.2° floor so near-flat readings stay centered).
- */
 const sparklines = computed(() => {
   const history = status.value?.history ?? {}
   const paths: Record<string, { line: string; area: string }> = {}
@@ -114,7 +104,6 @@ const sparklines = computed(() => {
   return paths
 })
 
-/** How far this room sits from the indoor average, for the tile footer. */
 function averageDelta(room: NestRoom) {
   if (!stats.value) return ""
   const delta = room.temperatureC - stats.value.average
@@ -274,8 +263,6 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* Match the shared card chrome from HomeView. Scoped styles on the parent
-   only reach this component's root element, so the header needs its own copy. */
 .block-header {
   display: flex;
   align-items: center;
@@ -398,7 +385,6 @@ onUnmounted(() => {
   color: var(--color-textSecondary);
 }
 
-/* ── Hero: the indoor average and the thermal spread ──────────────────────── */
 .temperature-hero {
   flex: 0 0 auto;
   display: flex;
@@ -513,7 +499,6 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Room tiles ───────────────────────────────────────────────────────────── */
 .temperature-grid {
   flex: 1;
   min-height: 0;
@@ -542,7 +527,6 @@ onUnmounted(() => {
   opacity: 0.55;
 }
 
-/* ── 12-hr trend: a quiet background layer, never part of the layout ──────── */
 .room-spark {
   position: absolute;
   inset: 0;
@@ -686,7 +670,6 @@ onUnmounted(() => {
   background: var(--color-accent-base);
 }
 
-/* ── Narrow-but-tall tiles: keep two columns instead of one ───────────────── */
 @container w (max-width: 24em) and (min-height: 13em) {
   .temperature-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -705,21 +688,18 @@ onUnmounted(() => {
   }
 }
 
-/* Four rooms read best as a 2×2 heatmap until the tile gets truly wide. */
 @container w (max-width: 34em) and (min-height: 13em) {
   .temperature-grid--4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* With five sensors, the last tile fills the gap left by the wrap. */
 @container w (max-width: 40em) and (min-height: 13em) {
   .temperature-grid--5 .room-tile:last-child {
     grid-column: span 2;
   }
 }
 
-/* ── Short tiles (1×1 and 2×1): compact temperature chips ─────────────────── */
 @container w (max-height: 13em) {
   .temperature-average {
     display: block;
@@ -785,7 +765,6 @@ onUnmounted(() => {
   }
 }
 
-/* Very small 1×1 tiles trade the sensor icon for a readable room name. */
 @container w (max-height: 13em) and (max-width: 20em) {
   .room-icon {
     display: none;
@@ -796,7 +775,6 @@ onUnmounted(() => {
   }
 }
 
-/* A wide, short tile fits every room in one strip. */
 @container w (max-height: 13em) and (min-width: 24em) {
   .temperature-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));

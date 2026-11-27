@@ -25,7 +25,6 @@ const { lists, tasks: allTasks, upsertTask, upsertList, ensureLoaded: ensureTask
 const { members, ensureLoaded: loadMembers } = useMembers()
 const { defaultReminderMinutes } = useSettings()
 
-/** Manual fields and Smart import share the drawer; events start with Smart. */
 const mode = ref<"manual" | "ai">(props.defaultMode ?? "ai")
 
 function onAiDone() {
@@ -44,13 +43,10 @@ const isTask  = computed(() =>
   !isEvent.value && (ui.activePanel.value === "tasks" || ui.activePanel.value === "home")
 )
 
-// Smart import creates calendar events, so it only belongs in the calendar
-// quick-add. Switching to a task panel drops back to the manual form.
 watch(isEvent, (event) => {
   if (!event) mode.value = "manual"
 })
 
-/** Pre-fill value for the "Remind me" select from the household default. */
 function defaultReminderValue(): string {
   return defaultReminderMinutes.value != null ? String(defaultReminderMinutes.value) : ""
 }
@@ -101,7 +97,6 @@ function formatDateForInput(date: Date): string {
 }
 function formatTimeForInput(date: Date): string { return date.toTimeString().slice(0, 5) }
 
-/** Add minutes to an HH:MM string, wrapping past midnight. Returns "" on bad input. */
 function addMinutesToTime(time: string, minutes: number): string {
   if (!time) return ""
   const [h, m] = time.split(":").map(Number)
@@ -124,7 +119,6 @@ const todayDate = computed(() => formatDateForInput(new Date()))
 const nowTime   = computed(() => formatTimeForInput(new Date()))
 const laterTime = computed(() => addMinutesToTime(nowTime.value, 60))
 
-// ── Timeline-aware prefill: when opened from a calendar click, apply drawer date/time ──
 watch(() => ui.drawer.value.type, (t) => {
   if (t !== "quick-add") return
   const d = ui.drawer.value
@@ -134,7 +128,6 @@ watch(() => ui.drawer.value.type, (t) => {
   eventEndDate.value   = ""
 }, { immediate: true })
 
-// ── Smart end time: when start changes, auto-adjust an empty or inverted end time ──
 watch(eventStartTime, (val) => {
   if (!val) return
   const end = eventEndTime.value
@@ -143,7 +136,6 @@ watch(eventStartTime, (val) => {
   }
 })
 
-// ── End date can never be before start date ──
 watch(eventDate, (val) => {
   if (eventEndDate.value && val && eventEndDate.value < val) {
     eventEndDate.value = val
@@ -168,7 +160,6 @@ const RECUR_LABELS: Record<string, string> = {
   daily: "daily", weekly: "weekly", biweekly: "every 2 weeks", monthly: "monthly", yearly: "yearly",
 }
 
-// ── Validation: end must come after start (same-day times / cross-day dates) ──
 const eventTimeError = computed(() => {
   if (eventAllDay.value) return null
   const startDate = eventDate.value || todayDate.value
@@ -182,7 +173,6 @@ const eventTimeError = computed(() => {
   return null
 })
 
-// ── Live summary preview so the user sees exactly what will be created ──
 const eventSummary = computed(() => {
   const startDate = eventDate.value || todayDate.value
   const endDate = eventEndDate.value || startDate
@@ -229,12 +219,11 @@ async function createEvent() {
   const startAt = new Date(`${startDateStr}T${startTime}`).toISOString()
   let endAt: string | undefined
   if (eventAllDay.value) {
-    // Single-day all-day: no end_at (backend treats as null). Multi-day: end-of-day inclusive.
     endAt = endDateStr !== startDateStr ? new Date(`${endDateStr}T23:59:59`).toISOString() : undefined
   } else {
     let endMs = new Date(`${endDateStr}T${endTime}`).getTime()
     const startMs = new Date(startAt).getTime()
-    if (endMs <= startMs) endMs = startMs + 3600000 // never allow an inverted range
+    if (endMs <= startMs) endMs = startMs + 3600000
     endAt = new Date(endMs).toISOString()
   }
 
@@ -253,7 +242,6 @@ async function createEvent() {
     })
     upsertEvent(saved)
   } catch {
-    // Backend rejected — event not created
   } finally {
     submitting.value = false
     resetForm()
@@ -282,7 +270,6 @@ async function createTask() {
     })
     upsertTask(saved)
   } catch {
-    // Backend rejected — task not created
   } finally {
     submitting.value = false
     resetForm()
@@ -347,7 +334,6 @@ const canSubmit = computed(() => {
     </div>
 
     <template v-if="mode === 'manual' || !isEvent">
-    <!-- ── Event form ── -->
     <template v-if="isEvent">
       <UiField label="Title">
         <UiInput v-model="eventTitle" placeholder="Event title" autofocus />
@@ -393,7 +379,6 @@ const canSubmit = computed(() => {
         </UiField>
       </div>
 
-      <!-- Date range: start date + optional end date for multi-day events -->
       <div class="field-row field-row--dates">
         <UiField label="Date" :grow="true">
           <UiInput v-model="eventDate" type="date" :placeholder="todayDate" />
@@ -412,7 +397,6 @@ const canSubmit = computed(() => {
         </UiField>
       </div>
 
-      <!-- Time range -->
       <div v-if="!eventAllDay" class="field-row">
         <UiField label="Start" :grow="true">
           <UiInput v-model="eventStartTime" type="time" :placeholder="nowTime" />
@@ -422,7 +406,6 @@ const canSubmit = computed(() => {
         </UiField>
       </div>
 
-      <!-- Quick duration presets -->
       <div v-if="!eventAllDay" class="duration-row">
         <span class="duration-label">Quick duration</span>
         <div class="duration-chips">
@@ -449,7 +432,6 @@ const canSubmit = computed(() => {
       </UiField>
     </template>
 
-    <!-- ── Task form ── -->
     <template v-if="isTask">
       <UiField label="Title">
         <UiInput v-model="taskTitle" placeholder="Task title" autofocus />
@@ -492,7 +474,6 @@ const canSubmit = computed(() => {
       </UiField>
     </template>
 
-    <!-- Live summary preview -->
     <div v-if="isEvent" class="summary-preview">
       <PhCalendarBlank :size="14" class="summary-icon" />
       <span>{{ eventSummary }}</span>
@@ -526,8 +507,6 @@ const canSubmit = computed(() => {
   gap: var(--space-5);
 }
 
-/* Smart import fills the drawer so its composer stays pinned to the bottom
-   even when the conversation is short. Manual forms keep their natural height. */
 .quick-add-form--ai {
   height: 100%;
 }
@@ -538,7 +517,6 @@ const canSubmit = computed(() => {
   align-items: flex-start;
 }
 
-/* ── Manual / Smart import switch ── */
 .mode-switch {
   display: flex;
   gap: var(--space-1);
@@ -582,7 +560,6 @@ const canSubmit = computed(() => {
   flex-wrap: wrap;
 }
 
-/* Date inputs have an intrinsic minimum width; let them shrink so the row fits the drawer */
 .field-row--dates :deep(.ui-field--grow),
 .field-row--dates :deep(.ui-input) {
   min-width: 0;
@@ -598,7 +575,6 @@ const canSubmit = computed(() => {
   margin-bottom: var(--space-1);
 }
 
-/* ── Quick duration presets ── */
 .duration-row {
   display: flex;
   align-items: center;
@@ -639,7 +615,6 @@ const canSubmit = computed(() => {
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 
-/* ── Validation error ── */
 .form-error {
   margin: calc(-1 * var(--space-2)) 0 0;
   font-size: var(--text-label-size);
@@ -649,7 +624,6 @@ const canSubmit = computed(() => {
   gap: var(--space-1);
 }
 
-/* ── Summary preview ── */
 .summary-preview {
   display: flex;
   align-items: center;
@@ -668,7 +642,6 @@ const canSubmit = computed(() => {
   flex-shrink: 0;
 }
 
-/* Priority options */
 .priority-options {
   display: flex;
   gap: var(--space-2);

@@ -30,12 +30,10 @@ function mountApp(extra: any = {}) {
   })
 }
 
-/** Wait for the app's async bootstrap (`getSettings().then/.finally`). */
 async function settle() {
   for (let i = 0; i < 6; i++) await nextTick()
 }
 
-/** Like {@link settle}, but also drains macrotasks — only safe with real timers. */
 async function settleFully() {
   await flushPromises()
   await settle()
@@ -59,9 +57,6 @@ afterEach(() => {
 })
 
 describe("App — bootstrap, idle cycle and cleanup", () => {
-  // NOTE: `isMobile` is a module-level computed in App.vue. Its deps are not
-  // reactive, so it caches on first evaluation — this must run before any
-  // desktop mount in this file.
   it("runs the mobile branch: onboarding gate then shell", async () => {
     const ua = window.navigator.userAgent
     Object.defineProperty(window.navigator, "userAgent", {
@@ -99,7 +94,6 @@ describe("App — bootstrap, idle cycle and cleanup", () => {
     expect(settings.fontSize.value).toBe("large")
     expect(settings.warm.value).toBe(true)
 
-    // Timezone is written back once because the household hasn't stored one
     const patches = vi.mocked(fetch).mock.calls.filter(
       (c) => String(c[0]).includes("/household/settings") && (c[1] as any)?.method === "PATCH",
     )
@@ -233,7 +227,6 @@ describe("App — bootstrap, idle cycle and cleanup", () => {
     await vi.advanceTimersByTimeAsync(95_000)
     window.dispatchEvent(new Event("pointerdown"))
     await vi.advanceTimersByTimeAsync(25_000)
-    // < 30s since the last interaction → the rotation is deferred
     expect(ui.activePanel.value).toBe("home")
     wrapper.unmount()
   })

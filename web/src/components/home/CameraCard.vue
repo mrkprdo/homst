@@ -7,7 +7,6 @@ import { useSettings } from "@/composables/useSettings"
 import { useCameraStream } from "@/composables/useCameraStream"
 import { BACKDROP_INTERVAL_MS, useVideoBackdrop } from "@/composables/useVideoBackdrop"
 
-/** Big enough to stay sharp in the card without a full 4K canvas copy. */
 const STILL_MAX_DIMENSION = 1280
 
 const settings = useSettings()
@@ -15,11 +14,6 @@ const streamPath = computed(() => settings.cameraStreamPath.value)
 const still = ref<HTMLCanvasElement | null>(null)
 const hasStill = ref(false)
 
-/**
- * Copy the last readable frame before the pipeline is torn down. A dropped
- * stream otherwise clears the <video> and leaves the card blank while the
- * automatic reconnect runs; this keeps the last thing the camera saw on screen.
- */
 function freezeFrame(el: HTMLVideoElement) {
   const canvas = still.value
   if (!canvas || !el.videoWidth || !el.videoHeight || el.readyState < 2) return
@@ -61,8 +55,6 @@ const statusText = computed(() => {
     :class="{ 'camera-card--live': configured }"
     :padding="false"
   >
-    <!-- The stream is the card surface: it paints under the header and the
-         readout instead of living in a body block below them. -->
     <div v-if="configured" class="camera-scene" aria-hidden="true">
       <canvas ref="backdrop" class="camera-backdrop" />
       <video
@@ -73,8 +65,6 @@ const statusText = computed(() => {
         muted
         playsinline
       />
-      <!-- Shown only while reconnecting, above the (now empty) video element,
-           so a dropped stream never turns the card into a blank rectangle. -->
       <canvas
         v-show="showStill"
         ref="still"
@@ -118,21 +108,15 @@ const statusText = computed(() => {
   overflow: hidden;
 }
 
-/* Full-card video surface, like the weather scene. */
 .camera-scene {
   position: absolute;
   inset: 0;
   z-index: 0;
   overflow: hidden;
-  /* Only a live frame should look like a video surface. Empty/loading states
-     keep the card background instead of a black rectangle. */
   background: var(--color-bgSubtle);
-  /* Lets the rotated video use the whole card's width/height as cq units. */
   container-type: size;
 }
 
-/* A live video can be any brightness; dim only the strip behind the header so
-   its icon and title stay readable. */
 .camera-card--live::after {
   content: "";
   position: absolute;
@@ -147,8 +131,6 @@ const statusText = computed(() => {
   );
 }
 
-/* Match the shared card chrome from HomeView. Scoped styles on the parent
-   only reach this component's root element, so the header needs its own copy. */
 .block-header {
   display: flex;
   align-items: center;
@@ -189,7 +171,6 @@ const statusText = computed(() => {
   white-space: nowrap;
 }
 
-/* The scrim and the header sit above the scene; so does every state overlay. */
 .camera-card > .block-header,
 .camera-card > .camera-body {
   position: relative;
@@ -220,9 +201,6 @@ const statusText = computed(() => {
   pointer-events: none;
 }
 
-/* Low-power clients keep the effect, but useVideoBackdrop only refreshes the
-   snapshot every 15 minutes so canvas copies do not compete with video decode. */
-
 .camera-video {
   position: relative;
   z-index: 1;
@@ -232,8 +210,6 @@ const statusText = computed(() => {
   object-fit: cover;
 }
 
-/* The frozen frame sits above the video element: after a fatal error the
-   pipeline clears the <video> (and its picture) before the next reconnect. */
 .camera-still {
   position: absolute;
   inset: 0;
@@ -249,9 +225,6 @@ const statusText = computed(() => {
   transform: rotate(180deg);
 }
 
-/* Rotating swaps the displayed axes. Size the video from the container's
-   opposite dimension so a 90°/270° turn still fills the tile without
-   stretching; `contain` keeps the whole picture visible. */
 .camera-video--rotate-90,
 .camera-video--rotate-270 {
   position: absolute;
@@ -279,12 +252,10 @@ const statusText = computed(() => {
   pointer-events: none;
 }
 
-/* The last frame stays readable behind the loader instead of being hidden. */
 .camera-overlay--frozen {
   background: color-mix(in srgb, var(--color-bgBase) 16%, transparent);
 }
 
-/* Screen-reader status only: the visible UI is the icon, not a text label. */
 .camera-status {
   position: absolute;
   width: 1px;

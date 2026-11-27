@@ -1,10 +1,5 @@
 import type { NotificationIntent } from "@/composables/useNotificationIntent"
 
-/**
- * A copy of a Web Push payload that the service worker stored on this device.
- * It lets the PWA show the notification text even when the household server is
- * out of reach (away from the LAN, no VPN).
- */
 export interface StoredPush {
   id: string
   title: string
@@ -46,7 +41,6 @@ function openPushDb(): Promise<IDBDatabase> | null {
   return promise
 }
 
-/** Most recent first, capped at {@link MAX_STORED_PUSHES}. */
 export async function listStoredPushes(limit = MAX_STORED_PUSHES): Promise<StoredPush[]> {
   const open = openPushDb()
   if (!open) return []
@@ -64,20 +58,16 @@ export async function listStoredPushes(limit = MAX_STORED_PUSHES): Promise<Store
       .sort((a, b) => b.received_at - a.received_at)
       .slice(0, limit)
   } catch {
-    // A missing/blocked database only means there is no offline copy.
     return []
   }
 }
 
-/** Find the push whose deep link matches the tap that opened the app. */
 export function matchStoredPush(
   items: StoredPush[],
   intent: NotificationIntent | null,
 ): StoredPush | null {
   if (!intent) return items[0] ?? null
 
-  // The service worker adds the exact notification id to the deep link, so a
-  // tap always finds its own payload even if the URL repeats an event id.
   if (intent.type === "push") {
     return items.find(item => item.id === intent.id) ?? items[0] ?? null
   }
@@ -97,7 +87,6 @@ export function matchStoredPush(
       if (intent.startAt && url.searchParams.get("event_start") !== intent.startAt) continue
       return item
     } catch {
-      // Ignore malformed/legacy URLs and keep looking.
     }
   }
   return null

@@ -23,7 +23,7 @@ from app.redis_client import get_redis
 from app.version import VERSION
 
 CACHE_KEY = "homst:system:releases:v2"
-CACHE_TTL = 900  # 15 minutes
+CACHE_TTL = 900
 CACHE_MAX_AGE = 86400
 FORCE_MIN_INTERVAL = 60
 RELEASE_GRACE = timedelta(days=1)
@@ -106,8 +106,6 @@ def mature_releases(
 
 
 def _feed_from_cache(cached: dict[str, Any]) -> ReleaseFeed:
-    # Filter on read, not on write: GitHub can answer 304 and hand back the
-    # same cached list, so a release has to mature while it sits in the cache.
     return ReleaseFeed(
         releases=mature_releases(list(cached.get("releases") or [])),
         checked_at=float(cached.get("checked_at") or 0.0),
@@ -163,7 +161,6 @@ async def fetch_releases(force: bool = False) -> ReleaseFeed:
     if _FETCH_LOCK.locked() and cached_feed:
         return cached_feed
     async with _FETCH_LOCK:
-        # Another worker may have refreshed while we waited.
         cached = await _load_cache()
         if cached:
             cached_feed = _feed_from_cache(cached)
@@ -212,7 +209,7 @@ async def fetch_releases(force: bool = False) -> ReleaseFeed:
             }
             await _save_cache(payload)
             return _feed_from_cache(payload)
-        except Exception as exc:  # network errors, bad JSON, rate limits
+        except Exception as exc:
             if cached_feed:
                 cached_feed.stale = True
                 cached_feed.error = f"Could not refresh releases: {exc}"

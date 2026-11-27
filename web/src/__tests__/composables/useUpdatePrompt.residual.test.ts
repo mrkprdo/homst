@@ -171,7 +171,6 @@ describe("useUpdatePrompt residual", () => {
     expect(statusMock).toHaveBeenCalledTimes(2)
     expect(useUpdatePrompt().installing.value).toBe(false)
 
-    // An active job with no prompt keeps the installing card, not a clear.
     offerUpdatePrompt({ version: "0.4.0" })
     await offerAndInstall()
     statusMock.mockResolvedValueOnce(

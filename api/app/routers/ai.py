@@ -31,11 +31,6 @@ router = APIRouter()
 
 DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 
-# Chat attachments are kept on the same persistent uploads volume as photos,
-# under a UUID filename, and referenced from the saved conversation by URL.
-# Keeping the bytes out of the transcript row matters: that JSON is rewritten
-# in full on every turn. One directory per feature (chats, photos, ...) leaves
-# room for other upload kinds to land beside them later.
 CHAT_IMAGE_DIR = "uploads/chats"
 os.makedirs(CHAT_IMAGE_DIR, exist_ok=True)
 

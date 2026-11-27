@@ -9,8 +9,6 @@ from datetime import datetime, timedelta
 
 from app.events.publisher import publish_event
 
-# ── Formatting helpers ────────────────────────────────────────────────
-
 
 def format_lead(minutes: int) -> str:
     """Human phrase for a reminder offset: '30 min', '1 hour', '1 day'."""
@@ -68,9 +66,6 @@ def push_message(
     else:
         lead = f"in {format_lead(minutes_before)}"
     return f"Reminder: {title}", f"{when} · {lead}"
-
-
-# ── HUD (in-app heads-up display over SSE) ────────────────────────────
 
 
 async def publish_hud_reminder(household_id: str, payload: dict) -> tuple[bool, str]:

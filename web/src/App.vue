@@ -40,9 +40,6 @@ import OfflineNotifications from "@/components/shared/OfflineNotifications.vue"
 import { panelLoaders, prefetchPanels } from "@/lib/panelPrefetch"
 import { scheduleIdle } from "@/lib/idle"
 
-// The non-home panels are loaded on demand. The dashboard is the only screen
-// every kiosk needs at boot; Calendar/Tasks/Settings/Announcements are
-// prefetched during idle time so switching between them stays instant.
 const PanelFallback: Component = () => h("div", { class: "panel-fallback", role: "status" }, [h(UiLoader, { size: "lg" })])
 const asyncPanel = (loader: () => Promise<Component>) =>
   defineAsyncComponent({ loader, loadingComponent: PanelFallback, delay: 0 })
@@ -63,7 +60,6 @@ const { items: offlineNotifications, load: loadOfflineNotifications } = useOffli
 const { init: initSpotify } = useSpotify()
 const sheetOpen = computed(() => ui.announcementsOpen.value || ui.isDrawerOpen.value)
 
-// Consume the deep link once, before the router or a reload can drop it.
 const notificationIntent = takeNotificationIntent()
 
 const isMobile = computed(() => /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent))
@@ -124,7 +120,6 @@ function scheduleReturnHome() {
   homeTimer = setTimeout(() => {
     homeTimer = null
     if (!settings.returnHomeEnabled.value) return
-    // Do not yank a panel away while a detail drawer is open.
     if (ui.isDrawerOpen.value) {
       scheduleReturnHome()
       return
@@ -160,11 +155,6 @@ function onVisibilityChange() {
   if (document.visibilityState === "visible") void checkServerReachable()
 }
 
-/**
- * Show the copy of a push payload that the service worker stored on this
- * device. Used when the tap's deep link cannot load because the household
- * server is unreachable (away from the LAN, without a VPN).
- */
 async function openOfflineNotification(intent = notificationIntent) {
   offlineCardPinned.value = false
   const rows = await loadOfflineNotifications(true)
@@ -182,12 +172,9 @@ onMounted(() => {
     window.addEventListener("mousemove", onMouseMove)
   }
   void loadOfflineNotifications()
-  // A cached PWA can open while the LAN (or VPN) is out of reach. Probe once
-  // on launch so the shell can explain why writes will fail.
   void checkServerReachable().then((reachable) => {
     if (reachable) return
     appReady.value = true
-    // A notification tap should still show its text instead of a blank app.
     void openNotificationIntent()
   })
   window.addEventListener("online", onOnline)
@@ -200,8 +187,6 @@ watch(serverReachable, (reachable) => {
     offlineCardPinned.value = false
     return
   }
-  // Pick up pushes that arrived while the app was open so the banner can
-  // offer them without a reload.
   void loadOfflineNotifications(true)
 })
 
@@ -218,11 +203,9 @@ onUnmounted(() => {
   document.removeEventListener("visibilitychange", onVisibilityChange)
 })
 
-// Kiosk screen behaviour can be changed from Settings on any client.
 watch(() => settings.carouselEnabled.value, schedulePageCycle)
 watch(() => settings.returnHomeEnabled.value, scheduleReturnHome)
 
-// Sync settings to backend when they change
 let syncTimer: ReturnType<typeof setTimeout>
 if (!isMobile.value) {
   watch([
@@ -232,8 +215,6 @@ if (!isMobile.value) {
     () => settings.fontSize.value,
     () => settings.warm.value,
   ], () => {
-    // Settings applied from the server (initial load, resync, SSE broadcast)
-    // must never be echoed back — only local edits persist.
     if (isApplyingRemoteSettings()) return
     clearTimeout(syncTimer)
     syncTimer = setTimeout(() => {
@@ -250,11 +231,6 @@ if (!isMobile.value) {
   })
 }
 
-/**
- * A Web Push tap opens the app with `?event=…` or `?announcement=…`.
- * Load the data that the destination needs, then open the matching sheet or
- * panel. The query is consumed once so a reload does not reopen it.
- */
 async function openNotificationIntent() {
   const intent = notificationIntent
   if (!intent || notificationIntentHandled) return
@@ -265,7 +241,6 @@ async function openNotificationIntent() {
     return
   }
 
-  // A plain push (for example the settings test) has no destination view.
   if (intent.type === "push") return
 
   if (intent.type === "event") {
@@ -296,8 +271,6 @@ const isDark = computed(() => {
   if (settings.theme.value === "dark") return true
   if (settings.theme.value === "light") return false
   if (settings.theme.value === "auto") {
-    // The server resolves sunrise/sunset for the household. Until that state
-    // arrives, follow the OS so the first paint is sensible.
     return settings.autoThemeDark.value ?? prefersDark.value
   }
   return prefersDark.value
@@ -311,11 +284,6 @@ const views: Record<string, Component> = {
   settings:      SettingsPanel,
 }
 
-/**
- * Remember the resolved theme so `public/theme-init.js` can paint it before the
- * first frame. Without this a display set to dark (or auto-dark while the OS is
- * light) flashes the light token background on every reload.
- */
 const THEME_DARK_KEY = "homst-theme-dark"
 const THEME_PRESET_KEY = "homst-theme-preset"
 const THEME_WARM_KEY = "homst-theme-warm"
@@ -346,7 +314,6 @@ function cacheAccent(color: keyof typeof accentPalette) {
   } catch {}
 }
 
-/** Keep the browser/PWA window chrome in step with the painted background. */
 function syncThemeColor() {
   if (typeof document === "undefined") return
   const bg = getComputedStyle(document.documentElement).getPropertyValue("--color-bgBase").trim()
@@ -358,9 +325,6 @@ const themeReady = ref(false)
 const themeTransitioning = ref(false)
 let themeTimer: ReturnType<typeof setTimeout>
 const appReady = ref(false)
-// Doherty threshold: never hold the whole shell behind a stalled settings
-// request. The dashboard can paint with defaults, then adopt household
-// settings when they arrive.
 let readyFallback: ReturnType<typeof setTimeout> | null = null
 
 const isTestEnv = (import.meta as any).env?.MODE === "test"
@@ -369,20 +333,13 @@ let cancelPrefetch: (() => void) | null = null
 onMounted(() => {
   requestAnimationFrame(() => { themeReady.value = true })
   readyFallback = setTimeout(() => { appReady.value = true }, 2000)
-  // Warm the other panels while the kiosk is idle so a nav tap never waits on
-  // a network round trip for the chunk. Skipped in tests: importing panel
-  // chunks after the jsdom environment tears down is noisy and not under test.
   if (!isTestEnv) cancelPrefetch = scheduleIdle(prefetchPanels)
-  // Kicked off here (guarded internally) so the now-playing backdrop works on
-  // every panel, not only after the home screen has mounted.
   void initSpotify()
   householdApi.getSettings()
     .then(s => {
       householdComplete.value = s.isComplete ?? false
       writeHouseholdComplete(householdComplete.value)
       applyHouseholdSettings(s)
-      // Remember the household's timezone once — the reminders worker uses it
-      // to write "7:30 AM" into push reminders.
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
       if (!s.timezone && tz) {
         api.patch("/household/settings", { settings: { timezone: tz } }).catch(() => {})
@@ -432,7 +389,6 @@ watch(() => settings.warm.value, (warm) => {
 watch(() => settings.themePreset.value, () => {
   cacheThemeFlags()
   syncThemeColor()
-  // The class itself is applied by useSettings; this only softens the swap.
   themeTransitioning.value = true
   clearTimeout(themeTimer)
   themeTimer = setTimeout(() => { themeTransitioning.value = false }, 400)
@@ -442,17 +398,11 @@ watch(() => settings.fontSize.value, (size) => {
   settings.applyFontSizeToDOM(size)
 }, { immediate: true })
 
-// Accent changes are applied by useSettings; mirror them into the pre-paint
-// cache so the next reload starts in the right palette.
 watch(() => settings.accentColor.value, (color) => cacheAccent(color), { immediate: true })
 
-// Painted-once inputs are stable for the session; read the profile once.
 const cheapMotion = isCheapCompositor()
 
 function panelEnter(el: Element, done: () => void) {
-  // On a software compositor the panel's own 6×6 card grid is re-rasterised at
-  // every spring step. Let the CSS opacity fade below run instead; it is the
-  // one animation Firefox can blend without repainting the panel.
   if (cheapMotion) return
   animate(el, {
     opacity: [0, 1],
@@ -476,25 +426,20 @@ function panelLeave(el: Element, done: () => void) {
 </script>
 
 <template>
-  <!-- Full-bleed spinning record behind the app while Spotify is playing -->
   <SpotifyBackdrop v-if="!isOnboarding" />
 
-  <!-- App-level loading spinner -->
   <div v-if="!appReady" class="app-loader" role="status" aria-live="polite">
     <div class="app-spinner" aria-hidden="true" />
     <p class="app-loader__label">Loading your home…</p>
   </div>
 
-  <!-- MOBILE branch -->
   <template v-if="isMobile && appReady">
     <MobileOnboardingGate v-if="!householdComplete" @joined="onMobileJoined" />
     <MobileShell v-else />
 
-    <!-- Household announcements appear above both shells -->
     <AnnouncementBanner :display="false" />
   </template>
 
-  <!-- DESKTOP branch (identical to original template) -->
   <template v-else-if="!isMobile">
     <div v-if="isOnboarding" class="onboarding-root">
       <router-view />
@@ -523,26 +468,20 @@ function panelLeave(el: Element, done: () => void) {
         <TaskDetailPanel v-else-if="ui.drawer.value.type === 'task-detail'" />
       </DrawerOverlay>
 
-      <!-- Household announcements from any screen -->
       <AnnouncementBanner :display="true" />
 
-      <!-- Reminder heads-up display (kiosk) -->
       <HudAlert :display="true" />
 
-      <!-- The sung lyric line with a quiet look-ahead to the next one -->
       <LyricsOverlay />
 
-      <!-- New-version prompt (display clients only) -->
       <UpdatePrompt />
 
-      <!-- Connection status indicator -->
       <div v-if="serverReachable" class="stream-status" :class="streamStatus" :title="streamStatus === 'connected' ? 'Live' : streamStatus === 'connecting' ? 'Connecting...' : 'Disconnected'">
         <span class="stream-dot" />
       </div>
     </div>
   </template>
 
-  <!-- Fallback: should never reach, but prevents blank page -->
   <div v-else class="app-root">
     <div class="app-body">
       <main class="main-panel">
@@ -551,8 +490,6 @@ function panelLeave(el: Element, done: () => void) {
     </div>
   </div>
 
-  <!-- Web Push is one-way; writes still need a route back to the household.
-       Collapsed to the top-right dot, the explanation appears on hover or focus. -->
   <div
     v-if="!serverReachable && !offlineSheetOpen && !sheetOpen"
     class="server-offline"
@@ -587,7 +524,6 @@ function panelLeave(el: Element, done: () => void) {
     </div>
   </div>
 
-  <!-- The service worker keeps a copy of each push so it is readable offline. -->
   <OfflineNotifications
     v-if="offlineSheetOpen"
     :items="offlineNotifications"
@@ -603,7 +539,6 @@ function panelLeave(el: Element, done: () => void) {
   height: 100%;
   color: var(--color-textPrimary);
   background-color: var(--color-bgBase);
-  /* Sits above the SpotifyBackdrop (z-index 0) when a record is on. */
   position: relative;
   z-index: 1;
 }
@@ -632,22 +567,16 @@ function panelLeave(el: Element, done: () => void) {
   background-color: var(--color-bgSubtle);
 }
 
-/* Keep the darker panel tint to light mode only */
 :global(.dark) .main-panel {
   background-color: var(--color-bgBase);
 }
 
-/* Cheap-compositor panel swap: opacity only. Kept short and linear so the
-   software compositor blends a rasterised layer instead of repainting the
-   whole dashboard, which is what the spring transform did on a Pi.
-   `:global` because the classes land on a child component's root node. */
 :global(.panel-fade-enter-active) {
   transition: opacity 140ms linear;
   will-change: opacity;
 }
 
 :global(.panel-fade-leave-active) {
-  /* The leaving panel has no exit motion; removal is immediate. */
   transition: none;
 }
 
@@ -656,8 +585,6 @@ function panelLeave(el: Element, done: () => void) {
   opacity: 0;
 }
 
-/* Placeholder while a lazily-loaded panel chunk arrives. Matches the panel
-   surface so the swap does not flash a different color. */
 .panel-fallback {
   display: grid;
   place-items: center;
@@ -665,7 +592,6 @@ function panelLeave(el: Element, done: () => void) {
   min-height: 240px;
 }
 
-/* ── Stream connection indicator ── */
 .stream-status {
   position: fixed;
   top: 9px;
@@ -687,9 +613,6 @@ function panelLeave(el: Element, done: () => void) {
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-/* ── Local server unreachable notice ──
-   Collapsed to a single dot in the top-right corner. The explanation only
-   appears while the dot is hovered, focused, or tapped. */
 .server-offline {
   position: fixed;
   top: 0;
@@ -826,7 +749,6 @@ function panelLeave(el: Element, done: () => void) {
   outline-offset: 2px;
 }
 
-/* Phones have no hover: keep the explanation visible above the tab bar. */
 @media (max-width: 640px) {
   .server-offline {
     top: auto;
@@ -853,7 +775,6 @@ function panelLeave(el: Element, done: () => void) {
   }
 }
 
-/* ── App loading spinner ── */
 .app-loader {
   position: fixed;
   inset: 0;

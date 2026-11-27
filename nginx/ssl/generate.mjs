@@ -1,21 +1,3 @@
-/*
- * Generate a locally-trusted TLS certificate chain for nginx (port 8443).
- *
- * Produces:
- *   ca.pem      – root CA; install THIS on your phone/tablet
- *   ca-key.pem  – CA private key (keep secret, never install on devices)
- *   cert.pem    – server certificate (hostname/IPs from this machine)
- *   key.pem     – server private key
- *
- * A browser only treats the origin as "secure" (needed for PWA install and
- * Web Push) when it trusts the certificate. A bare self-signed cert with no
- * subjectAltName is rejected outright, so we sign the server cert with our own
- * CA and you trust the CA once per device.
- *
- * Usage:
- *   node nginx/ssl/generate.mjs
- *   node nginx/ssl/generate.mjs 192.168.1.50 homst.local
- */
 import { spawnSync } from "node:child_process"
 import { writeFileSync, rmSync } from "node:fs"
 import { networkInterfaces } from "node:os"
@@ -53,15 +35,12 @@ function openssl(args) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
-// Some OpenSSL builds (notably Strawberry Perl on Windows) ship a broken
-// default config path. Give `req` an explicit, self-contained config.
 const configPath = join(dir, "openssl.cnf")
 writeFileSync(
   configPath,
   `[ req ]\ndistinguished_name = dn\nprompt = no\n\n[ dn ]\nCN = homst\n`,
 )
 
-// ── Root CA ──────────────────────────────────────────────────────────
 openssl([
   "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "3650",
   "-config", configPath,
@@ -73,7 +52,6 @@ openssl([
   "-addext", "subjectKeyIdentifier=hash",
 ])
 
-// ── Server key + CSR ─────────────────────────────────────────────────
 openssl([
   "req", "-newkey", "rsa:2048", "-nodes", "-sha256",
   "-config", configPath,
@@ -82,7 +60,6 @@ openssl([
   "-subj", "/CN=homst",
 ])
 
-// ── Sign the server cert with the CA ─────────────────────────────────
 const extensions = `basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=serverAuth

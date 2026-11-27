@@ -38,8 +38,6 @@ describe("CalendarView", () => {
 
     expect(cols).toHaveLength(7)
     expect(cols).toContain("1.1000fr")
-    // The focus row is a fixed square track derived from the view width; the
-    // remaining rows keep fractional weights.
     expect(rows).toContain("100cqw")
     expect(rows).toContain("fr")
   })
@@ -59,9 +57,6 @@ describe("CalendarView", () => {
     const before = grid.style.gridTemplateColumns
 
     const days = wrapper.findAll(".day-cell:not(.adjacent)")
-    // Only the column weights shift the grid template, so the target must sit
-    // outside today's weekday column. Picking "any day but today" broke on
-    // dates like the 15th, where the 1st lands in the same Sunday column.
     const today = new Date()
     const target = days.find(
       (_, index) => new Date(today.getFullYear(), today.getMonth(), index + 1).getDay() !== today.getDay(),
@@ -367,7 +362,6 @@ describe("CalendarView", () => {
 
     loading.value = true
     await nextTick()
-    // `showSkeleton` is already false; the node only lingers for its fade-out.
     await new Promise((resolve) => setTimeout(resolve, 400))
     expect(wrapper.find(".skeleton-grid").exists()).toBe(false)
   })

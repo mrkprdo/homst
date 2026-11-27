@@ -94,7 +94,6 @@ import PageHeader from "@/components/ui/PageHeader.vue"
     align-items: stretch;
   }
 
-  /* The page title spans both panes, like the other screens. */
   .announcement-console > .page-header {
     grid-column: 1 / -1;
   }

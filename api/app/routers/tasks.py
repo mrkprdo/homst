@@ -52,8 +52,6 @@ def _task_list_dict(lst: TaskList) -> dict:
     }
 
 
-# ── Task Lists ──
-
 @router.get("/task-lists", response_model=list[TaskListResponse])
 async def list_task_lists(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -122,8 +120,6 @@ async def delete_task_list(list_id: UUID, db: AsyncSession = Depends(get_db)):
     return {"message": "Task list deleted"}
 
 
-# ── Tasks ──
-
 @router.get("/tasks", response_model=list[TaskResponse])
 async def list_tasks(
     list_id: UUID | None = Query(None),
@@ -168,6 +164,7 @@ async def create_task(req: TaskCreate, db: AsyncSession = Depends(get_db)):
     except Exception:
         pass
     return resp
+
 
 @router.patch("/tasks/{task_id}", response_model=TaskResponse)
 async def update_task(task_id: UUID, req: TaskUpdate, db: AsyncSession = Depends(get_db)):

@@ -3,7 +3,6 @@ import { mount, flushPromises, type VueWrapper } from "@vue/test-utils"
 import MemberDetailPanel from "@/components/profile/MemberDetailPanel.vue"
 import { useSettings } from "@/composables/useSettings"
 
-/** A tiny stateful server so save → remount behaves like the real API. */
 function installStatefulFetch(
   members?: Record<string, unknown>[],
   options: { failDelete?: boolean } = {},
@@ -94,10 +93,8 @@ describe("household edit persistence", () => {
     await section(wrapper, "Household").findAll("button").find(b => b.text() === "Save")!.trigger("click")
     await flushPromises()
 
-    // The inline Save itself hit the server and updated the shared store.
     expect(state.settings.houseName).toBe("New Home")
     expect(useSettings().houseName.value).toBe("New Home")
-    // No dirty fields remain, so the full-save button should be gone.
     expect(wrapper.find(".md-save-btn").exists()).toBe(false)
     wrapper.unmount()
 
@@ -155,14 +152,12 @@ describe("household edit persistence", () => {
     await wrapper.find(".md-confirm-actions").findAll("button")[0]!.trigger("click")
     await flushPromises()
 
-    // The DELETE reached the server for the member that was actually removed.
     expect(deleteCalls().map(([u]) => String(u))).toEqual([
       `/api/v1/household/members/${BOB_ID}`,
     ])
     expect(state.members.map((m) => m.name)).toEqual(["Alice", "Carol"])
     wrapper.unmount()
 
-    // Reopening the drawer refetches, like the real app does.
     const reopened = await mountPanel()
     expect(reopened.text()).toContain("Members (2)")
     expect(reopened.findAll(".md-member-row input").map(
@@ -187,7 +182,6 @@ describe("household edit persistence", () => {
     expect(wrapper.text()).not.toContain("Changes saved")
     expect(state.members.map((m) => m.name)).toEqual(["Alice", "Bob", "Carol"])
 
-    // The removal stays pending, so a retry can finish it once the API recovers.
     state.failDelete = false
     await wrapper.find(".md-save-btn").trigger("click")
     await wrapper.find(".md-confirm-actions").findAll("button")[0]!.trigger("click")

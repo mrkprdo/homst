@@ -23,7 +23,6 @@ describe("useNotificationIntent", () => {
     expect(take()).toEqual({ type: "event", id: "ev-1", startAt: "1767225600" })
     expect(window.location.search).toBe("")
 
-    // A reload or a second component must not reopen the same intent.
     expect(take()).toBeNull()
   })
 

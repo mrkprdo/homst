@@ -6,7 +6,6 @@ import {
 
 const BASE_URL = "/api/v1"
 
-/** The browser could not open a connection to the HOMST server at all. */
 export class ServerUnreachableError extends Error {
   constructor() {
     super(SERVER_UNREACHABLE_TITLE)
@@ -39,14 +38,11 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
       ...options,
     })
   } catch (error) {
-    // An aborted request was cancelled on purpose (navigation, unmount) and
-    // says nothing about whether the server is reachable.
     if (isAbortError(error)) throw error
     markServerUnreachable()
     throw new ServerUnreachableError()
   }
 
-  // The server answered, even if the answer was an error status.
   markServerReachable()
 
   if (!res.ok) {

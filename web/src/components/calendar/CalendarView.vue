@@ -68,7 +68,6 @@ function handleNavChange(year: number, month: number) {
 const viewMode = ref<ViewMode>("month")
 const selectedDate = ref(new Date())
 
-// ── Month view state
 const currentMonth = ref(new Date().getMonth())
 const currentYear = ref(new Date().getFullYear())
 const monthNavDir = ref<"forward" | "back">("forward")
@@ -83,7 +82,6 @@ const today = computed(() => {
   return d
 })
 
-// ── Month view
 const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value + 1, 0).getDate())
 const firstDayOfMonth = computed(() => new Date(currentYear.value, currentMonth.value, 1).getDay())
 const monthLabel = computed(() => `${monthNames[currentMonth.value]} ${currentYear.value}`)
@@ -103,12 +101,6 @@ function nextMonth() {
 function goToToday() { const n=new Date(); currentMonth.value=n.getMonth(); currentYear.value=n.getFullYear(); selectedDate.value=n }
 function selectDay(day:number) { selectedDate.value = new Date(currentYear.value, currentMonth.value, day) }
 
-/**
- * Month grid keyboard model: one tab stop (the lens anchor), arrow keys move
- * the selection by day/week, Page Up/Down by month, Home/End to the week
- * edges. Cross-month moves update the visible month and keep focus on the
- * destination cell instead of dropping it back to <body>.
- */
 const monthGridEl = ref<HTMLElement | null>(null)
 
 function focusMonthDate(date: Date) {
@@ -187,7 +179,6 @@ function isSelected(day:number):boolean { return selectedDate.value.getDate()===
 function eventsForDay(day:number) { return eventsForDate(new Date(currentYear.value, currentMonth.value, day)) }
 function eventsForDate(date: Date): Event[] { return eventsByDay.value.get(dayKey(date)) ?? [] }
 
-// Previous month trailing days to fill first row
 const prevMonthDays = computed(() => {
   const prevMonth = currentMonth.value === 0 ? 11 : currentMonth.value - 1
   const prevYear = currentMonth.value === 0 ? currentYear.value - 1 : currentYear.value
@@ -199,7 +190,6 @@ const prevMonthDays = computed(() => {
   return days
 })
 
-// Next month leading days to fill last row
 const nextMonthDays = computed(() => {
   const totalCells = firstDayOfMonth.value + daysInMonth.value
   const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7)
@@ -212,14 +202,8 @@ const nextMonthDays = computed(() => {
   return days
 })
 
-// ── Focus lens ────────────────────────────────────────────────────
-// The month grid gently "looks at" one day: the anchor track grows 10%, the
-// adjacent track is 10% smaller than the anchor, and each step further out
-// keeps receding. Both axes share the falloff so the month reads as a soft
-// magnifier around the selected day. `fr` tracks let the browser normalise
-// the weights, keeping the whole grid inside the available space.
 const FOCUS_GROWTH = 0.1
-const TRACK_FALLOFF = 0.11 // 1.10 × (1 − 0.10) = 0.99 → neighbour is 10% smaller
+const TRACK_FALLOFF = 0.11
 const TRACK_FLOOR = 0.5
 
 function trackWeight(distance: number): number {
@@ -230,8 +214,6 @@ const monthRowCount = computed(() =>
   Math.ceil((prevMonthDays.value.length + daysInMonth.value) / 7)
 )
 
-// Anchor: selected day when it belongs to this month, otherwise today when it
-// is visible, otherwise the 1st. Keeps the lens meaningful while navigating.
 const monthAnchorDay = computed(() => {
   const sel = selectedDate.value
   if (sel.getFullYear() === currentYear.value && sel.getMonth() === currentMonth.value) return sel.getDate()
@@ -257,11 +239,6 @@ function toTrackList(weights: number[]): string {
 
 const monthColTracks = computed(() => toTrackList(monthColWeights.value))
 
-// The selected day must be a square, not just "10% wider and 10% taller".
-// Its width is decided by the column weights, so we reuse that exact width as
-// a fixed row height: the anchor row becomes a length track while the other
-// rows stay fractional and share whatever height is left. `cqw` is the width
-// of this view, so the square stays exact at every window size.
 const monthFocusSide = computed(() => {
   const totalWeight = monthColWeights.value.reduce((sum, w) => sum + w, 0)
   const anchorFraction = monthColWeights.value[monthAnchorCol.value]! / totalWeight
@@ -274,16 +251,13 @@ const monthRowTracks = computed(() =>
     .join(" ")
 )
 
-// Day names follow the same column widths and breathe with them, never with
-// the row heights (the header strip stays a single compact line).
 function headerTrackScale(col: number): string {
   return (monthColWeights.value[col]! / monthColMaxWeight.value).toFixed(3)
 }
 
-// ── Week view
 const weekStart = computed(() => {
   const d = new Date(selectedDate.value)
-  d.setDate(d.getDate() - d.getDay()) // Sunday start
+  d.setDate(d.getDate() - d.getDay())
   d.setHours(0, 0, 0, 0)
   return d
 })
@@ -327,13 +301,7 @@ function nextWeek() {
   handleNavChange(d.getFullYear(), d.getMonth())
 }
 
-// ── Recurrence expansion + day index ──
-// Expand only the window this view can show, then bucket occurrences by
-// calendar day. The month grid asks for a day's events three times per cell
-// per render; scanning the full expansion each time made one click cost
-// ~140ms with a handful of recurring events. One indexed pass keeps every
-// lookup O(1) so the lens can start on the next frame.
-const EXPAND_LEAD_DAYS = 31 // catches long occurrences that began earlier
+const EXPAND_LEAD_DAYS = 31
 const VISIBLE_PAD_DAYS = 7
 
 const visibleRange = computed(() => {
@@ -362,7 +330,6 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 }
 
-/** Safety valve for a corrupt end date that would otherwise walk years of days. */
 const MAX_EVENT_DAYS = 366
 
 const eventsByDay = computed(() => {
@@ -376,15 +343,12 @@ const eventsByDay = computed(() => {
     if (Number.isNaN(start.getTime())) continue
     let end = ev.endAt ? new Date(ev.endAt) : new Date(start)
     if (Number.isNaN(end.getTime()) || end.getTime() < start.getTime()) end = new Date(start)
-    // Legacy all-day events store end_at === start_at; treat them as covering
-    // exactly their start day.
     if (ev.allDay && end.getTime() <= start.getTime()) end = new Date(start.getTime() + 1)
 
     const cursor = new Date(start)
     cursor.setHours(0, 0, 0, 0)
     const lastDay = new Date(end)
     lastDay.setHours(0, 0, 0, 0)
-    // Start at the window edge when the event began before it.
     if (cursor.getTime() < min) cursor.setTime(min)
 
     for (let i = 0; cursor.getTime() <= lastDay.getTime() && i < MAX_EVENT_DAYS; i++) {
@@ -401,9 +365,6 @@ const eventsByDay = computed(() => {
   return index
 })
 
-// Only shimmer when the visible month genuinely has no data yet. Cached months
-// resolve in a microtask, so gating on `loading` alone used to flash the
-// skeleton over the grid on every navigation.
 const skeletonDate = computed(() => {
   if (viewMode.value === "week") return weekStart.value
   if (viewMode.value === "day") return selectedDate.value
@@ -413,8 +374,6 @@ const showSkeleton = computed(() =>
   loading.value && !isMonthLoaded(skeletonDate.value.getFullYear(), skeletonDate.value.getMonth())
 )
 
-// Auto-scroll to the useful part of the day when switching views: current
-// time for the live day/week, otherwise the start of the working morning.
 function scrollWeekToRelevantTime() {
   nextTick(() => {
     const el = weekScrollEl.value
@@ -465,7 +424,7 @@ function onWeekDayClick(date: Date, e?: MouseEvent) {
   ui.openDrawer("quick-add", undefined, formatDateInput(date), time)
 }
 
-const WEEK_ROW_HEIGHT = 56 // px per hour row, must match .week-grid grid-auto-rows
+const WEEK_ROW_HEIGHT = 56
 
 const currentTimePx = computed(() => {
   const h = now.value.getHours()
@@ -488,11 +447,6 @@ interface TimedEventLayoutItem {
   timeLabel: string
 }
 
-/**
- * Pack each day's timed events into lanes so concurrent events sit side by
- * side instead of covering each other. Events are grouped into clusters of
- * overlapping time; every member of a cluster shares the same lane count.
- */
 function timedEventLayoutForDate(date: Date): TimedEventLayoutItem[] {
   const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0)
   const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
@@ -573,7 +527,6 @@ function openDayFromWeek(date: Date) {
   handleNavChange(date.getFullYear(), date.getMonth())
 }
 
-// ── Day view
 function prevDay() {
   const d = new Date(selectedDate.value)
   d.setDate(d.getDate() - 1)
@@ -616,7 +569,6 @@ function onEventClick(eventId: string) {
 
 <template>
   <div class="calendar-view">
-    <!-- Toolbar -->
     <div class="calendar-toolbar">
       <div class="calendar-nav">
         <button class="nav-arrow" @click="navPrev" aria-label="Previous"><PhCaretLeft :size="16" /></button>
@@ -640,7 +592,6 @@ function onEventClick(eventId: string) {
       </div>
     </div>
 
-    <!-- Month Grid -->
     <div v-if="viewMode==='month'" class="month-view">
       <div class="day-headers" :style="{ gridTemplateColumns: monthColTracks }">
         <div
@@ -651,7 +602,6 @@ function onEventClick(eventId: string) {
         >{{ d }}</div>
       </div>
       <div ref="monthGridEl" class="month-grid" role="grid" aria-label="Month calendar" :style="{ gridTemplateColumns: monthColTracks, gridTemplateRows: monthRowTracks }">
-        <!-- Previous month days -->
         <div
           v-for="d in prevMonthDays"
           :key="'p'+d.year+'-'+d.month+'-'+d.day"
@@ -665,7 +615,6 @@ function onEventClick(eventId: string) {
         >
           <span class="day-num">{{ d.day }}</span>
         </div>
-        <!-- Current month days -->
         <div
           v-for="day in daysInMonth"
           :key="day"
@@ -694,7 +643,6 @@ function onEventClick(eventId: string) {
           </div>
           <span v-if="eventsForDay(day).length>3" class="more-events">+{{ eventsForDay(day).length-3 }} more</span>
         </div>
-        <!-- Next month days -->
         <div
           v-for="d in nextMonthDays"
           :key="'n'+d.year+'-'+d.month+'-'+d.day"
@@ -711,11 +659,8 @@ function onEventClick(eventId: string) {
       </div>
     </div>
 
-    <!-- Week View -->
     <div v-else-if="viewMode==='week'" class="week-view">
-      <!-- Single scroll container — header + grid share same width, no scrollbar offset -->
       <div ref="weekScrollEl" class="week-scroll">
-        <!-- Sticky header sticks inside the scroll container -->
         <div class="week-sticky">
           <div class="week-headers">
             <div class="week-time-gutter" />
@@ -741,7 +686,6 @@ function onEventClick(eventId: string) {
           </div>
         </div>
         <div class="week-body">
-          <!-- Today accent strip — absolute, full scroll-body height, behind everything -->
           <div v-if="isCurrentWeek" class="week-today-strip" :style="{ '--day-idx': todayDayIdx }" />
           <div class="week-grid">
             <template v-for="hour in hoursOfDay" :key="'h-'+hour">
@@ -781,7 +725,6 @@ function onEventClick(eventId: string) {
       </div>
     </div>
 
-    <!-- Day View -->
     <div v-else class="day-view">
       <div ref="dayScrollEl" class="day-scroll">
         <div class="day-sticky">
@@ -839,7 +782,6 @@ function onEventClick(eventId: string) {
       </div>
     </div>
 
-    <!-- Skeleton -->
     <Transition name="skeleton-fade">
       <div v-if="showSkeleton" class="skeleton-grid" :class="`skeleton-grid--${viewMode}`">
         <template v-if="viewMode === 'month'">
@@ -870,31 +812,20 @@ function onEventClick(eventId: string) {
 .text-btn:hover{background:var(--color-bgSubtle)}
 .text-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 
-/* Month View */
 .month-view{display:flex;flex-direction:column;flex:1;min-height:0;container-type:inline-size}
 
 .day-headers{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--space-1);flex-shrink:0;margin-bottom:var(--space-1)}
 
-/* Day headers — compact, vertically centered. Width follows the same tracks
-   as the dates below; type scales with the track, but only on a pose change.
-   Track sizes and font-size are layout, so they must not be tweened: every
-   in-between frame would re-lay out the whole grid. The lens snaps instead. */
 .day-header{display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden;padding:var(--space-1) var(--space-1);border-radius:var(--radius-sm);font-size:calc(var(--text-micro-size) * (0.78 + 0.22 * var(--track-scale, 1)));font-weight:var(--font-weight-medium);color:var(--color-textPrimary);text-transform:uppercase;letter-spacing:0.04em;line-height:1.2;white-space:nowrap;background:var(--color-accent-lighter);transition:background var(--duration-fast)}
 
-/* Month Grid — rows and columns are weighted around the focus day. Explicit
-   fr tracks (bound inline) keep every card filling the available space. The
-   weights change in one pose; only the anchored card gets a short, composited
-   settle below, so the click never waits on a layout tween. */
 .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:repeat(6,minmax(0,1fr));flex:1;gap:var(--space-1);min-height:0}
 
-/* Day cell — card treatment */
 .day-cell{padding:5px 6px;background:var(--color-bgElevated);border-radius:var(--radius-sm);box-shadow:0 1px 0 0 var(--shadow-lip),0 2px 6px -2px var(--shadow-drop);cursor:pointer;transition:background var(--duration-fast),transform var(--duration-fast),box-shadow var(--duration-fast);min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column}
 .day-cell:active{transform:scale(0.97);transition-duration:60ms}
 .day-cell:hover{background:var(--color-bgSurface);box-shadow:0 2px 0 0 var(--shadow-lip),0 4px 12px -2px var(--shadow-drop)}
 .day-cell.adjacent{opacity:0.3;box-shadow:none;background:var(--color-bgSubtle);cursor:pointer}
 .day-cell.adjacent:hover{opacity:0.5;background:var(--color-bgSurface)}
 
-/* Today and selected cards carry an accent tint plus a strong accent ring. */
 .day-cell.today{background:color-mix(in srgb,var(--color-accent-base) 14%,var(--color-bgElevated));box-shadow:inset 0 0 0 2px var(--color-accent-base),0 2px 6px -2px var(--shadow-drop)}
 .day-cell.today:hover{background:color-mix(in srgb,var(--color-accent-base) 20%,var(--color-bgElevated))}
 .day-cell.selected{background:color-mix(in srgb,var(--color-accent-base) 26%,var(--color-bgElevated));box-shadow:inset 0 0 0 2px var(--color-accent-dark),0 2px 8px -2px var(--shadow-accent-drop)}
@@ -902,14 +833,10 @@ function onEventClick(eventId: string) {
 .day-cell.selected.today{background:color-mix(in srgb,var(--color-accent-base) 36%,var(--color-bgElevated));box-shadow:inset 0 0 0 3px var(--color-accent-dark),0 3px 10px -2px var(--shadow-accent-drop)}
 .day-cell:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 
-/* The focus anchor lands with one short, transform-only settle. The grid
-   weights themselves change instantly; this is the only motion, so it stays
-   off the layout path and reads as a pose change rather than a glide. */
 .day-cell.focus-anchor{position:relative;z-index:1;transform-origin:center;animation:focus-settle 240ms cubic-bezier(0.22,1,0.36,1)}
 @keyframes focus-settle{0%{transform:scale(0.965)}55%{transform:scale(1.012)}100%{transform:scale(1)}}
 @keyframes today-pulse{0%,70%,100%{opacity:0;transform:scale(0.85)}35%{opacity:0.40;transform:scale(1.15)}}
 
-/* Day number as a distinct pill badge */
 .day-num{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 var(--space-1);border-radius:var(--radius-xs);background:var(--color-bgSubtle);font-size:var(--text-label-size);font-weight:var(--font-weight-medium);align-self:flex-start;margin-bottom:2px;line-height:1;flex-shrink:0}
 .day-cell.today .day-num,
 .day-cell.selected .day-num{background:var(--color-accent-dark);color:var(--color-on-accent,var(--color-textInverse))}
@@ -918,14 +845,11 @@ function onEventClick(eventId: string) {
 .day-events{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;min-height:0;overflow:hidden}
 .more-events{flex-shrink:0;font-size:var(--text-micro-size);color:var(--color-textSecondary);padding:2px 5px 0}
 
-/* Week View */
 .week-view{display:flex;flex-direction:column;flex:1;min-height:0}
 .week-scroll{flex:1;min-height:0;overflow-y:auto}
 
-/* Sticky header — lives inside the scroll container so it shares the same width as the grid */
 .week-sticky{position:sticky;top:0;z-index:10;background:var(--color-bgBase);border-bottom:1px solid var(--color-border)}
 
-/* ── Column headers ── */
 .week-headers{display:grid;grid-template-columns:48px repeat(7,1fr);column-gap:var(--space-1);flex-shrink:0;padding-bottom:var(--space-1)}
 .week-time-gutter{grid-column:1}
 
@@ -979,7 +903,6 @@ function onEventClick(eventId: string) {
 .week-col-header.today .week-day-num{background:var(--color-accent-dark);color:var(--color-on-accent,var(--color-textInverse))}
 .week-col-header.today .week-day-name{color:var(--color-textSecondary)}
 
-/* ── All-day events bar ── */
 .week-all-day{
   display:grid;
   grid-template-columns:48px repeat(7,1fr);
@@ -1002,7 +925,6 @@ function onEventClick(eventId: string) {
 }
 .week-all-day-cell{display:flex;flex-direction:column;gap:2px;min-height:0}
 
-/* ── Body: time grid + events overlay ── */
 .week-body{position:relative}
 
 .week-grid{
@@ -1026,7 +948,6 @@ function onEventClick(eventId: string) {
   transition:background var(--duration-fast);
 }
 
-/* Hour cell — clean, minimal */
 .week-hour-cell{
   border-bottom:1px solid color-mix(in srgb,var(--color-border) 70%,transparent);
   transition:background var(--duration-fast);
@@ -1035,8 +956,6 @@ function onEventClick(eventId: string) {
 .week-time-label.is-off-hours,
 .week-hour-cell.is-off-hours{background:color-mix(in srgb,var(--color-bgSubtle) 42%,transparent)}
 
-/* Today column accent strip — absolute, full height of scroll body, behind grid */
-/* col-gap = 4px (--space-1), 7 gaps total = 28px; col-width = (100% - 48px - 28px)/7 */
 .week-today-strip{
   --_cw:calc((100% - 76px) / 7);
   position:absolute;top:0;bottom:0;
@@ -1048,7 +967,6 @@ function onEventClick(eventId: string) {
   z-index:0;
 }
 
-/* Current time line — only over today's column */
 .week-now-line{
   position:absolute;
   left:calc(52px + var(--day-idx,0) * (4px + var(--_cw)));
@@ -1066,12 +984,10 @@ function onEventClick(eventId: string) {
   background:var(--color-accent-dark);
 }
 
-/* ── Events overlay ── */
 .week-events-layer{position:absolute;inset:0;display:grid;grid-template-columns:48px repeat(7,1fr);grid-template-rows:1fr;column-gap:var(--space-1);pointer-events:none}
 .week-gutter-filler{grid-column:1}
 .week-event-col{position:relative;grid-row:1/-1;pointer-events:auto;cursor:pointer}
 
-/* Timed event cards are shared by week and day so both views feel identical. */
 .week-event-block,
 .day-event-block{
   position:absolute;
@@ -1131,7 +1047,6 @@ function onEventClick(eventId: string) {
 .week-event-block.is-compact .week-event__title,
 .day-event-block.is-compact .day-event__title{flex:1}
 
-/* ── Day View ── */
 .day-view{display:flex;flex-direction:column;flex:1;min-height:0}
 .day-scroll{flex:1;min-height:0;overflow-y:auto;width:100%}
 .day-sticky{position:sticky;top:0;z-index:10;background:var(--color-bgBase);border-bottom:1px solid var(--color-border)}
@@ -1236,7 +1151,6 @@ function onEventClick(eventId: string) {
 .day-gutter-filler{grid-column:1}
 .day-event-col{position:relative;grid-column:2;grid-row:1/-1;pointer-events:auto;cursor:pointer}
 
-/* Skeleton */
 .skeleton-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--color-border);border-radius:var(--radius-md);overflow:hidden;position:absolute;inset:0;top:56px}
 .skeleton-grid--week,
 .skeleton-grid--day{display:block;background:var(--color-bgBase);border-radius:0}
@@ -1251,7 +1165,6 @@ function onEventClick(eventId: string) {
 .skeleton-fade-leave-active{transition:opacity var(--duration-slow) ease}
 .skeleton-fade-enter-from,.skeleton-fade-leave-to{opacity:0}
 
-/* Nav transitions */
 .nav-forward-enter-active,.nav-back-enter-active{transition:opacity var(--duration-fast) cubic-bezier(0.25,0.46,0.45,0.94),transform var(--duration-fast) cubic-bezier(0.25,0.46,0.45,0.94)}
 .nav-forward-leave-active,.nav-back-leave-active{transition:opacity var(--duration-fast) ease-in,transform var(--duration-fast) ease-in}
 .nav-forward-enter-from{opacity:0;transform:translateX(16px)}

@@ -175,10 +175,8 @@ describe("UpdatePrompt", () => {
 
       expect(reload).toHaveBeenCalledTimes(1)
       expect(useUpdatePrompt().prompt.value).toBeNull()
-      // The settings card must not offer a reload that already happened.
       expect(localStorage.getItem("homst:update:dismissed-job")).toBe("job-9")
 
-      // A second check for the same release must not reload again.
       fetchMock.mockResolvedValueOnce(json(updated))
       await refreshUpdatePrompt()
       expect(reload).toHaveBeenCalledTimes(1)
@@ -230,14 +228,12 @@ describe("UpdatePrompt", () => {
       await flushPromises()
       expect(wrapper.text()).toContain("Installing HOMST 0.3.0")
 
-      // The job finished, but the new API cannot answer /status yet.
       fetchMock.mockResolvedValueOnce(json({ job: finished }))
       fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))
       await vi.advanceTimersByTimeAsync(2000)
       expect(reload).not.toHaveBeenCalled()
       expect(useUpdatePrompt().prompt.value).not.toBeNull()
 
-      // The next attempt sees the new release and reloads onto its frontend.
       fetchMock.mockResolvedValueOnce(json({ job: finished }))
       fetchMock.mockResolvedValueOnce(json(status({
         current: { version: "0.3.0", commit: "newcommit", image: null, tag: null, digest: null, channel: "stable" },

@@ -21,11 +21,9 @@ export interface UpdateEventPayload {
   source_message?: string | null
   ai_conversation_id?: string | null
   start_at?: string
-  /** Explicit null clears the end (used to shrink multi-day all-day events back to single-day) */
   end_at?: string | null
   all_day?: boolean
   recurrence?: object | null
-  /** Explicit null clears the reminder */
   reminder_minutes?: number | null
   assignee_id?: string | null
 }

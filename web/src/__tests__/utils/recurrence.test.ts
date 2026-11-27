@@ -59,8 +59,6 @@ describe("expandRecurringEvent", () => {
   })
 
   it("counts occurrences before the window so `count` caps the series", () => {
-    // Daily, 5 occurrences, first one a day before the window: only the last
-    // four belong in the window. A fast-forward must not grant extra pushes.
     const ev = makeEvent({
       startAt: "2026-05-03T09:00:00.000Z",
       endAt: "2026-05-03T09:30:00.000Z",
@@ -109,7 +107,6 @@ describe("expandRecurringEvent", () => {
     )
     expect(yearly.map(o => o.startAt.slice(0, 10))).toEqual(["2026-01-15", "2027-01-15"])
 
-    // No end date → zero-length occurrences rather than NaN
     expect(biweekly.every(o => o.endAt === o.startAt)).toBe(true)
   })
 

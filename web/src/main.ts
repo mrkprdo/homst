@@ -10,7 +10,6 @@ import "@fontsource/jost/latin-600.css"
 import "@fontsource/jost/latin-700.css"
 import "./global.css"
 
-// Capture the push deep link before the router can redirect and drop its query.
 captureNotificationIntent()
 
 const app = createApp(App)

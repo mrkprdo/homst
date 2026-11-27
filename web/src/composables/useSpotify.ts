@@ -32,8 +32,6 @@ function loadStoredClientId(): string {
   try { return ls().getItem(CLIENT_ID_KEY) || "" } catch { return "" }
 }
 
-// A build-time VITE_SPOTIFY_CLIENT_ID (dev / self-built images) beats the
-// per-browser value; a server-wide SPOTIFY_CLIENT_ID is adopted in init().
 const envClientId = (import.meta.env.VITE_SPOTIFY_CLIENT_ID || "").trim()
 clientId.value = envClientId || loadStoredClientId()
 
@@ -227,8 +225,6 @@ async function fetchCurrentlyPlaying(): Promise<void> {
     const data = await res.json()
 
     if (!data?.item) {
-      // Playback stopped: Spotify answers 200 with no item when the device has
-      // nothing loaded. Drop the stale track so the backdrop (and widget) clear.
       currentTrack.value = null
       connected.value = true
       error.value = null
@@ -326,7 +322,6 @@ async function handleCallback(): Promise<boolean> {
   const code = urlParams.get("code")
 
   if (oauthError) {
-    // Spotify redirected back with a failure (user denied, app misconfigured…)
     error.value = oauthError === "access_denied"
       ? "Spotify access was denied"
       : `Spotify authorization failed (${oauthError})`
@@ -388,7 +383,6 @@ async function adoptServerClientId(): Promise<void> {
       }
     }
   } catch {
-    // Offline or older server — the widget still offers manual entry.
   }
 }
 
@@ -398,10 +392,6 @@ async function init() {
 
   const wasCallback = await handleCallback()
 
-  // Adopt the server-wide Client ID (SPOTIFY_CLIENT_ID in .env) only
-  // after the callback exchange — that exchange must use the ID from the
-  // authorize request. Afterwards the server value wins over a stale
-  // per-browser one; authorized sessions already have their token instead.
   if (!getStoredToken()) await adoptServerClientId()
 
   if (wasCallback || getStoredToken()) {

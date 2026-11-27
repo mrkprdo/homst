@@ -24,7 +24,6 @@ const json = (body: unknown, status = 200) =>
 
 const SYNCED = "[00:01.00]Listen to the wind\n[00:05.00]Watch the sun rise\n[00:09.00]Run in the shadows"
 
-/** Let enter/leave transitions (two animation frames in jsdom) settle. */
 async function settle() {
   await nextTick()
   await new Promise((resolve) => setTimeout(resolve, 100))
@@ -54,8 +53,6 @@ beforeEach(() => {
   currentTrack.value = null
 })
 
-// Shared module state: leave no track or pending effect behind for the next
-// test, or a late watcher tick can steal that test's mocked fetch response.
 afterEach(async () => {
   currentTrack.value = null
   await nextTick()
@@ -77,7 +74,6 @@ describe("LyricsOverlay", () => {
     expect(currentLine(wrapper)).toBe("Listen to the wind")
     expect(nextCue(wrapper)).toBe("Watch the sun rise")
 
-    // Intro: the opening line waits dimmed instead of claiming to be sung.
     expect(wrapper.find(".lyric--waiting").exists()).toBe(true)
 
     currentTrack.value = track({ progressMs: 1_500 })
@@ -91,7 +87,6 @@ describe("LyricsOverlay", () => {
     expect(currentLine(wrapper)).toBe("Watch the sun rise")
     expect(nextCue(wrapper)).toBe("Run in the shadows")
 
-    // The reading position never turns into a scrolled sheet.
     expect(wrapper.find(".lyrics-track").exists()).toBe(false)
     expect(wrapper.find("[style*='translate3d(0, calc']").exists()).toBe(false)
 

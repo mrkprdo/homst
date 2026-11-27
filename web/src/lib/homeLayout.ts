@@ -2,17 +2,10 @@ import type { WidgetDef } from "@/api/household"
 
 export type { WidgetDef }
 
-/** localStorage key used to paint the dashboard before settings load. */
 export const HOME_LAYOUT_STORAGE_KEY = "homst-widget-layout"
 
-/** Broadcast when a streamed/server layout arrives. */
 export const HOME_LAYOUT_EVENT = "homst:widget-layout-updated"
 
-/**
- * The default arrangement on a 6×6 canvas: calendar and schedule on the left,
- * a stacked column of camera/temperature/date/weather, and Spotify, photos and
- * To Do on the right.
- */
 export const DEFAULT_LAYOUT: WidgetDef[] = [
   { id: "datetime",     col: 2, row: 3, w: 1, h: 2 },
   { id: "weather",      col: 2, row: 5, w: 1, h: 1 },
@@ -29,6 +22,5 @@ export function writeCachedHomeLayout(layout: WidgetDef[]) {
   try {
     localStorage.setItem(HOME_LAYOUT_STORAGE_KEY, JSON.stringify(layout))
   } catch {
-    // Storage can be unavailable in private/locked-down browsers.
   }
 }

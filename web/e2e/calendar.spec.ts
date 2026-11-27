@@ -12,12 +12,10 @@ test.describe("Calendar", () => {
     await page.waitForTimeout(300)
   }
 
-  // ── Month View ──
   test("month view shows 7 day headers and all cells", async ({ page }) => {
     await goToCalendar(page)
     await expect(page.locator(".month-view")).toBeVisible()
     await expect(page.locator(".day-header")).toHaveCount(7)
-    // Month grids are 5 or 6 full weeks depending on where the 1st falls.
     const cellCount = await page.locator(".day-cell").count()
     expect(cellCount % 7).toBe(0)
     expect(cellCount).toBeGreaterThanOrEqual(35)
@@ -45,10 +43,8 @@ test.describe("Calendar", () => {
   test("adjacent month cells are present and muted", async ({ page }) => {
     await goToCalendar(page)
     const adjacents = page.locator(".day-cell.adjacent")
-    // Should have at least some adjacent cells (depends on month layout)
     const count = await adjacents.count()
     expect(count).toBeGreaterThan(0)
-    // Adjacent cells should have reduced opacity
     await expect(adjacents.first()).toHaveClass(/adjacent/)
   })
 
@@ -93,7 +89,6 @@ test.describe("Calendar", () => {
     await expect(page.locator('.month-grid .day-cell[tabindex="0"]')).toBeFocused()
   })
 
-  // ── Navigation ──
   test("navigation arrows cycle months in month view", async ({ page }) => {
     await goToCalendar(page)
     const label = page.locator(".nav-label")
@@ -117,7 +112,6 @@ test.describe("Calendar", () => {
     await expect(page.locator(".month-view")).toBeVisible()
   })
 
-  // ── View Switching ──
   test("can switch between month, week, and day views", async ({ page }) => {
     await goToCalendar(page)
     const buttons = page.locator(".segmented-btn")
@@ -136,7 +130,6 @@ test.describe("Calendar", () => {
     await expect(page.locator(".month-view")).toBeVisible()
   })
 
-  // ── Week View ──
   test("week view has 7 column headers and time labels", async ({ page }) => {
     await goToCalendar(page)
     await page.locator(".segmented-btn").nth(1).click()
@@ -188,18 +181,15 @@ test.describe("Calendar", () => {
     expect(position).toBe("sticky")
   })
 
-  // ── Day View ──
   test("day view shows 24 hour rows with correct time labels", async ({ page }) => {
     await goToCalendar(page)
     await page.locator(".segmented-btn").nth(2).click()
     await page.waitForTimeout(300)
     await expect(page.locator(".day-hour-cell")).toHaveCount(24)
 
-    // First label is midnight (hour 0)
     const firstLabel = page.locator(".day-time-label").first()
     await expect(firstLabel).toContainText("12am")
 
-    // Last label is hour 23 (11pm)
     const lastLabel = page.locator(".day-time-label").last()
     await expect(lastLabel).toContainText("11pm")
   })
@@ -234,7 +224,6 @@ test.describe("Calendar", () => {
     expect(await label.textContent()).not.toBe(firstLabel)
   })
 
-  // ── Event Creation ──
   test("quick-add drawer opens and closes", async ({ page }) => {
     await goToCalendar(page)
     await page.getByRole("button", { name: "Add" }).click()
@@ -248,7 +237,6 @@ test.describe("Calendar", () => {
   test("creating event requires title", async ({ page }) => {
     await goToCalendar(page)
     await openManualEventQuickAdd(page)
-    // Create Event button should be disabled without title
     const createBtn = page.getByRole("button", { name: "Create Event" })
     await expect(createBtn).toBeDisabled()
   })
@@ -265,7 +253,6 @@ test.describe("Calendar", () => {
     await expect(page.locator(".quick-add-form select").first()).toBeVisible()
   })
 
-  // ── View Persistence ──
   test("events persist across view switches", async ({ page }) => {
     await goToCalendar(page)
     await openManualEventQuickAdd(page)
@@ -273,17 +260,14 @@ test.describe("Calendar", () => {
     await page.getByRole("button", { name: "Create Event" }).click()
     await page.waitForTimeout(500)
 
-    // Switch to week
     await page.locator(".segmented-btn").nth(1).click()
     await page.waitForTimeout(300)
     await expect(page.locator(".week-view")).toBeVisible()
 
-    // Switch to day
     await page.locator(".segmented-btn").nth(2).click()
     await page.waitForTimeout(300)
     await expect(page.locator(".day-view")).toBeVisible()
 
-    // Back to month
     await page.locator(".segmented-btn").nth(0).click()
     await page.waitForTimeout(300)
     await expect(page.locator(".month-view")).toBeVisible()

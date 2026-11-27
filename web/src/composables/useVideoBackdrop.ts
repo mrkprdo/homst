@@ -1,24 +1,11 @@
 import { onBeforeUnmount, ref, watch, type Ref } from "vue"
 import { isPerformanceMode } from "@/lib/motion"
 
-/** Blurred backdrops only need a few frames per second to look smooth. */
 export const BACKDROP_INTERVAL_MS = 250
 export const BACKDROP_MAX_DIMENSION = 320
-/** Low-power clients still get the effect, but from a nearly static frame. */
 export const LOW_POWER_BACKDROP_INTERVAL_MS = 15 * 60 * 1000
 const LOW_POWER_WARMUP_MS = 500
 
-/**
- * Keep a small canvas in sync with a playing video. CSS stretches it with
- * `object-fit: cover` and blurs it, so it fills the letterbox area without
- * black bars and without decoding the stream a second time.
- *
- * Low-power clients (e.g. Raspberry Pi displays) copy a frame immediately and
- * then refresh it only every 15 minutes. Continuous canvas copies compete with
- * video decode there and show up as dropped frames. This is keyed off the
- * device, not the animation preference: a Pi that asked for full motion still
- * cannot afford a 4 fps GPU→canvas readback next to the stream it is decoding.
- */
 export function useVideoBackdrop(
   video: Ref<HTMLVideoElement | null>,
   active: Ref<boolean>,
@@ -45,8 +32,6 @@ export function useVideoBackdrop(
     const scale = Math.min(1, BACKDROP_MAX_DIMENSION / Math.max(el.videoWidth, el.videoHeight))
     const frameWidth = Math.max(1, Math.round(el.videoWidth * scale))
     const frameHeight = Math.max(1, Math.round(el.videoHeight * scale))
-    // The video element is rotated in CSS, so the snapshot has to be rotated
-    // too or the backdrop is a quarter turn out of sync with the live frame.
     const angle = ((Math.round(rotation.value / 90) * 90) % 360 + 360) % 360
     const quarterTurn = angle === 90 || angle === 270
     const width = quarterTurn ? frameHeight : frameWidth
@@ -87,8 +72,6 @@ export function useVideoBackdrop(
       return
     }
 
-    // The video may not have a frame yet; keep trying cheaply until it does,
-    // then settle into the 15-minute cadence.
     timer = setInterval(() => {
       if (!draw()) return
       stop()

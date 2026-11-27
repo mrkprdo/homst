@@ -28,13 +28,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 
-# Endpoints answered with these statuses are gone for good — drop them.
 GONE_STATUSES = {404, 410}
 
 MAX_ENDPOINT_LENGTH = 2048
 
-# Only real push services may receive a payload. Without this an attacker could
-# register an internal URL and turn the reminders worker into an SSRF probe.
 PUSH_HOST_ALLOWLIST = (
     "fcm.googleapis.com",
     "android.googleapis.com",
@@ -121,7 +118,6 @@ async def get_vapid_keys(session: AsyncSession) -> tuple[str, str]:
     try:
         await session.commit()
     except IntegrityError:
-        # Another process generated a pair first — use theirs.
         await session.rollback()
         row = await session.get(ServerSetting, "vapid")
         data = json.loads(row.value) if row else {}
@@ -189,7 +185,7 @@ async def deliver_push(
                 pruned += 1
             else:
                 errors.append(f"{status or 'error'}")
-        except Exception as exc:  # aiohttp / crypto / encoding surprises
+        except Exception as exc:
             errors.append(type(exc).__name__)
 
     if pruned:

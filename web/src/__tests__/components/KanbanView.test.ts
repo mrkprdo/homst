@@ -15,7 +15,6 @@ function makeTask(id: string, status: Status, title = id) {
   }
 }
 
-/** Queue a successful PATCH /tasks/:id response that echoes the requested status. */
 function mockTaskPatch(id: string) {
   vi.mocked(fetch).mockImplementationOnce(async (_url, options) => {
     const body = JSON.parse(String((options as RequestInit | undefined)?.body ?? "{}"))

@@ -54,11 +54,9 @@ describe("useNotifications", () => {
       push({ event_id: "ev-1", title: "Soccer", start_at: new Date(Date.now() + 5 * 60000).toISOString() })
       expect(notifications.value).toHaveLength(1)
 
-      // Event starts — card stays through the grace period…
       vi.advanceTimersByTime(5 * 60000)
       expect(notifications.value).toHaveLength(1)
 
-      // …then disappears.
       vi.advanceTimersByTime(START_GRACE_MS + 1000)
       expect(notifications.value).toHaveLength(0)
     } finally {
@@ -96,7 +94,6 @@ describe("useNotifications", () => {
       _resetNotifications()
       expect(notifications.value).toHaveLength(0)
 
-      // Advancing past the original expiry must not resurrect or throw.
       vi.advanceTimersByTime(60000 + START_GRACE_MS + 1000)
       expect(notifications.value).toHaveLength(0)
     } finally {

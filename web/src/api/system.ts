@@ -74,7 +74,6 @@ export interface SystemStatus {
   checked_at: string | null
   stale: boolean
   error: string | null
-  // Fields the server may omit during a partial/older response.
   [key: string]: unknown
 }
 
@@ -83,8 +82,6 @@ async function request<T>(
   options: RequestInit = {},
   timeoutMs = 0,
 ): Promise<T> {
-  // Update polling must never wedge on a half-open connection while the app
-  // restarts; abort and let the caller retry against the new container.
   const controller = timeoutMs > 0 ? new AbortController() : null
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
   try {

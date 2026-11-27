@@ -93,7 +93,6 @@ const fieldSaving = ref(false)
 const fieldError = ref("")
 let savedTimer: ReturnType<typeof setTimeout> | undefined
 
-// Track original state for change detection
 const originalHouseName = ref("")
 const originalAddress = ref("")
 const originalCountry = ref("")
@@ -123,7 +122,6 @@ const hasChanges = computed(() => {
   if (holidayProvince.value !== originalProvince.value) return true
   if (weatherLat.value !== originalWeatherLat.value) return true
   if (weatherLon.value !== originalWeatherLon.value) return true
-  // A field that is still open with a typed draft counts as unsaved too.
   if (editingHouseName.value && houseNameDraft.value.trim() !== houseName.value) return true
   if (editingAddress.value && addressDraft.value.trim() !== address.value) return true
   if (editingCountry.value && countryDraft.value !== holidayCountry.value) return true
@@ -163,7 +161,6 @@ onMounted(async () => {
     color: (m.color ? findClosestMemberColor(m.color) : null) ?? memberDefaultColor(i),
   }))
   localMembers.value = mapped.length ? mapped : [createDefaultMember()]
-  // Snapshot original state
   originalHouseName.value = houseName.value
   originalAddress.value = address.value
   originalCountry.value = holidayCountry.value
@@ -192,10 +189,6 @@ function flashSaved() {
   savedTimer = setTimeout(() => { saved.value = false }, 2500)
 }
 
-/**
- * Persist one field immediately. Inline Save buttons used to only update local
- * state, so closing the drawer (or reloading) brought the old value back.
- */
 async function persistField(patch: Partial<HouseholdSettings>, apply: () => void) {
   fieldError.value = ""
   fieldSaving.value = true
@@ -210,7 +203,6 @@ async function persistField(patch: Partial<HouseholdSettings>, apply: () => void
   }
 }
 
-/** Pick up coordinates the server derived after an address/country change. */
 async function refreshCoordinates() {
   const s = await householdApi.getSettings().catch(() => null)
   if (!s) return
@@ -299,8 +291,6 @@ function addMember() {
 
 function removeMember(id: string) {
   if (localMembers.value.length <= 1) return
-  // Only members that already exist on the server need a DELETE. Compare
-  // against the loaded snapshot rather than guessing from the id's shape.
   if (originalMembers.value.some((m) => m.id === id)) {
     removedMemberIds.value.push(id)
   }
@@ -350,7 +340,6 @@ function resetAll() {
   weatherLonDraft.value = originalWeatherLon.value
 }
 
-/** Fold any still-open inline editor into the model before a full save. */
 function commitDrafts() {
   if (editingHouseName.value) {
     houseName.value = houseNameDraft.value.trim()
@@ -406,8 +395,6 @@ async function saveAll(): Promise<boolean> {
   commitDrafts()
   fieldError.value = ""
   try {
-    // Remove deleted members from backend first. Fail fast: reporting "saved"
-    // while a DELETE failed is how members reappeared after reopening.
     const failedDeletes: string[] = []
     for (const id of removedMemberIds.value) {
       try {
@@ -422,17 +409,14 @@ async function saveAll(): Promise<boolean> {
       return false
     }
 
-    // Persist house name if changed
     if (houseName.value !== originalHouseName.value) {
       await householdApi.updateSettings({ houseName: houseName.value })
     }
 
-    // Persist address if changed
     if (address.value !== originalAddress.value) {
       await householdApi.updateSettings({ address: address.value })
     }
 
-    // Persist country / province if changed
     if (holidayCountry.value !== originalCountry.value || holidayProvince.value !== originalProvince.value) {
       await householdApi.updateSettings({
         holidayCountry: holidayCountry.value,
@@ -440,7 +424,6 @@ async function saveAll(): Promise<boolean> {
       })
     }
 
-    // Persist lat/lon if changed
     if (weatherLat.value !== originalWeatherLat.value || weatherLon.value !== originalWeatherLon.value) {
       await householdApi.updateSettings({
         lat: weatherLat.value ?? undefined,
@@ -448,19 +431,16 @@ async function saveAll(): Promise<boolean> {
       })
     }
 
-    // Sync current members: create new, update existing
     for (const m of localMembers.value) {
       const wasOriginal = originalMembers.value.find((o) => o.id === m.id)
       const hex = memberColorHex(m.color)
       if (wasOriginal) {
-        // Existing member — update if name or color changed
         if (m.name !== wasOriginal.name || m.color !== wasOriginal.color) {
           await usersApi.updateMember(m.id, {
             name: m.name, color: hex,
           }).catch(() => {})
         }
       } else {
-        // New local member — create on backend
         const created = await usersApi.createMember({
           name: m.name || "Member", color: hex, role: "member",
         }).catch(() => null)
@@ -471,7 +451,6 @@ async function saveAll(): Promise<boolean> {
       }
     }
 
-    // Update snapshot
     originalHouseName.value = houseName.value
     originalAddress.value = address.value
     originalCountry.value = holidayCountry.value
@@ -481,7 +460,6 @@ async function saveAll(): Promise<boolean> {
     originalMembers.value = JSON.parse(JSON.stringify(localMembers.value))
     removedMemberIds.value = []
 
-    // Keep the home screen's household label in sync even when SSE is down.
     settings.updateHouseName(houseName.value)
 
     flashSaved()
@@ -495,14 +473,12 @@ async function saveAll(): Promise<boolean> {
 
 <template>
   <div class="member-detail">
-    <!-- Tabs -->
     <div class="profile-tabs">
       <button class="profile-tab" :class="{ active: activeProfileTab === 'household' }" @click="activeProfileTab = 'household'">Household</button>
       <button class="profile-tab" :class="{ active: activeProfileTab === 'photos' }" @click="activeProfileTab = 'photos'">Photos</button>
     </div>
 
     <template v-if="activeProfileTab === 'household'">
-      <!-- House profile -->
       <section class="md-section">
         <h3 class="md-label">Household</h3>
       <div class="md-row">
@@ -567,7 +543,6 @@ async function saveAll(): Promise<boolean> {
 
     <button v-if="!holidayCountry && !editingCountry" class="md-add-link" @click="editingCountry = true; countryDraft = ''">+ Add country</button>
 
-    <!-- Weather coordinates -->
     <section class="md-section">
       <h3 class="md-label">Weather Coordinates</h3>
       <div class="md-row">
@@ -583,7 +558,6 @@ async function saveAll(): Promise<boolean> {
       </div>
     </section>
 
-    <!-- Members -->
     <section class="md-section">
       <h3 class="md-label">Members ({{ localMembers.length }})</h3>
       <div class="md-members">
@@ -616,7 +590,6 @@ async function saveAll(): Promise<boolean> {
       <button class="md-add-link" @click="addMember"><PhPlus :size="14" /> Add member</button>
     </section>
 
-    <!-- Save / Confirmation -->
     <p v-if="fieldError" class="md-save-error" role="alert">{{ fieldError }}</p>
     <div class="md-footer">
       <div v-if="saved" class="md-confirm">
@@ -627,7 +600,6 @@ async function saveAll(): Promise<boolean> {
     </div>
   </template>
 
-  <!-- Photos tab -->
   <template v-else>
     <input ref="fileInput" type="file" accept="image/*" multiple @change="onUpload" hidden />
     <button class="photo-upload-btn" @click="fileInput!.click()">
@@ -648,7 +620,6 @@ async function saveAll(): Promise<boolean> {
   </template>
   </div>
 
-  <!-- Confirm overlay (Teleport to match drawer position) -->
   <Teleport to="body">
     <Transition name="confirm-slide">
       <div v-if="confirmAction" class="md-confirm-overlay">
@@ -681,7 +652,6 @@ async function saveAll(): Promise<boolean> {
       </div>
     </Transition>
 
-    <!-- Delete photo confirmation -->
     <Transition name="confirm-slide">
       <div v-if="confirmDeletePhoto" class="md-confirm-overlay">
         <div class="md-confirm-panel">
@@ -774,7 +744,6 @@ async function saveAll(): Promise<boolean> {
 }
 .md-add-link:hover { opacity: 0.8; }
 
-/* Members */
 .md-members {
   display: flex;
   flex-direction: column;
@@ -793,7 +762,6 @@ async function saveAll(): Promise<boolean> {
   gap: var(--space-2);
 }
 
-/* Color picker (same as onboarding) */
 .member-color { flex-shrink: 0; }
 .color-swatch-dropdown { position: relative; }
 .member-color-btn {
@@ -862,7 +830,6 @@ async function saveAll(): Promise<boolean> {
 }
 .member-remove:hover { background: var(--color-bgSubtle); color: var(--color-danger); }
 
-/* Footer / Save */
 .md-save-error {
   margin: 0;
   font-size: var(--text-label-size);
@@ -890,7 +857,6 @@ async function saveAll(): Promise<boolean> {
   flex-shrink: 0;
 }
 
-/* Confirm overlay */
 .md-confirm-overlay {
   position: fixed;
   top: 0;
@@ -941,13 +907,11 @@ async function saveAll(): Promise<boolean> {
   color: var(--color-danger);
 }
 
-/* Slide-up transition */
 .confirm-slide-enter-active { transition: transform 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 180ms ease; }
 .confirm-slide-leave-active { transition: transform 160ms ease-in, opacity 140ms ease-in; }
 .confirm-slide-enter-from  { transform: translateY(100%); opacity: 0; }
 .confirm-slide-leave-to    { transform: translateY(100%); opacity: 0; }
 
-/* ── Tabs ── */
 .profile-tabs {
   display: flex;
   gap: var(--space-1);
@@ -976,7 +940,6 @@ async function saveAll(): Promise<boolean> {
   border-bottom-color: var(--color-primary);
 }
 
-/* ── Photos ── */
 .photo-upload-btn {
   display: inline-flex;
   align-items: center;

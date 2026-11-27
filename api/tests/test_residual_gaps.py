@@ -13,11 +13,6 @@ from sqlalchemy.exc import IntegrityError
 UTC = timezone.utc
 
 
-# ══════════════════════════════════════════════════════════════════════
-# app/db.py — get_db session lifecycle
-# ══════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.asyncio
 async def test_get_db_yields_a_session_then_closes_it(monkeypatch):
     from app import db as db_mod
@@ -43,11 +38,6 @@ async def test_get_db_yields_a_session_then_closes_it(monkeypatch):
     with pytest.raises(StopAsyncIteration):
         await gen.__anext__()
     assert closed["count"] == 1
-
-
-# ══════════════════════════════════════════════════════════════════════
-# app/redis_client.py
-# ══════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.asyncio
@@ -82,13 +72,8 @@ async def test_close_redis_without_a_client_is_a_noop(monkeypatch):
     from app import redis_client as redis_mod
 
     monkeypatch.setattr(redis_mod, "redis_client", None, raising=False)
-    await redis_mod.close_redis()  # must not raise
+    await redis_mod.close_redis()
     assert redis_mod.redis_client is None
-
-
-# ══════════════════════════════════════════════════════════════════════
-# app/notifications/reminders.py
-# ══════════════════════════════════════════════════════════════════════
 
 
 def _event(start_at, recurrence=None):
@@ -120,7 +105,6 @@ def test_occurrences_unknown_frequency_yields_only_the_first_start():
     occs = occurrences_between(
         _event(start, {"freq": "hourly"}), start, start + timedelta(days=1)
     )
-    # An unrecognised frequency can't be stepped, so expansion stops at the start.
     assert occs == [start]
 
 
@@ -150,7 +134,6 @@ async def test_dispatch_rolls_back_on_integrity_error(monkeypatch, db_session):
     monkeypatch.setattr(reminders, "find_due_reminders", fake_find)
     monkeypatch.setattr(reminders, "_dispatch_one", boom)
 
-    # Must swallow the IntegrityError and return no logs.
     assert await reminders.dispatch_due_reminders(db_session) == []
 
 
@@ -163,11 +146,6 @@ async def test_send_test_notification_reports_hud_failure():
 
     results = await send_test_notification(channels=["hud"], deliver_hud=failing_hud)
     assert results["hud"] == "failed: display offline"
-
-
-# ══════════════════════════════════════════════════════════════════════
-# app/routers/photos.py
-# ══════════════════════════════════════════════════════════════════════
 
 
 def _png_bytes():
@@ -197,7 +175,7 @@ def test_resize_image_converts_non_rgb_jpeg():
     buf = io.BytesIO()
     Image.new("CMYK", (4, 4)).save(buf, "JPEG")
     out = _resize_image(buf.getvalue())
-    assert out[:2] == b"\xff\xd8"  # still a JPEG
+    assert out[:2] == b"\xff\xd8"
 
 
 def test_resize_image_encodes_webp():
@@ -238,11 +216,6 @@ async def test_upload_photo_reuses_the_household_row(client):
         pass
 
 
-# ══════════════════════════════════════════════════════════════════════
-# app/routers/calendar.py — patching the recurrence rule
-# ══════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.asyncio
 async def test_update_event_sets_recurrence(client):
     r = await client.post("/api/v1/calendars", json={"name": "C", "color": "sage"})
@@ -258,11 +231,6 @@ async def test_update_event_sets_recurrence(client):
     })
     assert r.status_code == 200
     assert r.json()["recurrence"] == {"freq": "weekly", "count": 4}
-
-
-# ══════════════════════════════════════════════════════════════════════
-# app/mdns.py — fallbacks
-# ══════════════════════════════════════════════════════════════════════
 
 
 def test_mdns_local_ip_falls_back_when_routing_fails(monkeypatch):
@@ -286,7 +254,7 @@ def test_mdns_stop_sync_is_a_noop_when_never_started():
     from app import mdns as mdns_mod
 
     svc = mdns_mod.HOMSTmDNS(host="127.0.0.1")
-    svc._stop_sync()  # must not raise
+    svc._stop_sync()
     assert svc._zc is None
 
 
@@ -323,11 +291,6 @@ def test_mdns_module_survives_a_missing_zeroconf(monkeypatch):
     assert probe._ZEROCONF_AVAILABLE is False
 
 
-# ══════════════════════════════════════════════════════════════════════
-# app/routers/stream.py — resubscribe after a pubsub error
-# ══════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.asyncio
 async def test_stream_reconnects_after_pubsub_error(monkeypatch, db_session):
     from app.routers import stream as stream_mod
@@ -348,7 +311,6 @@ async def test_stream_reconnects_after_pubsub_error(monkeypatch, db_session):
             self.closed += 1
 
         async def get_message(self, ignore_subscribe_messages=False, timeout=None):
-            # Fail exactly once so the generator reconnects, then go quiet.
             if not state["raised"]:
                 state["raised"] = True
                 raise ConnectionError("redis went away")
@@ -378,20 +340,13 @@ async def test_stream_reconnects_after_pubsub_error(monkeypatch, db_session):
     resp = await stream_mod.stream(_Request(), db_session)
     out = [item async for item in resp.body_iterator]
 
-    # Two sync hints: one on the initial subscribe, one after the resubscribe —
-    # everything published during the gap would otherwise be lost.
     assert out == [
         {"event": "sync.required", "data": '{"type": "sync.required"}'},
         {"event": "sync.required", "data": '{"type": "sync.required"}'},
     ]
-    assert len(instances) == 2      # a fresh pubsub was created
-    assert instances[0].closed == 1  # the broken one was closed
-    assert instances[1].closed == 1  # the replacement was cleaned up
-
-
-# ══════════════════════════════════════════════════════════════════════
-# app/main.py — CORS allow-list configuration
-# ══════════════════════════════════════════════════════════════════════
+    assert len(instances) == 2
+    assert instances[0].closed == 1
+    assert instances[1].closed == 1
 
 
 def test_main_uses_the_configured_cors_allow_list(monkeypatch):

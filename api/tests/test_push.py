@@ -23,15 +23,12 @@ def _unb64(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
-# ── VAPID keys ───────────────────────────────────────────────────────
-
-
 def test_generate_vapid_keys_are_valid():
     public, private = generate_vapid_keys()
 
     assert len(_unb64(private)) == 32
     assert len(_unb64(public)) == 65
-    assert _unb64(public)[0] == 4  # uncompressed EC point
+    assert _unb64(public)[0] == 4
 
     headers = Vapid.from_string(private).sign(
         {"sub": "mailto:a@b.com", "aud": "https://fcm.googleapis.com"}
@@ -53,9 +50,6 @@ async def test_get_vapid_keys_env_override_wins(db_session, monkeypatch):
     assert await get_vapid_keys(db_session) == ("PUB", "PRIV")
 
 
-# ── Message formatting ───────────────────────────────────────────────
-
-
 def test_push_message_formats_when_and_lead():
     start = datetime(2030, 6, 1, 18, 0, tzinfo=UTC)
     title, body = push_message("Dinner", start, 30, tz_name="UTC")
@@ -64,9 +58,6 @@ def test_push_message_formats_when_and_lead():
 
     _, at_start = push_message("Dinner", start, 0, tz_name="UTC")
     assert "starting now" in at_start
-
-
-# ── Subscriptions API ────────────────────────────────────────────────
 
 
 async def test_subscribe_vapid_and_unsubscribe(client, db_session):
@@ -78,7 +69,6 @@ async def test_subscribe_vapid_and_unsubscribe(client, db_session):
     r = await client.post("/api/v1/push/subscribe", json=payload)
     assert r.status_code == 201
 
-    # Re-subscribing with the same endpoint updates in place, no duplicate.
     payload["keys"]["p256dh"] = "p2"
     r = await client.post("/api/v1/push/subscribe", json=payload)
     assert r.status_code == 201
@@ -97,12 +87,8 @@ async def test_subscribe_vapid_and_unsubscribe(client, db_session):
     assert r.status_code == 200
     assert await subscriptions_for(db_session) == []
 
-    # Unsubscribing an unknown endpoint is a harmless no-op.
     r = await client.post("/api/v1/push/unsubscribe", json={"endpoint": "https://fcm.googleapis.com/unknown-gone"})
     assert r.status_code == 200
-
-
-# ── Delivery ─────────────────────────────────────────────────────────
 
 
 class _Gone:
@@ -146,9 +132,6 @@ async def test_deliver_push_no_subscriptions():
     )
     assert ok is False
     assert detail == "no push subscriptions"
-
-
-# ── Reminder dispatch & test endpoint ────────────────────────────────
 
 
 async def _seed_due_event(db_session):

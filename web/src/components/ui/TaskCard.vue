@@ -42,7 +42,6 @@ function onPointerUp() {
   })
 }
 
-/** Cards are divs for layout, so keyboard activation is supplied explicitly. */
 function onKeyDown(e: KeyboardEvent) {
   if (e.key !== "Enter" && e.key !== " ") return
   e.preventDefault()

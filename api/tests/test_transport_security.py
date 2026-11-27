@@ -21,16 +21,10 @@ def _installed(cls):
     return [m for m in app.user_middleware if getattr(m, "cls", None) is cls]
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Defaults and middleware wiring
-# ══════════════════════════════════════════════════════════════════════
-
-
 def test_default_settings_are_not_cross_site_open():
     fields = Settings.model_fields
     assert fields["cors_allow_all"].default is False
     assert fields["allowed_origins"].default == "http://localhost:5173"
-    # Empty host allow-list keeps plain-IP LAN access working.
     assert fields["allowed_hosts"].default == ""
 
 
@@ -58,14 +52,8 @@ def test_trusted_host_middleware_defaults_to_allow_all_hosts():
     installed = _installed(TrustedHostMiddleware)
     assert len(installed) == 1
     assert installed[0].kwargs["allowed_hosts"] == ["*"]
-    # The empty-string fallback used at import time.
     assert _csv("") == []
     assert (_csv("") or ["*"]) == ["*"]
-
-
-# ══════════════════════════════════════════════════════════════════════
-# Small parsing helpers
-# ══════════════════════════════════════════════════════════════════════
 
 
 def test_csv_splits_trims_and_drops_blanks():
@@ -86,11 +74,6 @@ def test_hostname_is_port_insensitive_and_tolerates_junk():
     assert _hostname(None) is None
     assert _hostname("") is None
     assert _hostname("   ") is None
-
-
-# ══════════════════════════════════════════════════════════════════════
-# CORS preflight
-# ══════════════════════════════════════════════════════════════════════
 
 
 async def test_preflight_from_disallowed_origin_is_rejected(client):
@@ -117,11 +100,6 @@ async def test_preflight_from_configured_origin_succeeds(client):
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Cross-site state-changing requests
-# ══════════════════════════════════════════════════════════════════════
-
-
 async def test_post_from_foreign_origin_is_blocked(client):
     response = await client.post(
         UNSUBSCRIBE, json=SUBSCRIBE_BODY, headers={"Origin": "https://evil.example"}
@@ -137,7 +115,6 @@ async def test_post_from_same_origin_is_allowed(client):
 
 
 async def test_post_without_origin_is_allowed(client):
-    # Non-browser clients (curl, the reminder worker) send no Origin.
     response = await client.post(UNSUBSCRIBE, json=SUBSCRIBE_BODY)
     assert response.status_code == 200
     assert response.json() == {"message": "unsubscribed"}

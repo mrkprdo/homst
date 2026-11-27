@@ -55,8 +55,6 @@ async def camera_playlist(token: str, db: AsyncSession = Depends(get_db)):
     except CameraError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc
 
-    # Resolve the run that is currently published rather than a fixed file: a
-    # restart flips the pointer atomically while the old run stays readable.
     path = playlist_path(token)
     if not path.is_file():
         raise HTTPException(404, "Camera stream not found.")

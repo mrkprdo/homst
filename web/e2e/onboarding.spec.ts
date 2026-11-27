@@ -7,7 +7,6 @@ test.describe("Onboarding", () => {
     await page.goto("/onboarding")
   })
 
-  // ── Step 1: House ──
   test("renders onboarding wizard with progress dots", async ({ page }) => {
     await expect(page.locator(".onboarding-overlay")).toBeVisible()
     await expect(page.locator(".progress-dot")).toHaveCount(4)
@@ -31,7 +30,6 @@ test.describe("Onboarding", () => {
     await expect(page.locator(".step-title")).toContainText("Members")
   })
 
-  // ── Step 2: Members ──
   test("Back button returns to house step", async ({ page }) => {
     await page.locator("input").first().fill("Home")
     await page.getByRole("button", { name: "Next" }).click()
@@ -58,7 +56,6 @@ test.describe("Onboarding", () => {
   test("cannot remove last member", async ({ page }) => {
     await page.locator("input").first().fill("Home")
     await page.getByRole("button", { name: "Next" }).click()
-    // The remove button should not be visible when only 1 member
     await expect(page.locator(".member-remove")).not.toBeVisible()
   })
 
@@ -84,7 +81,6 @@ test.describe("Onboarding", () => {
     await expect(page.getByRole("button", { name: "Next" })).toBeEnabled()
   })
 
-  // ── Step 3: Holidays ──
   test("holiday step shows country selector and province field", async ({ page }) => {
     await page.locator("input").first().fill("Home")
     await page.getByRole("button", { name: "Next" }).click()
@@ -94,7 +90,6 @@ test.describe("Onboarding", () => {
     await expect(page.locator("select")).toBeVisible()
   })
 
-  // ── Step 4: Review ──
   test("review shows all entered values", async ({ page }) => {
     await page.locator("input").first().fill("Our Home")
     await page.getByRole("button", { name: "Next" }).click()

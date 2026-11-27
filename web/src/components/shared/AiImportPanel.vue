@@ -34,12 +34,9 @@ import { REMINDER_OPTIONS, reminderLabel, reminderMinutesFromValue } from "@/uti
 
 const props = defineProps<{
   memberNames?: Record<string, string>
-  /** Reopen a saved thread (from an imported event). */
   conversationId?: string
-  /** The event this resumed thread should update instead of creating. */
   focusEventId?: string
   focusEventTitle?: string
-  /** Original import text, used when the event has no saved conversation. */
   focusSourceMessage?: string
 }>()
 const emit = defineEmits<{ done: [count: number]; manual: [] }>()
@@ -71,7 +68,6 @@ interface Turn {
   text: string
   image: Attachment | null
   imageName: string
-  /** Stored copy of this turn's screenshot, so a reopened chat shows it. */
   imageUrl: string
   status: TurnStatus
   reply: string
@@ -319,12 +315,6 @@ function turnNote(turn: Turn): string {
   return ""
 }
 
-/**
- * Offer manual entry only when the household actually tried to import
- * something (an image, a document-like message, or rows the model could not
- * turn into events). Used as a fallback for saved conversations from before
- * the model started choosing the turn actions itself.
- */
 function offersManualEntry(turn: Turn): boolean {
   if (turn.status !== "empty" || turn.applied || turn.added.length > 0) return false
   if (turn.requestImage) return true
@@ -341,11 +331,6 @@ function legacyActions(turn: Turn): string[] {
   return offersManualEntry(turn) ? ["add_manually"] : []
 }
 
-/**
- * The buttons the model chose for this turn, filtered against the live state.
- * The model owns the choice; the harness only hides actions that cannot work
- * yet (for example "add_another" before anything was saved).
- */
 function visibleActions(turn: Turn): string[] {
   const source = turn.actionsDeclared ? turn.actions : legacyActions(turn)
   const visible: string[] = []
@@ -470,7 +455,6 @@ function shortDescription(draft: AiDraft): string {
   return words.length > 120 ? `${words.slice(0, 119).trimEnd()}…` : words
 }
 
-// ── Status ────────────────────────────────────────────────────────────────
 onMounted(() => {
   void loadStatus()
   if (props.conversationId) {
@@ -600,13 +584,9 @@ async function persistConversation(): Promise<string> {
 
 function queueConversationSave() {
   if (turns.value.length === 0) return
-  // Serialise saves so a second turn cannot create a duplicate conversation
-  // while the first create is still in flight.
   const save = saveChain.catch(() => "").then(() => persistConversation())
   saveChain = save
   save.catch(() => {
-    // Best effort: adding events calls ensureConversation and surfaces a
-    // retryable error if the save still fails.
   })
 }
 
@@ -615,28 +595,18 @@ async function ensureConversation(): Promise<string> {
     const id = await saveChain
     if (id) return id
   } catch {
-    // Fall through and retry with the latest turns.
   }
   return persistConversation()
 }
 
-/**
- * Keep the attached screenshot with the saved conversation.
- *
- * The server re-encodes it and hands back a URL, which is all the transcript
- * stores. A failure here only costs the saved chat its picture (the filename
- * still shows), so it never interrupts the import.
- */
 async function storeImage(turn: Turn, image: Attachment) {
   try {
     const stored = await aiApi.uploadImage({ image: image.dataUrl, name: image.name })
     if (stored.url) turn.imageUrl = stored.url
   } catch {
-    // Best effort: the chat still saves, without the picture.
   }
 }
 
-// ── Composer and attachments ──────────────────────────────────────────────
 function resizeComposer() {
   const el = composerEl.value
   if (!el) return
@@ -707,7 +677,6 @@ function onComposerKeydown(event: KeyboardEvent) {
   void sendMessage()
 }
 
-// ── Chat turns ────────────────────────────────────────────────────────────
 function historyText(turn: Turn): string {
   if (turn.rawResponse) return turn.rawResponse
   if (turn.drafts.length > 0) {
@@ -758,7 +727,6 @@ async function scrollToBottom() {
   if (el) el.scrollTop = el.scrollHeight
 }
 
-/** Land on the start of the new answer, not the end of a long draft card. */
 async function revealLatestAssistant() {
   await nextTick()
   const scroller = transcriptEl.value
@@ -822,11 +790,8 @@ async function sendMessage(
   assistant.clarifications = [...clarifications.value, ...answers]
   if (answers.length > 0) clarifications.value.push(...answers)
   turns.value.push(user, assistant)
-  // Push then read back the reactive proxy: mutating the raw object would
-  // update the state without triggering the transcript to re-render.
   const liveAssistant = turns.value[turns.value.length - 1]!
   const liveUser = turns.value[turns.value.length - 2]!
-  // Runs alongside the parse, so storing the picture never delays the reply.
   const storedImage = image ? storeImage(liveUser, image) : null
   composerText.value = ""
   pendingImage.value = null
@@ -876,7 +841,6 @@ async function answerQuestion(turn: Turn, question: AiQuestion, option: string) 
 }
 
 function datetimeAnswer(turn: Turn, question: AiQuestion) {
-  // Seeded by applyParseResult/loadConversation before the picker renders.
   return datetimeAnswers.value[`${turn.id}:${question.id}`]!
 }
 
@@ -987,7 +951,6 @@ function finish() {
   emit("done", totalAdded())
 }
 
-// ── Draft selection and saving ────────────────────────────────────────────
 function toggle(turn: Turn, index: number) {
   turn.selected[index] = !turn.selected[index]
 }
@@ -1168,7 +1131,6 @@ async function applySelected() {
   void revealLatestAssistant()
 }
 
-/** Apply one reviewed change without touching the rest of the batch. */
 async function applyUpdate(turn: Turn, index: number) {
   const update = turn.updates[index]
   if (!update || applying.value) return
@@ -1193,7 +1155,6 @@ async function applyUpdate(turn: Turn, index: number) {
   }
 }
 
-/** Delete one reviewed event without touching the rest of the batch. */
 async function applyDelete(turn: Turn, index: number) {
   const removal = turn.deletes[index]
   if (!removal || applying.value) return
@@ -1218,7 +1179,6 @@ async function applyDelete(turn: Turn, index: number) {
   }
 }
 
-// ── Inline draft editing ──────────────────────────────────────────────────
 interface EditBuffer {
   title: string
   date: string
@@ -1359,10 +1319,7 @@ function saveEdit() {
   draft.allDay = buffer.allDay
   draft.assigneeId = buffer.assigneeId || null
   draft.reminderMinutes = reminderMinutesFromValue(buffer.reminder)
-  // A person checked this event, so the low-confidence flag no longer applies.
   draft.confidence = 1
-  // Moving the draft resolves the conflict on its own; don't remove the old
-  // event after all.
   if (turn) {
     turn.replacements = turn.replacements.filter(item => item.draftIndex !== index)
   }
@@ -1679,7 +1636,6 @@ function outcomeMessage(turn: Turn): string {
                   </div>
                 </div>
 
-                <!-- Generated drafts and existing-event changes, confirmed before writing -->
                 <div
                   v-if="isActive(turn) && actionCount(turn) > 0"
                   class="ai-confirm"
@@ -2139,7 +2095,6 @@ function outcomeMessage(turn: Turn): string {
   white-space: nowrap;
 }
 
-/* ── Status ── */
 .ai-skeleton {
   display: flex;
   flex-direction: column;
@@ -2198,7 +2153,6 @@ function outcomeMessage(turn: Turn): string {
   line-height: 1.5;
 }
 
-/* ── Chat header ── */
 .ai-chat-head {
   display: flex;
   align-items: center;
@@ -2262,7 +2216,6 @@ function outcomeMessage(turn: Turn): string {
   padding: var(--space-4) 0;
 }
 
-/* ── Transcript ── */
 .ai-chat {
   flex: 1;
   min-height: 0;
@@ -2402,7 +2355,6 @@ function outcomeMessage(turn: Turn): string {
   30% { opacity: 1; transform: translateY(-2px); }
 }
 
-/* ── Welcome ── */
 .ai-welcome {
   display: flex;
   flex-direction: column;
@@ -2479,7 +2431,6 @@ function outcomeMessage(turn: Turn): string {
   margin: 0;
 }
 
-/* ── Questions ── */
 .ai-questions {
   display: flex;
   flex-direction: column;
@@ -2561,7 +2512,6 @@ function outcomeMessage(turn: Turn): string {
   cursor: default;
 }
 
-/* ── Confirmation card ── */
 .ai-confirm {
   display: flex;
   flex-direction: column;
@@ -2785,7 +2735,6 @@ function outcomeMessage(turn: Turn): string {
   gap: var(--space-2);
 }
 
-/* ── Composer and review action ── */
 .ai-compose-area {
   display: flex;
   flex: none;
@@ -2810,7 +2759,6 @@ function outcomeMessage(turn: Turn): string {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Callouts and warnings ── */
 .ai-callout {
   display: flex;
   align-items: flex-start;
@@ -3070,7 +3018,6 @@ function outcomeMessage(turn: Turn): string {
   background: var(--color-bgSubtle);
 }
 
-/* ── Added ── */
 .ai-added {
   display: flex;
   flex-direction: column;
@@ -3137,7 +3084,6 @@ function outcomeMessage(turn: Turn): string {
   color: var(--color-accent-darker);
 }
 
-/* ── Errors ── */
 .ai-error {
   display: flex;
   align-items: flex-start;
@@ -3158,7 +3104,6 @@ function outcomeMessage(turn: Turn): string {
   color: var(--color-danger);
 }
 
-/* ── Composer ── */
 .ai-composer {
   display: flex;
   flex-direction: column;
@@ -3327,7 +3272,6 @@ function outcomeMessage(turn: Turn): string {
   pointer-events: none;
 }
 
-/* ── Focus ── */
 .ai-new-chat:focus-visible,
 .ai-quick-reply:focus-visible,
 .ai-select-all:focus-visible,
@@ -3361,7 +3305,6 @@ html.low-power .ai-typing-dot {
   animation: none;
 }
 
-/* Futur uses ink contours and hard offset shadows; match that world. */
 :global(.futur .ai-composer-box),
 :global(.futur .ai-confirm),
 :global(.futur .ai-datetime),

@@ -91,7 +91,6 @@ function whenLabel(n: HudNotification): string {
   z-index: 390;
   pointer-events: none;
   background: color-mix(in srgb, var(--color-bgBase) 4%, transparent);
-  /* Prefixed first: Lightning CSS drops the standard property if it comes first. */
   -webkit-backdrop-filter: blur(1.5px);
   backdrop-filter: blur(1.5px);
 }
@@ -184,7 +183,6 @@ function whenLabel(n: HudNotification): string {
 }
 .hud-dismiss:hover { background: var(--color-bgSubtle); color: var(--color-textPrimary); }
 
-/* ── Wall display: larger cards with a breathing danger glow ── */
 .hud-card--display {
   gap: var(--space-5);
   padding: var(--space-6);
@@ -244,7 +242,6 @@ function whenLabel(n: HudNotification): string {
   }
 }
 
-/* Arrival / dismissal motion — reduced-motion zeroes the duration tokens. */
 .hud-enter-active,
 .hud-leave-active,
 .hud-move {

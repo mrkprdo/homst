@@ -1,4 +1,3 @@
-// Web export — generates CSS custom properties string
 import { palette, space, radius, duration, shadowLip, shadowShine, lightMode, darkMode, warmLightMode, warmDarkMode, font, text } from "./tokens"
 
 function cssVars(prefix: string, obj: Record<string, string | number>): string {

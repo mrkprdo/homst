@@ -206,14 +206,11 @@ async function finish() {
     }
   }
 
-  // Sync holidays via backend API (persists to DB; CalendarView loads on mount)
   try {
     await holidaysApi.sync(holidayCountry.value, holidayProvince.value || undefined)
   } catch {
-    // Holidays unavailable — continue without them
   }
 
-  // Persist onboarding state to DB (including country/province so we can re-sync later)
   await householdApi.updateSettings({
     isComplete: true,
     houseName: houseName.value.trim(),
@@ -230,13 +227,11 @@ async function finish() {
 <template>
   <div class="onboarding-overlay">
     <div class="onboarding-card">
-      <!-- Progress -->
       <div class="onboarding-progress">
         <div v-for="i in totalSteps" :key="i" class="progress-dot"
           :class="{ active: i <= step, current: i === step }" />
       </div>
 
-      <!-- Step 1: House -->
       <div v-if="step === 1" class="onboarding-step">
         <div class="step-icon">
           <PhHouse :size="32" />
@@ -250,7 +245,6 @@ async function finish() {
         </div>
       </div>
 
-      <!-- Step 2: Members -->
       <div v-if="step === 2" class="onboarding-step">
         <h2 class="step-title">Household Members</h2>
         <p class="step-desc">Add everyone in your household. Each member gets a color for their calendar entries.</p>
@@ -284,7 +278,6 @@ async function finish() {
         </div>
       </div>
 
-      <!-- Step 3: Holidays -->
       <div v-if="step === 3" class="onboarding-step">
         <h2 class="step-title">Holiday Calendar</h2>
         <p class="step-desc">We'll auto-populate legal holidays for your region.</p>
@@ -309,7 +302,6 @@ async function finish() {
         </div>
       </div>
 
-      <!-- Step 4: Review -->
       <div v-if="step === 4" class="onboarding-step">
         <h2 class="step-title">All set!</h2>
         <p class="step-desc">Review and confirm your setup.</p>
@@ -376,7 +368,6 @@ async function finish() {
   }
 }
 
-/* ── Progress dots ── */
 .onboarding-progress {
   display: flex;
   justify-content: center;
@@ -400,7 +391,6 @@ async function finish() {
   transform: scale(1.5);
 }
 
-/* ── Steps ── */
 .onboarding-step {
   display: flex;
   flex-direction: column;
@@ -460,7 +450,6 @@ async function finish() {
   width: 100%;
 }
 
-/* ── Members ── */
 .members-list {
   display: flex;
   flex-direction: column;
@@ -504,7 +493,6 @@ async function finish() {
   margin-bottom: var(--space-6);
 }
 
-/* ── Color picker ── */
 .member-color {
   flex-shrink: 0;
 }
@@ -574,7 +562,6 @@ async function finish() {
   border-color: var(--color-borderStrong);
 }
 
-/* ── Toggles ── */
 .toggle-row {
   display: flex;
   align-items: center;
@@ -590,7 +577,6 @@ async function finish() {
   border-bottom: none;
 }
 
-/* ── Review ── */
 .review-list {
   display: flex;
   flex-direction: column;

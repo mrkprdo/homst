@@ -46,7 +46,6 @@ class HOMSTmDNS:
         """Resolve the primary local (non-loopback) IP address."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                # 8.8.8.8 won't actually be reached — we just need the route
                 s.connect(("8.8.8.8", 80))
                 return s.getsockname()[0]
         except OSError:
@@ -109,7 +108,6 @@ class HOMSTmDNS:
         await asyncio.to_thread(self._stop_sync)
 
 
-# Singleton for the FastAPI lifespan
 homst_mdns = HOMSTmDNS()
 
 

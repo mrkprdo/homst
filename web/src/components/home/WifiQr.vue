@@ -7,13 +7,8 @@ const props = defineProps<{
   label?: string
 }>()
 
-/**
- * Generated locally so the network password never leaves the household: the
- * matrix is encoded once per payload and painted as a single SVG path.
- */
 const qr = computed(() => {
   try {
-    // Four quiet-zone modules: the spec minimum plus a little breathing room.
     const { size, data } = encode(props.payload, { ecc: "M", border: 4 })
     let path = ""
     for (let y = 0; y < data.length; y++) {
@@ -32,7 +27,6 @@ const qr = computed(() => {
     }
     return { size, path, radius: size * 0.08 }
   } catch {
-    // A network name past the QR capacity simply renders no code.
     return null
   }
 })
@@ -58,9 +52,6 @@ const qr = computed(() => {
 </template>
 
 <style scoped>
-/* The code stays dark-on-light for reliable scanning, but both ends of the
-   contrast are pulled from the theme: the accent's darkest step for the
-   modules and the theme paper (accent-tinted) for the quiet zone. */
 .wifi-qr {
   --qr-paper: color-mix(
     in srgb,
@@ -80,8 +71,6 @@ const qr = computed(() => {
 
 .wifi-qr__paper {
   fill: var(--qr-paper);
-  /* The quiet-zone card is rounded; keep its corners smooth while the
-     modules stay on crispEdges. */
   shape-rendering: geometricPrecision;
 }
 

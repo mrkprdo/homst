@@ -39,7 +39,6 @@ export async function createTaskE2E(page: Page, title: string, extra?: () => Pro
   await page.waitForTimeout(600)
 }
 
-/** Open the event quick-add in manual mode; Smart import is the default. */
 export async function openManualEventQuickAdd(page: Page) {
   await page.getByRole("button", { name: "Add" }).click()
   await page.waitForTimeout(400)
@@ -72,17 +71,14 @@ export function resetMockState() {
   mockMembers.length = 0
 }
 
-/** Seed household notification preferences (call after setupApiMocks, before goto). */
 export function setMockNotifications(prefs: Record<string, unknown>) {
   mockNotifications = { ...mockNotifications, ...prefs }
 }
 
-/** Mark the household as already set up (lets mobile clients past the onboarding gate). */
 export function setMockComplete(value = true) {
   mockComplete = value
 }
 
-/** Seed household members directly (used by mobile clients that skip onboarding). */
 export function seedMockMembers(
   members: Array<{ id: string; name: string; role?: string; color?: string | null }>,
 ) {
@@ -151,12 +147,10 @@ function json(body: unknown) {
 export async function setupApiMocks(page: Page) {
   resetMockState()
 
-  // ── Health (the shell probes this to detect an unreachable LAN server) ──
   await page.route("**/api/health", async (route) => {
     await route.fulfill(json({ status: "ok" }))
   })
 
-  // ── Settings ──
   await page.route("**/api/v1/household/settings", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill(json({
@@ -177,7 +171,6 @@ export async function setupApiMocks(page: Page) {
     }
   })
 
-  // ── Members (stateful: POST/PATCH/DELETE mutate mockMembers) ──
   await page.route(/\/api\/v1\/household\/members/, async (route) => {
     const url = route.request().url()
     const method = route.request().method()
@@ -213,7 +206,6 @@ export async function setupApiMocks(page: Page) {
     }
   })
 
-  // ── Notifications ──
   await page.route("**/api/v1/notifications/test", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}")
     const channels: string[] = body.channels ?? ["hud", "push"]
@@ -223,7 +215,6 @@ export async function setupApiMocks(page: Page) {
     await route.fulfill(json({ results }))
   })
 
-  // ── Announcements (stateful: POST/DELETE mutate mockAnnouncements) ──
   await page.route(/\/api\/v1\/announcements/, async (route) => {
     const url = route.request().url()
     const method = route.request().method()
@@ -263,7 +254,6 @@ export async function setupApiMocks(page: Page) {
     }
   })
 
-  // ── Calendars ──
   await page.route("**/api/v1/calendars", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill(json([...mockCalendars]))
@@ -277,7 +267,6 @@ export async function setupApiMocks(page: Page) {
     }
   })
 
-  // ── Events ──
   await page.route(/\/api\/v1\/events/, async (route) => {
     const url = route.request().url()
     const method = route.request().method()
@@ -326,7 +315,6 @@ export async function setupApiMocks(page: Page) {
     }
   })
 
-  // ── Holidays (list + /sync) ──
   await page.route(/\/api\/v1\/holidays(\/sync)?(\?|$)/, async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill(json(mockHolidays))
@@ -337,7 +325,6 @@ export async function setupApiMocks(page: Page) {
     }
   })
 
-  // ── Task Lists ──
   await page.route("**/api/v1/task-lists", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill(json(mockTaskLists))
@@ -351,7 +338,6 @@ export async function setupApiMocks(page: Page) {
     }
   })
 
-  // ── Tasks ──
   await page.route(/\/api\/v1\/tasks/, async (route) => {
     const url = route.request().url()
     const method = route.request().method()

@@ -1,21 +1,9 @@
-# One build workflow for both channels.
-#
-#   dev  → nightly images (:dev, :dev-<sha>)
-#   other branch/tag → release images (:x.y.z, :x.y, and :latest for stable)
-#
-# Runs on a schedule (dev), on a pushed release tag, from the Release workflow,
-# or manually from Actions → Build with a branch in the "Use workflow from"
-# selector. A manual release branch should be named like `0.2.0` (or its HEAD
-# should be tagged `v0.2.0`). If the tag does not exist, the workflow creates
-# and pushes it automatically.
 name: Build
 
 on:
   schedule:
-    # Nightly dev build at 03:00 UTC (uses the default branch).
     - cron: "0 3 * * *"
   push:
-    # A pushed release tag builds that tag.
     tags:
       - "v*"
       - "*.*.*"
@@ -52,7 +40,7 @@ jobs:
       tags: ${{ steps.resolve.outputs.tags }}
       prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.ref || (github.event_name == 'schedule' && 'dev' || github.ref_name) }}
           fetch-depth: 0
@@ -165,16 +153,15 @@ jobs:
     needs: [version, image]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.version.outputs.ref }}
 
       - name: Stage env template asset
-        # GitHub renames assets that start with a dot ("default.env.example")
         run: cp .env.example env.example
 
       - name: Create or update release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           name: ${{ needs.version.outputs.tag }}

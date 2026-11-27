@@ -27,7 +27,6 @@ export interface AiDraft {
   confidence: number
 }
 
-/** Only the fields a Smart change actually touches; sent as the PATCH body. */
 export interface AiEventChangeSet {
   title?: string
   description?: string
@@ -103,7 +102,6 @@ export interface AiConversationTurn {
   role: "user" | "assistant"
   text: string
   imageName: string
-  /** Stored copy of the attached screenshot, served from /uploads. */
   imageUrl: string
   rawResponse: string
   reply: string
@@ -117,7 +115,6 @@ export interface AiConversationTurn {
   outcome: "success" | "partial" | "failed" | null
   documentKind: string
   actions: string[]
-  /** False for conversations saved before model-chosen actions existed. */
   actionsDeclared: boolean
 }
 
@@ -134,7 +131,6 @@ export interface AiConversationWrite {
   turns: AiConversationTurn[]
 }
 
-/** A screenshot kept beside a conversation, so a reopened chat can show it. */
 export interface AiStoredImage {
   name: string
   url: string
@@ -555,10 +551,6 @@ function frameParts(frame: string): { event: string; data: string } {
   return { event, data: data.join("\n") }
 }
 
-/**
- * Streams reasoning/content deltas from `/ai/parse/stream` and resolves with
- * the final validated result. Each SSE frame is handled as soon as it arrives.
- */
 export async function parseStream(
   payload: {
     text: string
@@ -686,7 +678,6 @@ export const aiApi = {
       focus_event_id: payload.focusEventId ?? null,
     }).then(mapParseResult),
 
-  /** Keep a chat screenshot beside its conversation. */
   uploadImage: (payload: { image: string; name?: string }) =>
     api.post<{ name?: string; url?: string }>("/ai/images", {
       image: payload.image,

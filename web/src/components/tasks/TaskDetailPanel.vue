@@ -83,7 +83,6 @@ async function saveEdit() {
     upsertTask(updated)
     editing.value = false
   } catch {
-    // keep form open
   } finally {
     saving.value = false
   }
@@ -103,7 +102,6 @@ const priorityLabel: Record<string, string> = { low: "Low", medium: "Medium", hi
 <template>
   <div v-if="task" class="tdp">
 
-    <!-- ── View mode ── -->
     <template v-if="!editing">
       <h2 class="tdp-title">{{ task.title }}</h2>
 
@@ -145,7 +143,6 @@ const priorityLabel: Record<string, string> = { low: "Low", medium: "Medium", hi
       </div>
     </template>
 
-    <!-- ── Edit mode ── -->
     <template v-else>
       <div class="tdp-form">
         <div class="tdp-form-row">

@@ -86,7 +86,6 @@ def redis(monkeypatch):
 async def camera_root(redis, monkeypatch, tmp_path):
     root = tmp_path / "camera"
     monkeypatch.setattr(camera, "CAMERA_ROOT", root)
-    # The stream singleton is module state; each test starts clean.
     stream = camera.camera_stream
     stream._process = None
     stream._source = None
@@ -133,9 +132,6 @@ def _fake_process_factory(process, *, write_playlist=True, text=PLAYLIST_TEXT):
 
 
 CAMERA = {"url": "rtsp://192.168.1.20:554/stream1", "username": "admin", "password": "s3cret"}
-
-
-# ── URL and settings helpers ─────────────────────────────────────────────────
 
 
 def test_build_stream_url_empty_and_none():
@@ -275,9 +271,6 @@ def test_read_ffmpeg_log_returns_empty_for_blank_output(tmp_path):
     assert camera._read_ffmpeg_log(tmp_path, "source") == ""
 
 
-# ── Published runs ───────────────────────────────────────────────────────────
-
-
 def test_current_run_and_playlist_path(camera_root):
     token = "0123456789abcdef"
     directory = camera.output_dir(token)
@@ -345,7 +338,6 @@ def test_prune_runs_keeps_the_current_run_and_recent_files(camera_root):
     current.write_text("deadbeef\n", encoding="utf-8")
     log = directory / "ffmpeg.log"
     log.write_text("", encoding="utf-8")
-    # A directory whose name looks like a segment is never unlinked.
     fake_directory = directory / "seg_cafebabe_999999.ts"
     fake_directory.mkdir()
 
@@ -403,9 +395,6 @@ def test_cleanup_stale_runs_removes_legacy_directories(camera_root):
         assert not (camera.CAMERA_ROOT / f"{token}{suffix}").exists()
 
 
-# ── CameraStream ─────────────────────────────────────────────────────────────
-
-
 def test_stream_is_running_tracks_the_ffmpeg_process(camera_root):
     stream = camera.camera_stream
     assert stream.is_running is False
@@ -450,7 +439,6 @@ async def test_ensure_starts_stream_and_stop_cleans_up(
     assert camera.camera_stream._refresh_task is not None
     assert camera.camera_stream._health_monitor.running is True
 
-    # A second request for the same source only refreshes the lock.
     again = await camera.camera_stream.ensure(CAMERA)
     assert again == directory
 
@@ -584,8 +572,6 @@ async def test_ensure_restarts_when_source_changes(camera_root, redis, ffmpeg, m
     await camera.camera_stream.ensure({**CAMERA, "url": "rtsp://camera/other"})
     assert processes[0].terminated is True
     assert processes[1].terminated is False
-    # The old source's token is unreachable through the API, so its files are
-    # removed instead of accumulating in the temp directory.
     assert not camera.output_dir(old_token).exists()
 
 
@@ -619,8 +605,6 @@ async def test_ensure_keeps_ownership_while_restarting(
     await camera.camera_stream.ensure(CAMERA)
 
     assert camera.camera_stream._process is second
-    # The election key must not be released between stopping and starting
-    # ffmpeg, otherwise another worker could open a second camera connection.
     assert seen == [camera.WORKER_ID, camera.WORKER_ID]
 
 
@@ -789,8 +773,6 @@ async def test_stop_keeps_output_owned_by_another_worker(camera_root, redis):
 
     await camera.camera_stream.stop()
 
-    # The new owner is still writing into the shared directory; this worker
-    # leaving must not take its playlist and segments away.
     assert camera.output_dir(token).is_dir()
     assert redis.data[camera.OWNER_KEY] == "other-worker"
 
@@ -922,9 +904,6 @@ async def test_force_release_camera_stream_clears_another_workers_lock(
 @pytest.mark.asyncio
 async def test_shutdown_camera_stream(camera_root, redis):
     await camera.shutdown_camera_stream()
-
-
-# ── Router ───────────────────────────────────────────────────────────────────
 
 
 async def _seed_camera(db_session, camera_settings):
@@ -1097,9 +1076,6 @@ async def test_segment_404_when_file_is_missing(client, db_session, camera_root)
     assert r.status_code == 404
 
 
-# ── Camera settings ──────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_camera_settings_are_masked_and_path_is_exposed(client, db_session):
     r = await client.patch("/api/v1/household/settings", json={"settings": {"camera": CAMERA}})
@@ -1185,7 +1161,6 @@ async def test_camera_change_releases_the_stream(client, db_session, monkeypatch
     assert r.status_code == 200
     assert released == [True]
 
-    # Unrelated settings must not tear down the camera stream.
     await client.patch("/api/v1/household/settings", json={"settings": {"theme": "dark"}})
     assert released == [True]
 
@@ -1202,8 +1177,6 @@ async def test_settings_broadcast_masks_the_camera_password(client, db_session, 
     assert published[-1]["settings"]["camera"]["passwordSet"] is True
     assert "password" not in published[-1]["settings"]["camera"]
 
-
-# ── Camera health monitor ──────────────────────────────────────────────────
 
 HEALTH_TOKEN = "0123456789abcdef"
 
@@ -1293,7 +1266,6 @@ async def test_health_monitor_restarts_stalled_stream(camera_root, monkeypatch):
     assert stream.restarts == 1
     assert monitor._attempts == 1
 
-    # MAX_HEALTH_RETRIES more stalls exhaust the fast budget and reset it.
     for _ in range(camera.MAX_HEALTH_RETRIES):
         assert await monitor.check(HEALTH_TOKEN) is False
     assert stream.restarts == camera.MAX_HEALTH_RETRIES + 1
@@ -1372,9 +1344,6 @@ async def test_restart_keeps_serving_the_old_stream_until_the_new_one_is_ready(
     old_path = camera.playlist_path(token)
     old_playlist = old_path.read_text(encoding="utf-8")
 
-    # The replacement ffmpeg needs a moment to reopen the camera. Until it
-    # produces output, viewers must still see the old playlist and segments —
-    # a 404 window here is what used to kill kiosk clients for good.
     started = asyncio.Event()
     new_text = "#EXTM3U\n#EXTINF:2.000000,\nseg_000002.ts\n"
 
@@ -1395,8 +1364,6 @@ async def test_restart_keeps_serving_the_old_stream_until_the_new_one_is_ready(
 
     await restart_task
 
-    # The pointer moved to the new run, but the old run stays on disk for
-    # clients that are still a few segments behind.
     assert camera.playlist_path(token) != old_path
     assert camera.playlist_path(token).read_text(encoding="utf-8") == new_text
     assert old_path.read_text(encoding="utf-8") == old_playlist
@@ -1423,8 +1390,6 @@ async def test_stream_marks_each_run_as_a_discontinuity(
     monkeypatch.setattr(camera.asyncio, "create_subprocess_exec", create)
     await camera.camera_stream.ensure(CAMERA)
     flags = captured[0][captured[0].index("-hls_flags") + 1]
-    # A restarted ffmpeg begins a fresh timestamp timeline; players need the
-    # discontinuity tag to re-probe it instead of mis-appending new frames.
     assert "discont_start" in flags
 
 
@@ -1459,8 +1424,6 @@ async def test_start_keeps_ffmpeg_output_paths_stable(
 
     assert segment_arg.parent == directory
     assert playlist_arg.parent == directory
-    # The path handed to ffmpeg is still present after the run is published,
-    # so the next segment can be opened there.
     assert playlist_arg.is_file()
     run_id = playlist_arg.stem.removeprefix("run_")
     next_segment = directory / f"seg_{run_id}_000002.ts"
@@ -1493,7 +1456,6 @@ async def test_start_failure_keeps_the_published_run(
     with pytest.raises(camera.CameraError):
         await camera.camera_stream._start_locked(source, token)
 
-    # A replacement that never produced output must not take the old run away.
     assert camera.playlist_path(token) == old_path
     assert old_path.read_text(encoding="utf-8") == old_playlist
     assert sorted(p.name for p in directory.glob("run_*.m3u8")) == [old_path.name]
@@ -1544,7 +1506,6 @@ async def test_restart_stops_local_stream_when_another_worker_owns(
 
     assert first.terminated is True
     assert started == []
-    # The real owner still needs the shared playlist and segments.
     assert directory.is_dir()
     assert redis.data[camera.OWNER_KEY] == "other-worker"
     assert camera.camera_stream._health_monitor.running is False

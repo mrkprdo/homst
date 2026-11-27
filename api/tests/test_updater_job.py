@@ -130,8 +130,6 @@ class FakeDocker:
         self.calls.append(("remove", container_id))
 
     async def health_check(self, container_id):
-        # The previous version is always healthy in this fake; only the new
-        # container's health is controlled by the test.
         return self.healthy or container_id == "old-container-id"
 
 
@@ -160,7 +158,6 @@ async def test_update_success_keeps_previous_image_and_retags_latest(tmp_path):
     assert state["held_version"] is None
     assert state["job"]["state"] == "success"
     assert ("tag", "ghcr.io/mrkprdo/homst:0.3.0", "latest") in docker.calls
-    # The old image remains available for rollback.
     assert docker.old_image_id in docker.images
 
 
@@ -206,7 +203,6 @@ async def test_manual_rollback_holds_the_newer_version(tmp_path):
     assert state["current_version"] == "0.3.0"
     assert state["held_version"] == "0.4.0"
     assert state["job"]["state"] == "success"
-    # The retained image is used instead of contacting the registry.
     assert not any(call[0] == "pull" for call in docker.calls)
 
 

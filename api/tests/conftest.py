@@ -14,7 +14,6 @@ def anyio_backend():
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def engine():
-    # Fresh in-memory DB per test — guarantees isolation
     _engine = create_async_engine("sqlite+aiosqlite://", echo=False)
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

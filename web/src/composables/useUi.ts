@@ -4,9 +4,7 @@ export type PanelView = "home" | "calendar" | "tasks" | "announcements" | "setti
 export type DrawerType = "event-detail" | "task-detail" | "member-detail" | "quick-add" | "confirm" | null
 
 export interface CalendarTarget {
-  /** ISO timestamp for the day the calendar should land on. */
   date: string
-  /** Event to open once the calendar has landed on the date. */
   eventId?: string
 }
 
@@ -14,19 +12,11 @@ export interface DrawerState {
   type: DrawerType
   id: string | null
   date: string | null
-  /** Optional start time (HH:MM) prefill — used by quick-add when opened from a timeline click */
   time: string | null
-  /**
-   * Which quick-add form to show. Nil keeps the existing behaviour based on
-   * the active panel; "event" lets a shortcut outside the calendar open the
-   * event form without navigating away.
-   */
   intent?: "event" | "task" | null
-  /** Reopen a saved Smart chat from one of its events. */
   aiConversationId?: string | null
   aiEventId?: string | null
   aiEventTitle?: string | null
-  /** Original import text, shown as the first message when no chat was saved. */
   aiSourceMessage?: string | null
 }
 
@@ -41,10 +31,6 @@ function setPanel(panel: PanelView) {
   activePanel.value = panel
 }
 
-/**
- * Jump to the calendar panel focused on a date. When `eventId` is supplied the
- * calendar opens the event detail once it has landed on the day.
- */
 function openCalendar(date: Date | string, eventId?: string) {
   const target = typeof date === "string" ? new Date(date) : date
   if (Number.isNaN(target.getTime())) return
@@ -52,7 +38,6 @@ function openCalendar(date: Date | string, eventId?: string) {
   setPanel("calendar")
 }
 
-/** CalendarView consumes the target once so a later manual visit starts fresh. */
 function consumeCalendarTarget(): CalendarTarget | null {
   const target = calendarTarget.value
   calendarTarget.value = null
@@ -76,7 +61,6 @@ function openDrawer(
   nextTick(() => { isDrawerOpen.value = true })
 }
 
-/** Open Smart import with a saved thread and the event it should update. */
 function openAiConversation(
   conversationId: string,
   eventId: string,
@@ -97,7 +81,6 @@ function openAiConversation(
   nextTick(() => { isDrawerOpen.value = true })
 }
 
-/** Start a new Smart chat focused on an event that has no saved thread. */
 function openEventChat(
   eventId: string,
   eventTitle?: string | null,

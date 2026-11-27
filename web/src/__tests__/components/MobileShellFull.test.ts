@@ -14,7 +14,6 @@ function member(id: string, color: string): Member {
   return { id, householdId: "h", name: "Alice", avatarUrl: null, color, role: "admin", joinedAt: "" }
 }
 
-/** An event on the selected day; the agenda shows past times too. */
 function event(o: Record<string, unknown> = {}): Event {
   const start = new Date()
   start.setHours(12, 0, 0, 0)
@@ -33,7 +32,6 @@ function installEvent(outcome: "accepted" | "dismissed") {
   return e
 }
 
-/** Re-render so template-only state is re-read. */
 async function forceRender(w: any) {
   await w.findAll(".ms-tab")[1].trigger("click")
   await w.findAll(".ms-tab")[0].trigger("click")
@@ -65,17 +63,15 @@ describe("MobileShell — navigation, install banner and day agenda", () => {
     const w = mount(MobileShell)
     await flushPromises()
 
-    // All-day entries sort first, then timed ones
     const items = w.findAll(".mc-event")
     expect(items.length).toBe(4)
 
     const dot = (i: number) => items[i]!.find(".mc-event-dot").attributes("style")!
-    expect(dot(0)).toContain(UNASSIGNED) // unknown member id
-    expect(dot(1)).toContain(UNASSIGNED) // no assignee at all
-    expect(dot(2)).not.toContain(UNASSIGNED) // named colour resolved to a hex
-    expect(dot(3)).toContain("rgb(177, 182, 149)") // hex colour kept as-is
+    expect(dot(0)).toContain(UNASSIGNED)
+    expect(dot(1)).toContain(UNASSIGNED)
+    expect(dot(2)).not.toContain(UNASSIGNED)
+    expect(dot(3)).toContain("rgb(177, 182, 149)")
 
-    // only timed events print a clock time
     expect(items[0]!.find(".mc-event-time").text()).toBe("All day")
     expect(items[1]!.find(".mc-event-time").text()).toBe("All day")
     expect(items[2]!.find(".mc-event-time").text()).toBe("All day")
@@ -139,7 +135,6 @@ describe("MobileShell — navigation, install banner and day agenda", () => {
     expect(promptEvent.prompt).toHaveBeenCalled()
     expect(w.find(".ms-install-banner").exists()).toBe(false)
 
-    // switching between the two views keeps the list in sync
     await w.findAll(".ms-tab")[1].trigger("click")
     expect(w.find(".mt-state").text()).toContain("No tasks yet")
     await w.findAll(".ms-tab")[0].trigger("click")

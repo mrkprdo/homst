@@ -17,20 +17,12 @@ DEFAULT_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000000"
 UPLOAD_DIR = "uploads/photos"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Scale uploaded photos down to ~720p: the longest edge is capped at this many
-# pixels (720p = 1280x720), preserving the aspect ratio. Smaller images are
-# stored untouched — we never upscale.
 MAX_PHOTO_EDGE = 1280
 
-# Hard limits enforced by the application rather than the reverse proxy.
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_PHOTOS = 200
-# 40 megapixels is far beyond any phone camera but keeps a single request from
-# allocating gigabytes while decoding. Pillow's own bomb guard is the backstop.
 MAX_PIXELS = 40_000_000
 
-# The only formats we decode and re-encode, mapped to the extension we store.
-# Everything else (GIF, SVG, HTML, text, HEIC, ...) is rejected.
 _STORED_EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
 
 

@@ -93,8 +93,6 @@ async def delete_member(member_id: UUID, db: AsyncSession = Depends(get_db)):
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Member not found")
     member_id_str = str(member_id)
-    # Null every reference before deleting. PostgreSQL enforces these foreign
-    # keys, so a member cannot be removed while any row still points at them.
     await db.execute(
         update(Calendar).where(Calendar.created_by == member_id_str).values(created_by=None)
     )

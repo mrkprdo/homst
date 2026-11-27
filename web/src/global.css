@@ -11,8 +11,6 @@ html, body {
   overflow: hidden;
 }
 
-/* Native controls, scrollbars and form widgets follow the app theme rather
-   than the OS preference (a display can be forced dark while the OS is light). */
 :root {
   color-scheme: light;
 }
@@ -35,33 +33,21 @@ body {
   height: 100%;
 }
 
-/* Touch target baseline.
-   The wall display is driven by fingers, so 48px is the default box for real
-   controls. `:where()` keeps the specificity at zero: component styles can
-   still resize a control without fighting this rule. */
 :where(button, a, [role="button"], .clickable) {
   min-width: 48px;
   min-height: 48px;
 }
 
-/* For clickable surfaces that are not buttons (rows, tiles, custom roles). */
 .touch-target {
   min-width: 48px;
   min-height: 48px;
 }
 
-/* Compact visual control: the caller owns the hit area.
-   Use only for dense chrome where a 48px box would break the composition, and
-   pair it with an expanded `::after` hit area or a larger parent target. */
 .compact-control {
   min-width: unset;
   min-height: unset;
 }
 
-/* Theme transition — only fires during the 400ms after a theme toggle.
-   Color/background/border only: animating `box-shadow` and `fill` on every
-   node repaints the whole dashboard and is the slow part on desktop Firefox
-   and Chrome at 4K. */
 .theme-transitioning *,
 .theme-transitioning *::before,
 .theme-transitioning *::after {
@@ -71,9 +57,6 @@ body {
     border-color var(--duration-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
-/* ── Low-power / Pi display mode ──
-   Applied by lib/motion.ts when running on a Pi or when reduced motion is
-   requested. Neutralizes paint-heavy CSS transitions without touching markup. */
 html.low-power *,
 html.low-power *::before,
 html.low-power *::after {
@@ -82,14 +65,10 @@ html.low-power *::after {
   scroll-behavior: auto !important;
 }
 
-/* The forced 0.01ms duration above turns infinite animations into fast flickers
-   on low-power displays. Restore the intended durations for the ones that matter. */
 html.low-power .is-editing .widget {
   animation-duration: 3.2s !important;
 }
 
-/* Spotify vinyl — slow, steady record spin, shared by the card and the
-   full-app backdrop so they stay in lockstep (see lib/vinyl.ts). */
 :root {
   --vinyl-spin-duration: 20s;
 }
@@ -100,15 +79,10 @@ html.low-power .now-playing__disc {
   animation: none !important;
 }
 
-/* Keep the now-playing equalizer readable instead of a 0.01ms flicker. */
 html.low-power .spotify-equalizer span {
   animation-duration: 0.6s !important;
 }
 
-/* ── Cheap compositor (ARM Linux / software WebRender) ──
-   Firefox on a Pi rasterises large layers on the CPU. Continuous full-screen
-   effects then starve the compositor: the page stutters while a core sits
-   idle. Keep the layout, drop the effects that cannot be blended cheaply. */
 html.cheap-compositor .vinyl-disc,
 html.cheap-compositor .spotify-disc,
 html.cheap-compositor .now-playing__disc {
@@ -126,23 +100,17 @@ html.cheap-compositor .lyrics::before {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Blur is the expensive part of these filters; a plain darkening keeps the
-   letterbox behind contained photos and the camera still readable. */
 html.cheap-compositor .photos-backdrop,
 html.cheap-compositor .camera-backdrop {
   filter: brightness(0.45) saturate(0.9) !important;
 }
 
-/* A theme swap must not schedule a transition on every node at once. */
 html.cheap-compositor .theme-transitioning *,
 html.cheap-compositor .theme-transitioning *::before,
 html.cheap-compositor .theme-transitioning *::after {
   transition: none !important;
 }
 
-/* ── Now-playing vinyl backdrop ──
-   SpotifyBackdrop adds this class to <html> while a record spins, so every
-   shell can drop its opaque paint and let the cover show through. */
 html.vinyl-backdrop .app-root,
 html.vinyl-backdrop .onboarding-root,
 html.vinyl-backdrop .mobile-shell,
@@ -151,7 +119,6 @@ html.dark.vinyl-backdrop .main-panel {
   background-color: transparent;
 }
 
-/* Sidebar and phone tab bar become frosted so the record reads edge to edge. */
 html.vinyl-backdrop .app-nav,
 html.vinyl-backdrop .ms-nav {
   background: color-mix(in srgb, var(--color-bgSurface) 76%, transparent) !important;
@@ -159,15 +126,10 @@ html.vinyl-backdrop .ms-nav {
   -webkit-backdrop-filter: blur(18px) saturate(130%);
 }
 
-/* Cards turn translucent so the record is visible between and through them.
-   No backdrop-filter here: blurring every card over a spinning disc forces the
-   compositor to re-sample the backdrop each frame on Chrome and Firefox. The
-   tint plus the veil below keeps text legible at a fraction of the cost. */
 html.vinyl-backdrop .ui-card {
   background: color-mix(in srgb, var(--color-bgSurface) 72%, transparent) !important;
 }
 
-/* Frosted glass is pretty but costly on a Pi; fall back to a flat tint there. */
 html.low-power.vinyl-backdrop .ui-card,
 html.low-power.vinyl-backdrop .app-nav,
 html.low-power.vinyl-backdrop .ms-nav {
@@ -176,9 +138,6 @@ html.low-power.vinyl-backdrop .ms-nav {
   background: color-mix(in srgb, var(--color-bgSurface) 88%, transparent) !important;
 }
 
-/* The calendar timeline has no card surface to fall back on. Paint the same
-   panel tint it normally inherits so the grid stays legible over the record.
-   The toolbar is left unpainted so the record shows through behind it. */
 html.vinyl-backdrop .month-view,
 html.vinyl-backdrop .week-view,
 html.vinyl-backdrop .day-view {
@@ -197,8 +156,6 @@ html.dark.vinyl-backdrop .day-view {
   transition: background-color 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-
-/* ── Scrollbars — thin, rounded, follows light/dark tokens ── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -216,13 +173,11 @@ html.dark.vinyl-backdrop .day-view {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
-/* Firefox */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
 }
 
-/* ── Accent-tinted clay shadow (follows selected accent color) ── */
 .clay-shadow-accent {
   box-shadow:
     0 4px 0 0 var(--shadow-accent-lip),

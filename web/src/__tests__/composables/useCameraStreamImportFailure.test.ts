@@ -2,8 +2,6 @@ import { describe, it, expect, vi } from "vitest"
 import { defineComponent, h, nextTick, ref } from "vue"
 import { mount } from "@vue/test-utils"
 
-// Simulate the hls.js chunk failing to load (offline boot, stale service
-// worker, blocked asset). The composable must report it and allow a retry.
 vi.mock("hls.js", () => Promise.reject(new Error("chunk load failed")))
 
 import { useCameraStream } from "@/composables/useCameraStream"

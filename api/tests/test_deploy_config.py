@@ -58,8 +58,6 @@ def test_prod_config_sets_security_headers(path: Path):
     assert 'add_header Cross-Origin-Opener-Policy "same-origin" always;' in config
     assert f'add_header Content-Security-Policy "{PROD_CSP}" always;' in config
 
-    # The directives that matter most, called out on their own so a rewrite
-    # cannot silently weaken them.
     assert "frame-ancestors 'none'" in PROD_CSP
     assert "script-src 'self'" in PROD_CSP
 
@@ -84,8 +82,6 @@ def test_camera_hls_bypasses_the_api_rate_limit(path: Path):
     config = _read(path)
     camera_hls = _location_block(config, "/api/v1/camera/hls/")
 
-    # HLS polling and segment downloads must not share the API's per-IP
-    # request/connection limit; a retry burst would otherwise return 429s.
     assert "limit_req" not in camera_hls
     assert "limit_conn" not in camera_hls
     assert "proxy_buffering off;" in camera_hls
@@ -97,8 +93,6 @@ def test_uploads_location_is_isolated(path: Path):
     config = _read(path)
     uploads = _location_block(config, "/uploads/")
 
-    # A location with any add_header stops inheriting the server-level ones,
-    # so each header has to be present here explicitly.
     assert 'add_header Content-Security-Policy "default-src \'none\'; sandbox" always;' in uploads
     assert 'add_header X-Content-Type-Options "nosniff" always;' in uploads
     assert 'add_header X-Frame-Options "DENY" always;' in uploads
@@ -109,17 +103,12 @@ def test_uploads_location_is_isolated(path: Path):
 def test_prod_config_redirects_plain_http_to_https(path: Path):
     config = _read(path)
 
-    # A plain http:// request to the TLS port would otherwise get a bare 400
-    # ("The plain HTTP request was sent to an HTTPS port"). nginx exposes that
-    # as the internal 497 status, which should become a redirect instead.
     assert "error_page 497 =301 https://" in config
 
 
 def test_dev_config_redirects_plain_http_to_https():
     config = _read(DEV_CONFIG)
 
-    # Dev is published on 8999 but listens on 8443, so the redirect has to
-    # keep the host:port the browser asked for rather than $server_port.
     assert 'error_page 497 =301 https://$http_host$request_uri;' in config
 
 
@@ -136,9 +125,8 @@ def test_dev_config_allows_vite_hmr_but_keeps_headers():
         line for line in config.splitlines() if "add_header Content-Security-Policy" in line
     )
     assert "frame-ancestors 'none'" in csp_line
-    assert "'unsafe-eval'" in csp_line  # Vite evaluates modules in dev
-    assert "ws:" in csp_line and "wss:" in csp_line  # HMR websocket
+    assert "'unsafe-eval'" in csp_line
+    assert "ws:" in csp_line and "wss:" in csp_line
     assert "img-src 'self' data: blob: https:" in csp_line
 
-    # Prod rate limiting only ever applies to the prod configs.
     assert "limit_req_zone" not in config

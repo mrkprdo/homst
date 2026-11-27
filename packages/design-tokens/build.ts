@@ -1,17 +1,10 @@
-// Build script — generates web/public/tokens.css + web/public/shadows.css,
-// the files the app actually serves (linked from web/index.html).
 import { generateCSS } from "./src/web"
 import { shadowLip, palette, space } from "./src/tokens"
 
-// Sole output location — resolved from this file so `bun build.ts` works
-// from any cwd. Never edit the generated files by hand.
 const OUT_DIR = `${import.meta.dir}/../../web/public`
 
-// ── Generate tokens.css ─────────────────────────────────
 const css = generateCSS()
 await Bun.write(`${OUT_DIR}/tokens.css`, css)
-
-// ── Generate shadows.css ────────────────────────────────
 
 function alpha(hex: string, a: number): string {
   const r = parseInt(hex.slice(1, 3), 16)
@@ -68,7 +61,6 @@ function generateShadows(): string {
     out += "\n"
   }
 
-  // Base clay surface classes (no color — use with CSS vars)
   out += "/* ── Base clay surfaces ── */\n"
   out += ".clay-surface {\n"
   out += "  background: linear-gradient(165deg,\n"
@@ -78,7 +70,6 @@ function generateShadows(): string {
   out += "  );\n"
   out += "}\n\n"
 
-  // Interactive clay base
   out += ".clay-interactive {\n"
   out += "  transition: all var(--duration-base, 200ms) cubic-bezier(0.25, 0.46, 0.45, 0.94);\n"
   out += "}\n"
@@ -87,7 +78,6 @@ function generateShadows(): string {
   out += "  transition: all 80ms ease-in;\n"
   out += "}\n\n"
 
-  // Dark mode adjustments
   out += "/* ── Dark mode overrides ── */\n"
   out += ".dark .clay-interactive:active {\n"
   out += "  transform: translateY(2px) scale(0.99);\n"

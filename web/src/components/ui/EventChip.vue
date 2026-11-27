@@ -3,7 +3,7 @@ import { ref, computed } from "vue"
 import { animate, springs } from "@/lib/motion"
 
 const props = defineProps<{
-  color?: string  // hex color; defaults to sage
+  color?: string
   title: string
   time?: string
   allDay?: boolean
@@ -36,9 +36,6 @@ function onPointerDown(e: PointerEvent) {
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
   }
   pressed = true
-  // Promote only while a press animation is actually running. Leaving
-  // will-change on every chip promoted ~90 layers in the month grid, and each
-  // one had to be re-rastered when the lens resized the cells.
   chipEl.value.style.willChange = "transform"
   animate(chipEl.value, { scale: 0.93, duration: 60, ease: "outQuart" })
 }
@@ -98,9 +95,6 @@ function onPointerUp() {
   transition: box-shadow var(--duration-fast), z-index 0s;
 }
 
-/* Hover lift is a pointer affordance. A touchscreen cannot hover, but browsers
-   emulate it after a tap — leaving the chip raised until the next tap. Keep the
-   lift for real pointers only. */
 @media (hover: hover) {
   .event-chip:hover {
     transform: translateY(-1px);
