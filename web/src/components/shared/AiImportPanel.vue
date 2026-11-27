@@ -30,7 +30,7 @@ import { useEvents } from "@/composables/useEvents"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiInput from "@/components/ui/UiInput.vue"
 import UiSelect from "@/components/ui/UiSelect.vue"
-import { reminderLabel } from "@/utils/reminders"
+import { REMINDER_OPTIONS, reminderLabel, reminderMinutesFromValue } from "@/utils/reminders"
 
 const props = defineProps<{
   memberNames?: Record<string, string>
@@ -1227,6 +1227,7 @@ interface EditBuffer {
   end: string
   allDay: boolean
   assigneeId: string
+  reminder: string
 }
 
 const editingIndex = ref<number | null>(null)
@@ -1310,6 +1311,7 @@ function openEditor(index: number) {
     end: draft.endAt ? timeInputValue(draft.endAt) : "",
     allDay: draft.allDay,
     assigneeId: draft.assigneeId ?? "",
+    reminder: draft.reminderMinutes != null ? String(draft.reminderMinutes) : "",
   }
   void nextTick(() => {
     const item = rootEl.value?.querySelector<HTMLElement>(".ai-item--editing")
@@ -1356,6 +1358,7 @@ function saveEdit() {
   draft.endAt = end ? end.toISOString() : null
   draft.allDay = buffer.allDay
   draft.assigneeId = buffer.assigneeId || null
+  draft.reminderMinutes = reminderMinutesFromValue(buffer.reminder)
   // A person checked this event, so the low-confidence flag no longer applies.
   draft.confidence = 1
   // Moving the draft resolves the conflict on its own; don't remove the old
@@ -1869,6 +1872,18 @@ function outcomeMessage(turn: Turn): string {
                             <label :for="`${uid}-edit-end`" class="ai-edit-label">End</label>
                             <UiInput :id="`${uid}-edit-end`" v-model="editBuffer.end" type="time" />
                           </div>
+                        </div>
+                        <div class="ai-edit-field">
+                          <label :for="`${uid}-edit-reminder`" class="ai-edit-label">Remind me</label>
+                          <UiSelect :id="`${uid}-edit-reminder`" v-model="editBuffer.reminder">
+                            <option
+                              v-for="option in REMINDER_OPTIONS"
+                              :key="option.value"
+                              :value="option.value"
+                            >
+                              {{ option.label }}
+                            </option>
+                          </UiSelect>
                         </div>
                         <p v-if="editError" class="ai-edit-error" role="alert">
                           <PhWarning :size="14" weight="fill" aria-hidden="true" />

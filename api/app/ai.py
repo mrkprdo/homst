@@ -55,6 +55,9 @@ MAX_EVENTS = 60
 MAX_TITLE_CHARS = 255
 MAX_DESCRIPTION_CHARS = 20_000
 MAX_REMINDER_MINUTES = 10_080
+# Smart import sets a reminder on every new event unless the message asks for a
+# specific lead or for none. One hour is the agent's sensible default.
+AGENT_DEFAULT_REMINDER_MINUTES = 60
 MAX_RAW_CHARS = 20_000
 MAX_QUESTIONS = 3
 MAX_QUESTION_CHARS = 300
@@ -538,8 +541,11 @@ Rules for events:
 - If no year is given, choose the next occurrence on or after today.
 - Date-only items are all-day: all_day true, start_at at 00:00 local time,
   end_at null. If a timed event has no end, end_at is one hour after start_at.
-- reminder_minutes is the number of minutes before start_at, only when the
-  message explicitly asks for a reminder; otherwise null.
+- reminder_minutes is the number of minutes before start_at. Leave it null
+  unless the message asks for a specific reminder: the app then applies the
+  household's default reminder (one hour if none is set). Use 0 for "at start
+  time" and -1 only when the household explicitly says they do not want a
+  reminder.
 - Use source_weekday for every dated row. If the printed weekday does not match
   the date, keep the printed date, add a note to issues, and lower confidence.
   Never silently correct a date.
@@ -1323,9 +1329,19 @@ def _requested_assignee(raw: dict) -> str | None:
 
 
 def _validate_event(
-    raw: Any, tz: Any, members: list[tuple[str, str]]
+    raw: Any,
+    tz: Any,
+    members: list[tuple[str, str]],
+    *,
+    default_reminder: int | None = None,
 ) -> tuple[dict | None, bool, list[str]]:
-    """Return ``(draft, recurrence_was_stripped, issues)`` for one model event."""
+    """Return ``(draft, recurrence_was_stripped, issues)`` for one model event.
+
+    ``default_reminder`` fills in a missing reminder: the household default for
+    a new event, or the current value when Smart is editing an existing event.
+    A model answer of ``-1`` means the household explicitly asked for no
+    reminder, so it is kept empty.
+    """
     if not isinstance(raw, dict):
         return None, False, []
     title = raw.get("title")
@@ -1346,9 +1362,21 @@ def _validate_event(
     if not isinstance(description, str):
         description = ""
 
-    reminder = _coerce_int(raw.get("reminder_minutes"))
-    if reminder is not None and not (0 <= reminder <= MAX_REMINDER_MINUTES):
-        reminder = None
+    raw_reminder = raw.get("reminder_minutes")
+    if raw_reminder is None:
+        reminder = default_reminder
+    else:
+        wanted_reminder = _coerce_int(raw_reminder)
+        if wanted_reminder == -1:
+            # Explicit opt-out, so never fall back to a configured default.
+            reminder = None
+        elif (
+            wanted_reminder is not None
+            and 0 <= wanted_reminder <= MAX_REMINDER_MINUTES
+        ):
+            reminder = wanted_reminder
+        else:
+            reminder = None
 
     issues: list[str] = []
     source_weekday = raw.get("source_weekday")
@@ -1498,7 +1526,7 @@ def _validate_update(
 
     if "reminder_minutes" in raw:
         value = raw.get("reminder_minutes")
-        if value is None:
+        if value is None or _coerce_int(value) == -1:
             reminder = None
             if base.get("reminder_minutes") is not None:
                 changes["reminder_minutes"] = None
@@ -1641,6 +1669,7 @@ def validate_payload_ex(
     *,
     busy: list[dict] | None = None,
     clarifications: list[dict] | None = None,
+    default_reminder: int | None = None,
 ) -> tuple[list[dict], int, list[str], list[dict], list[dict]]:
     """Turn the model's answer into safe drafts plus questions and conflicts."""
     events = payload.get("events")
@@ -1661,7 +1690,9 @@ def validate_payload_ex(
     assignee_issues = 0
     assignee_questions: list[dict] = []
     for raw in events[:MAX_EVENTS]:
-        draft, was_stripped, issues = _validate_event(raw, tz, members)
+        draft, was_stripped, issues = _validate_event(
+            raw, tz, members, default_reminder=default_reminder
+        )
         if draft is None:
             continue
         key = (draft["title"].casefold(), draft["start_at"])
@@ -1830,14 +1861,26 @@ def _result_payload(
     busy: list[dict] | None = None,
     clarifications: list[dict] | None = None,
     focus_event: dict | None = None,
+    default_reminder_minutes: int | None = None,
 ) -> dict:
     payload = _parse_json_answer(answer)
+    # A new event starts from the household default reminder when one is set,
+    # otherwise the agent's one-hour default. When editing one focused event,
+    # keep the reminder it already had unless the model changes or explicitly
+    # clears it.
+    if focus_event is not None:
+        default_reminder = focus_event.get("reminder_minutes")
+    elif default_reminder_minutes is not None:
+        default_reminder = default_reminder_minutes
+    else:
+        default_reminder = AGENT_DEFAULT_REMINDER_MINUTES
     drafts, skipped, warnings, questions, conflicts = validate_payload_ex(
         payload,
         tz,
         members,
         busy=busy,
         clarifications=clarifications,
+        default_reminder=default_reminder,
     )
     updates, deletes, action_warnings = validate_actions(
         payload,
@@ -1899,6 +1942,7 @@ async def parse_schedule(
     clarifications: list[dict] | None = None,
     history: list[dict] | None = None,
     focus_event: dict | None = None,
+    default_reminder_minutes: int | None = None,
 ) -> dict:
     """Ask the model for event drafts. Nothing is written to the database."""
     url, headers, body = _prepare_schedule(
@@ -1942,6 +1986,7 @@ async def parse_schedule(
         busy=busy,
         clarifications=clarifications,
         focus_event=focus_event,
+        default_reminder_minutes=default_reminder_minutes,
     )
 
 
@@ -1958,6 +2003,7 @@ async def stream_schedule(
     clarifications: list[dict] | None = None,
     history: list[dict] | None = None,
     focus_event: dict | None = None,
+    default_reminder_minutes: int | None = None,
 ) -> AsyncIterator[dict]:
     """Stream reasoning/content deltas, then one final ``result`` event.
 
@@ -2020,5 +2066,6 @@ async def stream_schedule(
             busy=busy,
             clarifications=clarifications,
             focus_event=focus_event,
+            default_reminder_minutes=default_reminder_minutes,
         ),
     }

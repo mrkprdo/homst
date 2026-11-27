@@ -144,6 +144,21 @@ async def _load_focus_event(
     }
 
 
+def _default_reminder(household_settings: dict) -> int | None:
+    """The household's default reminder lead, when it is a usable value."""
+    notifications = household_settings.get("notifications")
+    if not isinstance(notifications, dict):
+        return None
+    minutes = notifications.get("defaultReminderMinutes")
+    if (
+        isinstance(minutes, int)
+        and not isinstance(minutes, bool)
+        and 0 <= minutes <= ai.MAX_REMINDER_MINUTES
+    ):
+        return minutes
+    return None
+
+
 async def _load_context(req: AiParseRequest, db: AsyncSession):
     """Resolve the timezone, members, nearby events and edit target."""
     household = await db.get(Household, DEFAULT_HOUSEHOLD_ID)
@@ -162,7 +177,14 @@ async def _load_context(req: AiParseRequest, db: AsyncSession):
         exclude_event_id=str(req.focus_event_id) if req.focus_event_id else None,
     )
     focus_event = await _load_focus_event(req, db, members, tz)
-    return tz, tz_label, members, busy, focus_event
+    return (
+        tz,
+        tz_label,
+        members,
+        busy,
+        focus_event,
+        _default_reminder(household_settings),
+    )
 
 
 async def _require_config(db: AsyncSession) -> dict:
@@ -319,7 +341,9 @@ async def parse_schedule(
 ):
     """Parse text/screenshot into drafts. Creating the events stays explicit."""
     config = await _require_config(db)
-    tz, tz_label, members, busy, focus_event = await _load_context(req, db)
+    tz, tz_label, members, busy, focus_event, default_reminder = await _load_context(
+        req, db
+    )
     try:
         return await ai.parse_schedule(
             config,
@@ -332,6 +356,7 @@ async def parse_schedule(
             clarifications=[item.model_dump() for item in req.clarifications],
             history=[item.model_dump() for item in req.history],
             focus_event=focus_event,
+            default_reminder_minutes=default_reminder,
         )
     except ai.AiError as exc:
         raise _http_error(exc) from exc
@@ -345,7 +370,9 @@ async def parse_schedule_stream(
     config = await _require_config(db)
     if not req.text.strip() and not req.image:
         raise HTTPException(status_code=422, detail="Paste an email or attach a screenshot")
-    tz, tz_label, members, busy, focus_event = await _load_context(req, db)
+    tz, tz_label, members, busy, focus_event, default_reminder = await _load_context(
+        req, db
+    )
 
     async def event_generator():
         try:
@@ -360,6 +387,7 @@ async def parse_schedule_stream(
                 clarifications=[item.model_dump() for item in req.clarifications],
                 history=[item.model_dump() for item in req.history],
                 focus_event=focus_event,
+                default_reminder_minutes=default_reminder,
             ):
                 yield {"event": event["type"], "data": json.dumps(event)}
         except ai.AiError as exc:

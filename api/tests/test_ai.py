@@ -542,7 +542,12 @@ async def test_parse_text_returns_validated_drafts(client, monkeypatch):
     monkeypatch.setattr(settings, "opencode_api_key", "")
     await client.patch(
         "/api/v1/household/settings",
-        json={"settings": {"timezone": "America/Toronto"}},
+        json={
+            "settings": {
+                "timezone": "America/Toronto",
+                "notifications": {"defaultReminderMinutes": 15},
+            }
+        },
     )
     member = (
         await client.post("/api/v1/household/members", json={"name": "Alice"})
@@ -599,6 +604,8 @@ async def test_parse_text_returns_validated_drafts(client, monkeypatch):
     assert second["all_day"] is True
     assert second["end_at"] is None
     assert second["confidence"] == 0.4
+    # No reminder in the source: the household default fills it in.
+    assert second["reminder_minutes"] == 15
 
     assert captured["url"].endswith("/inference/openai/v1/chat/completions")
     assert captured["json"]["model"] == settings.opencode_model
@@ -606,6 +613,21 @@ async def test_parse_text_returns_validated_drafts(client, monkeypatch):
     assert captured["json"]["messages"][1]["content"].startswith("Standup every Monday")
     assert "Alice" in captured["json"]["messages"][0]["content"]
     assert captured["headers"]["User-Agent"].startswith("homst/")
+
+
+@pytest.mark.asyncio
+async def test_parse_defaults_to_a_one_hour_reminder(client, monkeypatch):
+    monkeypatch.setattr(settings, "opencode_api_key", "")
+    await configure(client)
+    content = json.dumps(
+        {"events": [{"title": "Dentist", "start_at": "2026-05-04T09:30:00"}]}
+    )
+    fake_client(monkeypatch, response=completion(content))
+    response = await client.post(
+        "/api/v1/ai/parse", json={"text": "Dentist Monday at 9:30"}
+    )
+    assert response.status_code == 200
+    assert response.json()["events"][0]["reminder_minutes"] == 60
 
 
 @pytest.mark.asyncio
@@ -1141,6 +1163,55 @@ def test_validate_event_edges():
     )
     assert event["end_at"] == "2026-01-01T10:00:00+00:00"
     assert event["reminder_minutes"] == 30
+
+
+def test_validate_event_applies_or_skips_the_default_reminder():
+    tz = timezone.utc
+    base = {"title": "T", "start_at": "2026-01-01T09:00:00Z"}
+
+    # A missing reminder takes the household default.
+    event, _, _ = ai._validate_event(base, tz, [], default_reminder=30)
+    assert event["reminder_minutes"] == 30
+
+    # An explicit reminder always wins over the default.
+    event, _, _ = ai._validate_event(
+        {**base, "reminder_minutes": 60}, tz, [], default_reminder=30
+    )
+    assert event["reminder_minutes"] == 60
+
+    # -1 means the household asked for no reminder, even with a default set.
+    event, _, _ = ai._validate_event(
+        {**base, "reminder_minutes": -1}, tz, [], default_reminder=30
+    )
+    assert event["reminder_minutes"] is None
+
+
+def test_result_payload_defaults_new_events_and_keeps_a_focused_reminder():
+    tz = timezone.utc
+    answer = json.dumps(
+        {"events": [{"title": "T", "start_at": "2026-01-01T09:00:00Z"}]}
+    )
+
+    new = ai._result_payload(
+        {"model": "m"}, answer, "", tz, [], default_reminder_minutes=12
+    )
+    assert new["events"][0]["reminder_minutes"] == 12
+
+    # With no household default, the agent still sets a one-hour reminder.
+    fallback = ai._result_payload({"model": "m"}, answer, "", tz, [])
+    assert fallback["events"][0]["reminder_minutes"] == 60
+
+    # Editing one event keeps its existing reminder instead of the default.
+    focused = ai._result_payload(
+        {"model": "m"},
+        answer,
+        "",
+        tz,
+        [],
+        focus_event={"reminder_minutes": 45},
+        default_reminder_minutes=12,
+    )
+    assert focused["events"][0]["reminder_minutes"] == 45
 
 
 def test_unjustified_recurrence_is_stripped():

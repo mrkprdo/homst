@@ -1826,4 +1826,24 @@ describe("AiImportPanel", () => {
     const holiday = addedEvents().find(body => body.title === "Holiday")
     expect(holiday!.assignee_id).toBe("m2")
   })
+
+  it("edits the reminder on a draft", async () => {
+    install(handlerWith())
+    const wrapper = await mountPanel()
+    await send(wrapper, "Standup")
+
+    await wrapper.findAll(".ai-item-edit")[0]!.trigger("click")
+    const select = wrapper.findAll(".ai-item--editing select")[1]!
+    expect((select.element as HTMLSelectElement).value).toBe("10")
+    expect(select.findAll("option").map(option => option.text())).toContain("30 minutes before")
+    await select.setValue("30")
+    await findButton(wrapper, "Save changes")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("30 minutes before")
+    await findButton(wrapper, "Add 2 events")!.trigger("click")
+    await flushPromises()
+    const standup = addedEvents().find(body => body.title === "Team standup")
+    expect(standup!.reminder_minutes).toBe(30)
+  })
 })

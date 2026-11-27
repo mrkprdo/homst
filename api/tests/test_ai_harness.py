@@ -651,6 +651,10 @@ def test_validate_update_covers_every_field_and_bad_value():
     action, _ = ai._validate_update({"reminder_minutes": 60}, base, TZ, MEMBERS)
     assert action is not None and action["changes"]["reminder_minutes"] == 60
 
+    action, issues = ai._validate_update({"reminder_minutes": -1}, base, TZ, MEMBERS)
+    assert action is not None and action["changes"]["reminder_minutes"] is None
+    assert issues == []
+
     action, _ = ai._validate_update({"assignee": "Alice Smith"}, base, TZ, MEMBERS)
     assert action is not None and action["changes"]["assignee_id"] == "m-alice"
 
