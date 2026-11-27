@@ -99,10 +99,14 @@ let clockTimer: ReturnType<typeof setInterval> | null = null
  * puts the line change on the beat instead of just after it. */
 const LINE_LEAD_MS = 120
 
+/** Line timestamps are seconds apart; 5 Hz is smooth enough and halves the
+ * wakeups compared with the old 10 Hz clock. */
+const CLOCK_TICK_MS = 200
+
 function startClock(): void {
   if (clockTimer !== null) return
   clock.value = Date.now()
-  clockTimer = setInterval(() => { clock.value = Date.now() }, 100)
+  clockTimer = setInterval(() => { clock.value = Date.now() }, CLOCK_TICK_MS)
 }
 
 function stopClock(): void {

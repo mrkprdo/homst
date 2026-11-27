@@ -51,6 +51,16 @@ const hls = vi.hoisted(() => {
 
 vi.mock("hls.js", () => ({ default: hls.FakeHls }))
 
+/**
+ * Let the composable finish its asynchronous hls.js import. A plain nextTick()
+ * only flushes Vue's queue; the dynamic import resolves on a later microtask.
+ */
+function settle(): Promise<void> {
+  let pending = nextTick()
+  for (let i = 0; i < 20; i += 1) pending = pending.then(() => undefined)
+  return pending.then(() => nextTick())
+}
+
 function mountStream(
   path: Ref<string | null>,
   withVideo = true,
@@ -96,13 +106,13 @@ describe("useCameraStream", () => {
     expect(api.status.value).toBe("idle")
 
     path.value = "/api/v1/camera/hls/token/index.m3u8"
-    await nextTick()
+    await settle()
     expect(api.status.value).toBe("loading")
     expect(hls.instances).toHaveLength(1)
     wrapper.unmount()
 
     const noVideo = mountStream(ref("/api/v1/camera/hls/token/index.m3u8"), false)
-    await nextTick()
+    await settle()
     expect(noVideo.api.status.value).toBe("idle")
     noVideo.wrapper.unmount()
   })
@@ -114,7 +124,7 @@ describe("useCameraStream", () => {
 
     const path = ref("/both.m3u8")
     const { wrapper } = mountStream(path)
-    await nextTick()
+    await settle()
 
     expect(hls.instances).toHaveLength(1)
     expect(hls.instances[0].loaded).toBe("/both.m3u8")
@@ -131,8 +141,7 @@ describe("useCameraStream", () => {
 
     const path = ref("/native.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
-    await Promise.resolve()
+    await settle()
 
     expect(api.status.value).toBe("playing")
     const video = wrapper.find("video").element as HTMLVideoElement
@@ -141,10 +150,35 @@ describe("useCameraStream", () => {
     wrapper.unmount()
   })
 
+  it("takes the native path without loading hls.js when MSE is unavailable", async () => {
+    // hls.js cannot run at all without Media Source Extensions, so the chunk
+    // must not be downloaded on those browsers.
+    const descriptor = Object.getOwnPropertyDescriptor(window, "MediaSource")
+    Object.defineProperty(window, "MediaSource", {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    })
+    vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("maybe")
+
+    try {
+      const path = ref("/native-no-mse.m3u8")
+      const { wrapper, api } = mountStream(path)
+      await settle()
+
+      expect(api.status.value).toBe("playing")
+      expect(hls.instances).toHaveLength(0)
+      expect(wrapper.find("video").element.getAttribute("src")).toBe("/native-no-mse.m3u8")
+      wrapper.unmount()
+    } finally {
+      if (descriptor) Object.defineProperty(window, "MediaSource", descriptor)
+    }
+  })
+
   it("uses hls.js and retries a transient network error", async () => {
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     expect(api.status.value).toBe("loading")
     const instance = hls.instances[0]
@@ -181,7 +215,7 @@ describe("useCameraStream", () => {
     const path = ref("/live.m3u8")
     const onFreeze = vi.fn()
     const { wrapper, api } = mountStream(path, true, { onFreeze })
-    await nextTick()
+    await settle()
 
     const instance = playingInstance(api)
     instance.handlers["error"]!("error", {
@@ -198,7 +232,7 @@ describe("useCameraStream", () => {
   it("ignores a segment that was pruned from the live window", async () => {
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     const instance = playingInstance(api)
     // A lagging client can ask for a segment the server already deleted. That is
@@ -219,7 +253,7 @@ describe("useCameraStream", () => {
   it("shows the server's camera error detail", async () => {
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     hls.instances[0].handlers["error"]!("error", {
       fatal: true,
@@ -238,7 +272,7 @@ describe("useCameraStream", () => {
     ]
     for (const item of cases) {
       const { wrapper, api } = mountStream(ref("/live.m3u8"))
-      await nextTick()
+      await settle()
       hls.instances.at(-1)!.handlers["error"]!("error", {
         fatal: true,
         type: "network",
@@ -252,7 +286,7 @@ describe("useCameraStream", () => {
   it("recovers a media error, then reports it", async () => {
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     const instance = hls.instances[0]
     instance.handlers["error"]!("error", { fatal: true, type: "media" })
@@ -273,7 +307,7 @@ describe("useCameraStream", () => {
   it("reports an unrecoverable hls.js error", async () => {
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     hls.instances[0].handlers["error"]!("error", { fatal: true, type: "other" })
     expect(api.status.value).toBe("error")
@@ -285,7 +319,7 @@ describe("useCameraStream", () => {
     hls.FakeHls.supported = false
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     expect(api.status.value).toBe("error")
     expect(api.error.value).toBe("This browser cannot play HLS video.")
@@ -296,7 +330,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
     expect(api.status.value).toBe("loading")
 
     await vi.advanceTimersByTimeAsync(15_000)
@@ -311,7 +345,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     const instance = playingInstance(api)
     instance.handlers["error"]!("error", {
@@ -353,7 +387,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
     const frames = stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
 
     const instance = playingInstance(api)
@@ -377,7 +411,7 @@ describe("useCameraStream", () => {
   it("cancels and ignores frame callbacks from a torn-down pipeline", async () => {
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
     const el = wrapper.find("video").element as HTMLVideoElement
     let frameCb: (() => void) | null = null
     const cancelled: number[] = []
@@ -392,7 +426,7 @@ describe("useCameraStream", () => {
     playingInstance(api)
     expect(frameCb).not.toBeNull()
     api.retry()
-    await nextTick()
+    await settle()
     expect(cancelled).toEqual([7])
 
     // A stale callback from the old pipeline must not report progress or
@@ -412,7 +446,7 @@ describe("useCameraStream", () => {
     try {
       const path = ref("/live.m3u8")
       const { wrapper, api } = mountStream(path)
-      await nextTick()
+      await settle()
       stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
 
       const instance = playingInstance(api)
@@ -432,7 +466,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
     const frames = stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
 
     const instance = playingInstance(api)
@@ -449,7 +483,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
     stubRenderFrames(wrapper.find("video").element as HTMLVideoElement)
 
     playingInstance(api)
@@ -476,7 +510,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     const instance = playingInstance(api)
 
@@ -496,7 +530,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     playingInstance(api)
 
@@ -515,7 +549,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     playingInstance(api)
 
@@ -537,7 +571,7 @@ describe("useCameraStream", () => {
     vi.useFakeTimers()
     const path = ref("/live.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
 
     playingInstance(api)
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -547,7 +581,7 @@ describe("useCameraStream", () => {
 
     const instancesBefore = hls.instances.length
     api.retry()
-    await nextTick()
+    await settle()
     expect(hls.instances.length).toBe(instancesBefore + 1)
     expect(api.status.value).toBe("loading")
 
@@ -560,7 +594,7 @@ describe("useCameraStream", () => {
     vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("maybe")
     const path = ref("/native.m3u8")
     const { wrapper, api } = mountStream(path)
-    await nextTick()
+    await settle()
     expect(api.status.value).toBe("playing")
 
     vi.mocked(HTMLMediaElement.prototype.load).mockClear()

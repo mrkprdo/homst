@@ -61,6 +61,11 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // The dev server is intentionally LAN-bound (see docker-compose.dev.yml),
+    // and devices often reach it by hostname/mDNS rather than a raw IP. Vite's
+    // DNS-rebinding guard rejects unknown Host headers, so allow them here.
+    // This only affects the Vite dev server, never the production nginx.
+    allowedHosts: true,
     proxy: {
       "/api": {
         target: apiTarget,

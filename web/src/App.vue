@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue"
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent, h, type Component } from "vue"
 import { useRoute } from "vue-router"
 import { PhCloudSlash } from "@phosphor-icons/vue"
 import { useUi } from "@/composables/useUi"
 import type { PanelView } from "@/composables/useUi"
 import { readHouseholdComplete, writeHouseholdComplete } from "@/lib/householdCache"
-import { useSettings, applyHouseholdSettings, isApplyingRemoteSettings } from "@/composables/useSettings"
+import { useSettings, applyHouseholdSettings, isApplyingRemoteSettings, accentPalette } from "@/composables/useSettings"
 import { useStream } from "@/composables/useStream"
 import { useEvents } from "@/composables/useEvents"
 import { useAnnouncements } from "@/composables/useAnnouncements"
@@ -27,12 +27,9 @@ import HudAlert from "@/components/shared/HudAlert.vue"
 import LyricsOverlay from "@/components/shared/LyricsOverlay.vue"
 import UpdatePrompt from "@/components/shared/UpdatePrompt.vue"
 import SpotifyBackdrop from "@/components/shared/SpotifyBackdrop.vue"
-import { animate, ease, springs } from "@/lib/motion"
+import UiLoader from "@/components/ui/UiLoader.vue"
+import { animate, ease, springs, isCheapCompositor } from "@/lib/motion"
 import HomeView from "@/components/home/HomeView.vue"
-import CalendarView from "@/components/calendar/CalendarView.vue"
-import KanbanView from "@/components/kanban/KanbanView.vue"
-import AnnouncementPanel from "@/components/announcements/AnnouncementPanel.vue"
-import SettingsPanel from "@/components/settings/SettingsPanel.vue"
 import DrawerOverlay from "@/components/shared/DrawerOverlay.vue"
 import MemberDetailPanel from "@/components/profile/MemberDetailPanel.vue"
 import EventDetailPanel from "@/components/events/EventDetailPanel.vue"
@@ -40,6 +37,19 @@ import TaskDetailPanel from "@/components/tasks/TaskDetailPanel.vue"
 import MobileShell from "@/components/mobile/MobileShell.vue"
 import MobileOnboardingGate from "@/components/mobile/MobileOnboardingGate.vue"
 import OfflineNotifications from "@/components/shared/OfflineNotifications.vue"
+import { panelLoaders, prefetchPanels } from "@/lib/panelPrefetch"
+import { scheduleIdle } from "@/lib/idle"
+
+// The non-home panels are loaded on demand. The dashboard is the only screen
+// every kiosk needs at boot; Calendar/Tasks/Settings/Announcements are
+// prefetched during idle time so switching between them stays instant.
+const PanelFallback: Component = () => h("div", { class: "panel-fallback", role: "status" }, [h(UiLoader, { size: "lg" })])
+const asyncPanel = (loader: () => Promise<Component>) =>
+  defineAsyncComponent({ loader, loadingComponent: PanelFallback, delay: 0 })
+const CalendarView = asyncPanel(panelLoaders.calendar)
+const KanbanView = asyncPanel(panelLoaders.tasks)
+const AnnouncementPanel = asyncPanel(panelLoaders.announcements)
+const SettingsPanel = asyncPanel(panelLoaders.settings)
 
 const route = useRoute()
 const ui = useUi()
@@ -293,12 +303,55 @@ const isDark = computed(() => {
   return prefersDark.value
 })
 
-const views: Record<string, typeof CalendarView> = {
+const views: Record<string, Component> = {
   home:          HomeView,
   calendar:      CalendarView,
   tasks:         KanbanView,
   announcements: AnnouncementPanel,
   settings:      SettingsPanel,
+}
+
+/**
+ * Remember the resolved theme so `public/theme-init.js` can paint it before the
+ * first frame. Without this a display set to dark (or auto-dark while the OS is
+ * light) flashes the light token background on every reload.
+ */
+const THEME_DARK_KEY = "homst-theme-dark"
+const THEME_PRESET_KEY = "homst-theme-preset"
+const THEME_WARM_KEY = "homst-theme-warm"
+const THEME_ACCENT_KEY = "homst-theme-accent"
+
+function cacheThemeFlags() {
+  try {
+    localStorage.setItem(THEME_DARK_KEY, String(isDark.value))
+    localStorage.setItem(THEME_PRESET_KEY, settings.themePreset.value)
+    localStorage.setItem(THEME_WARM_KEY, String(settings.warm.value))
+  } catch {}
+}
+
+function cacheAccent(color: keyof typeof accentPalette) {
+  const p = accentPalette[color]
+  if (!p) return
+  const darkHover = p.onAccent === "#fffdf4" || p.onAccent === "#fafafa"
+  try {
+    localStorage.setItem(THEME_ACCENT_KEY, JSON.stringify({
+      base: p.base,
+      light: p.light,
+      lighter: p.lighter,
+      dark: p.dark,
+      darker: p.darker,
+      onAccent: p.onAccent,
+      actionHover: darkHover ? p.dark : p.light,
+    }))
+  } catch {}
+}
+
+/** Keep the browser/PWA window chrome in step with the painted background. */
+function syncThemeColor() {
+  if (typeof document === "undefined") return
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--color-bgBase").trim()
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  if (bg && meta) meta.content = bg
 }
 
 const themeReady = ref(false)
@@ -310,9 +363,16 @@ const appReady = ref(false)
 // settings when they arrive.
 let readyFallback: ReturnType<typeof setTimeout> | null = null
 
+const isTestEnv = (import.meta as any).env?.MODE === "test"
+let cancelPrefetch: (() => void) | null = null
+
 onMounted(() => {
   requestAnimationFrame(() => { themeReady.value = true })
   readyFallback = setTimeout(() => { appReady.value = true }, 2000)
+  // Warm the other panels while the kiosk is idle so a nav tap never waits on
+  // a network round trip for the chunk. Skipped in tests: importing panel
+  // chunks after the jsdom environment tears down is noisy and not under test.
+  if (!isTestEnv) cancelPrefetch = scheduleIdle(prefetchPanels)
   // Kicked off here (guarded internally) so the now-playing backdrop works on
   // every panel, not only after the home screen has mounted.
   void initSpotify()
@@ -345,11 +405,16 @@ onUnmounted(() => {
     clearTimeout(readyFallback)
     readyFallback = null
   }
+  cancelPrefetch?.()
+  cancelPrefetch = null
 })
 
 watch(isDark, (dark) => {
   document.documentElement.classList.toggle("dark", dark)
   settings.applyAccentToDOM(settings.accentColor.value)
+  cacheThemeFlags()
+  cacheAccent(settings.accentColor.value)
+  syncThemeColor()
   themeTransitioning.value = true
   clearTimeout(themeTimer)
   themeTimer = setTimeout(() => { themeTransitioning.value = false }, 400)
@@ -357,12 +422,16 @@ watch(isDark, (dark) => {
 
 watch(() => settings.warm.value, (warm) => {
   document.documentElement.classList.toggle("warm", warm)
+  cacheThemeFlags()
+  syncThemeColor()
   themeTransitioning.value = true
   clearTimeout(themeTimer)
   themeTimer = setTimeout(() => { themeTransitioning.value = false }, 400)
 }, { immediate: true })
 
 watch(() => settings.themePreset.value, () => {
+  cacheThemeFlags()
+  syncThemeColor()
   // The class itself is applied by useSettings; this only softens the swap.
   themeTransitioning.value = true
   clearTimeout(themeTimer)
@@ -373,7 +442,18 @@ watch(() => settings.fontSize.value, (size) => {
   settings.applyFontSizeToDOM(size)
 }, { immediate: true })
 
+// Accent changes are applied by useSettings; mirror them into the pre-paint
+// cache so the next reload starts in the right palette.
+watch(() => settings.accentColor.value, (color) => cacheAccent(color), { immediate: true })
+
+// Painted-once inputs are stable for the session; read the profile once.
+const cheapMotion = isCheapCompositor()
+
 function panelEnter(el: Element, done: () => void) {
+  // On a software compositor the panel's own 6×6 card grid is re-rasterised at
+  // every spring step. Let the CSS opacity fade below run instead; it is the
+  // one animation Firefox can blend without repainting the panel.
+  if (cheapMotion) return
   animate(el, {
     opacity: [0, 1],
     scale: [0.98, 1],
@@ -384,6 +464,7 @@ function panelEnter(el: Element, done: () => void) {
 }
 
 function panelLeave(el: Element, done: () => void) {
+  if (cheapMotion) return
   animate(el, {
     opacity: 0,
     scale: 0.97,
@@ -425,7 +506,13 @@ function panelLeave(el: Element, done: () => void) {
       <div class="app-body">
         <AppNav />
         <main class="main-panel">
-          <Transition mode="out-in" :css="false" @enter="panelEnter" @leave="panelLeave">
+          <Transition
+            mode="out-in"
+            :css="cheapMotion"
+            :name="cheapMotion ? 'panel-fade' : undefined"
+            @enter="panelEnter"
+            @leave="panelLeave"
+          >
             <component :is="views[ui.activePanel.value]" :key="ui.activePanel.value" />
           </Transition>
         </main>
@@ -548,6 +635,34 @@ function panelLeave(el: Element, done: () => void) {
 /* Keep the darker panel tint to light mode only */
 :global(.dark) .main-panel {
   background-color: var(--color-bgBase);
+}
+
+/* Cheap-compositor panel swap: opacity only. Kept short and linear so the
+   software compositor blends a rasterised layer instead of repainting the
+   whole dashboard, which is what the spring transform did on a Pi.
+   `:global` because the classes land on a child component's root node. */
+:global(.panel-fade-enter-active) {
+  transition: opacity 140ms linear;
+  will-change: opacity;
+}
+
+:global(.panel-fade-leave-active) {
+  /* The leaving panel has no exit motion; removal is immediate. */
+  transition: none;
+}
+
+:global(.panel-fade-enter-from),
+:global(.panel-fade-leave-to) {
+  opacity: 0;
+}
+
+/* Placeholder while a lazily-loaded panel chunk arrives. Matches the panel
+   surface so the swap does not flash a different color. */
+.panel-fallback {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 240px;
 }
 
 /* ── Stream connection indicator ── */

@@ -1,9 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted } from "vue"
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from "vue"
 import { useUi } from "@/composables/useUi"
 import { PhX } from "@phosphor-icons/vue"
-import QuickAddForm from "@/components/shared/QuickAddForm.vue"
 import { animate, ease } from "@/lib/motion"
+import { scheduleIdle } from "@/lib/idle"
+
+// Quick add pulls in the Smart-import panel, which is several thousand lines.
+// Keep it out of the boot bundle; the drawer opens it on demand and the idle
+// prefetch below means the first open is already warm.
+const loadQuickAdd = () => import("@/components/shared/QuickAddForm.vue")
+const QuickAddForm = defineAsyncComponent({ loader: loadQuickAdd, delay: 0 })
+const isTestEnv = (import.meta as any).env?.MODE === "test"
+let cancelPrefetch: (() => void) | null = null
 
 const ui = useUi()
 
@@ -129,8 +137,14 @@ watch(() => ui.isDrawerOpen.value, async (open) => {
   }
 })
 
+onMounted(() => {
+  if (!isTestEnv) cancelPrefetch = scheduleIdle(() => void loadQuickAdd())
+})
+
 onUnmounted(() => {
   document.removeEventListener("keydown", onDocumentKeydown, true)
+  cancelPrefetch?.()
+  cancelPrefetch = null
 })
 </script>
 

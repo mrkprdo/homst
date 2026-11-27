@@ -9,7 +9,7 @@ HOMST is a self-hosted dashboard for a shared household. It runs on a wall-mount
 ## Features
 
 - **Shared calendar**: Month, week, and day views. Create events, assign persons, and set recurrence. Includes public holidays.
-- **Smart import**: Paste an email or drop a screenshot in the add panel and OpenCode turns it into reviewed calendar events, including recurring series and multiple dates. Ask it to change or cancel something you already have and it proposes the update or deletion against your real calendar. It assigns each event to the right household member, asks a short follow-up when a date, time or person is genuinely ambiguous, and flags schedule conflicts before anything is saved. Review a whole batch at once or apply changes one by one; nothing is written until you apply it. Watch the model's streamed reasoning/output before applying, pick the model in Settings with a refreshable catalog, and keep the triggering message on every event.
+- **Smart import**: Paste an email or drop a screenshot in the add panel and OpenCode turns it into reviewed calendar events, including recurring series and multiple dates. Ask it to change or cancel something you already have and it proposes the update or deletion against your real calendar. It assigns each event to the right household member, asks a short follow-up when a date, time or person is genuinely ambiguous, and flags schedule conflicts before anything is saved. Review a whole batch at once or apply changes one by one; nothing is written until you apply it. See [Smart import](#smart-import-optional).
 - **Task board**: To Do, Doing, and Done columns. Tasks have priorities, due dates, and assignees.
 - **Today**: Daily schedule, current weather, and upcoming tasks.
 - **Indoor temperatures**: Nest thermostat and Temperature Sensors in one card, with per-room readings and humidity.
@@ -139,6 +139,8 @@ Then install the CA on each device:
 | macOS         | Open **Keychain Access**. Select **System**. Move the file into the window. Open the file. Select **Always Trust**.                                                                                                    |
 | Linux         | `sudo cp homst-ca.pem /usr/local/share/ca-certificates/homst.crt && sudo update-ca-certificates`<br>For Chrome or Chromium, also run: `certutil -d sql:$HOME/.pki/nssdb -A -t 'C,,' -n 'HOMST Local CA' -i homst-ca.pem` |
 
+**Firefox:** current Firefox on Windows and macOS uses the operating system's certificate store, so the steps above also cover it. On Linux (and on older Firefox versions) import the CA into Firefox's own store: **Settings > Privacy & Security > Certificates > View Certificates > Authorities > Import**, select `homst-ca.pem`, and enable **Trust this CA to identify websites**.
+
 Reload the dashboard. The padlock should be valid.
 
 ### 5. Initial setup
@@ -157,10 +159,35 @@ HOMST is a PWA. Install it on each display or phone, then enable notifications.
 - **Android or Chrome**: Menu > **Install app** or **Add to Home screen**.
 - **iPhone or iPad (Safari)**: **Share > Add to Home Screen**. Do this before Web Push (iOS 16.4 or later).
 - **Desktop Chrome or Edge**: Select the install icon in the address bar.
+- **Desktop Firefox**: Firefox does not install PWAs. Keep HOMST in a pinned tab, or start it in kiosk mode: `firefox --kiosk https://192.168.1.50:8443`.
 
 Then open **Settings > Reminders > Phone & browser**, allow notifications, and use **Send test to all clients**. HOMST creates its own VAPID keys; no third-party push account is needed.
 
 Web Push is one-way. Remote phones still receive notifications, but sending announcements or tests requires a LAN or VPN connection.
+
+### Smart import (optional)
+
+Smart import turns a pasted message, email, or screenshot into calendar events. It is off until you add an [OpenCode](https://opencode.ai) API key. Nothing is added to the calendar until you review and apply the changes.
+
+<p align="center">
+  <img width="720" alt="Smart import reviewing three proposed events in the add panel" src="docs/screenshots/desktop-smart-import.png" />
+</p>
+
+1. Open **Settings > Smart import**.
+2. Paste a key from [opencode.ai/console](https://opencode.ai/console). Choose the plan that matches the key: **Console** (pay-as-you-go) or **Go** (subscription). Pick a model; **Test** checks the key without spending tokens.
+3. Open **Add**, keep **Smart import** selected, then paste a message or email, describe the event in your own words, or use **+** to attach a screenshot.
+4. Review the proposed events. Uncheck anything you don't want, edit an item, or apply the whole batch. If a date, time, or person is genuinely ambiguous, Smart import asks a short question. If an event overlaps the calendar, it asks before saving.
+
+It can also change existing events:
+
+- Ask for a change or cancellation ("move Emma's soccer practice to 5:30", "cancel the dentist") and Smart import proposes an update or deletion against the real event. A repeat rule applies to the whole series.
+- Each event keeps the message that created it and links to the saved chat. Open the event and choose **Update with chat** to continue the conversation.
+- A repeat rule is only applied when the source states one. A table of dated rows is imported row by row, not as a recurring series.
+- Change the model any time under **Settings > Smart import**. **Refresh** reloads the provider's catalog. Text-only models work for messages but not screenshots.
+
+Requests go only to OpenCode's two fixed gateways. The key stays on the server and is never returned to a browser, and screenshots are re-encoded before upload to strip metadata. Remove the key under **Settings > Smart import** to turn the feature off. See [SECURITY.md](SECURITY.md) for the full threat model.
+
+For appliance installs, set `OPENCODE_API_KEY` in `.env` instead, with optional `OPENCODE_PROVIDER` and `OPENCODE_MODEL`. A key saved in Settings wins.
 
 ### In-app updates (optional)
 
@@ -248,11 +275,15 @@ make cert   # nginx/ssl certificates for the dev HTTPS proxy
 make dev    # dev stack
 ```
 
-| Service  | URL                        |
-| -------- | -------------------------- |
-| Frontend | http://localhost:5173      |
-| API      | http://localhost:8000      |
-| API docs | http://localhost:8000/docs |
+| Service  | URL                                        |
+| -------- | ------------------------------------------ |
+| Frontend | http://localhost:5173 (or `http://<host-ip>:5173` from a Pi/phone) |
+| API      | http://localhost:8000                      |
+| API docs | http://localhost:8000/docs                 |
+
+The dev stack binds Vite (`:5173`) and the HTTPS proxy (`:8999`) to all interfaces by default so a Pi or phone on the LAN can open the dev build. The API, PostgreSQL, and Redis stay host-only. Set `HOMST_DEV_BIND_ADDR=127.0.0.1` in `.env` to make the dev stack host-only again.
+
+For a Pi test with a trusted certificate (needed for PWA/Web Push), open `https://<host-ip>:8999` and install `ca.pem` from `/ca.pem` on the device. `make cert` includes this machine's LAN IPs in the certificate.
 
 To run services directly, provide PostgreSQL and Redis:
 

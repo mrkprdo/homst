@@ -776,7 +776,10 @@ function hailStyle(n: number) {
 
 :global(html.low-power .weather-scene *),
 :global(html.low-power .weather-scene *::before),
-:global(html.low-power .weather-scene *::after) {
+:global(html.low-power .weather-scene *::after),
+:global(html.cheap-compositor .weather-scene *),
+:global(html.cheap-compositor .weather-scene *::before),
+:global(html.cheap-compositor .weather-scene *::after) {
   animation: none !important;
 }
 </style>

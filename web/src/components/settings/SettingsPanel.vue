@@ -10,7 +10,7 @@ import {
   accentPalette,
   accentSets,
 } from "@/composables/useSettings"
-import { getAnimationEnabled, setAnimationEnabled } from "@/lib/motion"
+import { getAnimationEnabled, setAnimationEnabled, isCheapCompositor } from "@/lib/motion"
 import { householdApi } from "@/api/household"
 import type { WifiEncryption } from "@/api/household"
 import { aiApi, type AiProvider, type AiModel, type AiStatus } from "@/api/ai"
@@ -229,6 +229,7 @@ async function resetHomeLayout() {
 }
 
 const animationsEnabled = ref(getAnimationEnabled())
+const cheapCompositor = isCheapCompositor()
 const systemReducedMotion = typeof window !== 'undefined'
   && typeof window.matchMedia === 'function'
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -1285,6 +1286,9 @@ watch(searchTokens, applySearch, { flush: "post" })
 
           <p v-if="systemReducedMotion" class="card-note motion-locked">
             Your system asks for reduced motion. This switch overrides that for HOMST.
+          </p>
+          <p v-if="cheapCompositor" class="card-note motion-locked">
+            This display composites in software, so spring animations and heavy effects are skipped to keep the screen smooth.
           </p>
         </div>
       </section>

@@ -36,10 +36,11 @@ services:
     image: nginx:alpine
     container_name: nginx-dev
     ports:
-      # Deliberately bound to all interfaces: phones and tablets on the LAN
-      # need to reach the dev dashboard for mobile testing. Nothing else in
-      # this file is LAN-reachable. Do not use this on an untrusted network.
-      - "8999:8443"
+      # Bound to all interfaces by default: a Pi or phone on the LAN opens the
+      # dev dashboard at https://<this-host-ip>:8999. Set
+      # HOMST_DEV_BIND_ADDR=127.0.0.1 in .env to keep it host-only.
+      # Nothing else in this file is LAN-reachable.
+      - "${HOMST_DEV_BIND_ADDR:-0.0.0.0}:8999:8443"
     volumes:
       - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/ssl/homst:ro
@@ -59,8 +60,12 @@ services:
       - ./web:/app
       - /app/node_modules
     ports:
-      # Host-only: reach the Vite server via the nginx proxy from other devices.
-      - "127.0.0.1:5173:5173"
+      # Bound to all interfaces so a Pi or phone can open the Vite dev server
+      # directly at http://<this-host-ip>:5173 (fast HMR loop, no rebuild).
+      # The API and database stay host-only; Vite proxies /api to api-dev over
+      # the compose network. Set HOMST_DEV_BIND_ADDR=127.0.0.1 in .env to keep
+      # both dev entry points host-only.
+      - "${HOMST_DEV_BIND_ADDR:-0.0.0.0}:5173:5173"
     environment:
       - VITE_API_PROXY_TARGET=http://api-dev:8000
 

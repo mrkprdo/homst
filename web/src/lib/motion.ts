@@ -17,6 +17,12 @@ function getUserAnimationOverride(): boolean | null {
   return null
 }
 
+/** ARM Linux covers Raspberry Pi and the other single-board kiosk displays. */
+function detectArmLinux(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /linux (armv7l|armv8l|aarch64)/.test(navigator.userAgent.toLowerCase())
+}
+
 /**
  * Whether the device itself is weak (Pi / low-end ARM display board).
  *
@@ -31,13 +37,17 @@ function detectWeakDevice(): boolean {
   const isVitest = typeof import.meta !== 'undefined' && (import.meta as any).env?.VITEST === true
   if (isVitest) return false
 
-  const ua = navigator.userAgent.toLowerCase()
-  const isArmLinux = /linux (armv7l|armv8l|aarch64)/.test(ua)
+  const isArmLinux = detectArmLinux()
   const lowCores = navigator.hardwareConcurrency != null && navigator.hardwareConcurrency <= 4
-  const lowMemory = (navigator as any).deviceMemory != null && (navigator as any).deviceMemory <= 2
+  // deviceMemory is Chromium-only (Firefox leaves it undefined), so treat it as
+  // a bonus signal rather than the only one.
+  const lowMemory = (navigator as any).deviceMemory != null && (navigator as any).deviceMemory <= 4
 
-  // Pi / low-end ARM display boards typically report ARM Linux + limited resources
-  return isArmLinux && (lowCores || lowMemory)
+  // Pi / low-end ARM display boards: either signal is enough.
+  if (isArmLinux) return lowCores || lowMemory
+  // Small x86 mini-PCs driving a 4K wall display are common kiosks too. Both
+  // signals are required so an ordinary 4-core laptop is not flagged.
+  return lowCores && lowMemory
 }
 
 /**
@@ -80,6 +90,39 @@ export let isLowPower = lowPower
 
 let performanceMode = detectPerformanceMode()
 
+/**
+ * A profile for browsers that composite in software — in practice ARM Linux
+ * (Pi / SBC kiosks) with Firefox, but also Chromium there. These devices can
+ * show idle CPU and still stutter: the compositor rasterises large layers on
+ * the CPU, so a spinning full-screen cover, a per-card backdrop blur, or a
+ * scale-based spring repaints the viewport every frame.
+ *
+ * Independent of the user's Motion setting: turning animations on must not put
+ * the full-screen vinyl rotation back on a device that cannot composite it.
+ */
+function detectCheapCompositor(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('cheap-motion')) return true
+    if (params.has('full-motion')) return false
+  } catch {}
+  return detectArmLinux() || detectWeakDevice()
+}
+
+let cheapCompositor = detectCheapCompositor()
+
+/** Whether heavy composited effects should be avoided (ARM / software compositor). */
+export function isCheapCompositor(): boolean {
+  return cheapCompositor
+}
+
+/** Force the cheap-compositor profile (tests only). */
+export function setCheapCompositor(enabled: boolean): void {
+  cheapCompositor = enabled
+  syncMotionClasses()
+}
+
 /** Whether continuous heavy effects should be throttled on this device. */
 export function isPerformanceMode(): boolean {
   return performanceMode
@@ -93,9 +136,17 @@ export function setPerformanceMode(enabled: boolean): void {
 function syncMotionClasses(): void {
   if (typeof document === 'undefined') return
   document.documentElement.classList.toggle('low-power', lowPower)
+  document.documentElement.classList.toggle('cheap-compositor', cheapCompositor)
   // Lets the token stylesheet keep durations when the user explicitly opts in
   // despite `prefers-reduced-motion: reduce`.
   document.documentElement.classList.toggle('motion-on', !lowPower)
+  // Exposed for on-device debugging (inspect from the kiosk's console).
+  ;(window as any).__homstMotion = {
+    lowPower,
+    cheapCompositor,
+    performanceMode,
+    armLinux: detectArmLinux(),
+  }
 }
 
 /** Toggle low-power mode at runtime (useful for tests / debug). */
@@ -178,9 +229,11 @@ export const dur = {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// animate() wrapper: skips to final state on low-power clients.
-// This short-circuits expensive spring physics and paint-bound
-// transitions on devices like Raspberry Pi displays.
+// animate() wrapper: skips to final state on low-power clients and on
+// browsers that composite in software (ARM/Firefox kiosks). A JS-driven
+// spring over a large surface is repainted on the CPU there, so it reads
+// as stutter even while the device is idle. The compositor-only CSS fade
+// used for panel changes remains available separately.
 // ═══════════════════════════════════════════════════════════════
 
 const transformProps = new Set([
@@ -267,7 +320,7 @@ function applyFinalState(target: unknown, params: any): void {
 }
 
 export function animate(...args: Parameters<typeof animeAnimate>): ReturnType<typeof animeAnimate> {
-  if (!isLowPower) {
+  if (!isLowPower && !cheapCompositor) {
     return animeAnimate(...args)
   }
 

@@ -60,6 +60,7 @@ function measureMarquee() {
   }
   const motionOff =
     document.documentElement.classList.contains("low-power") ||
+    document.documentElement.classList.contains("cheap-compositor") ||
     (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false)
   const overflows = copy.offsetWidth > box.clientWidth + 1
   marquee.value = overflows && !motionOff

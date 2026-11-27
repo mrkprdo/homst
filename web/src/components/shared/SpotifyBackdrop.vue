@@ -61,14 +61,15 @@ onUnmounted(() => document.documentElement.classList.remove("vinyl-backdrop"))
   transform: translateZ(0);
 }
 
-/* 130vmax beats the viewport diagonal on every sane aspect ratio, so the
-   circular disc always covers the rectangle behind it. */
+/* 118vmax beats the viewport diagonal on every sane aspect ratio (a 16:9
+   screen needs ~114.7vmax), so the circular disc always covers the rectangle
+   behind it without allocating a needlessly huge compositor layer. */
 .vinyl-disc {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 130vmax;
-  height: 130vmax;
+  width: 118vmax;
+  height: 118vmax;
   border-radius: 50%;
   overflow: hidden;
   background: #0b0b0d;

@@ -4,12 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#f3edd6" />
+  <meta name="color-scheme" content="light dark" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <title>HOMST</title>
   <link rel="stylesheet" href="/tokens.css" />
   <link rel="stylesheet" href="/shadows.css" />
   <link rel="stylesheet" href="/futur.css" />
+  <!-- Classic, render-blocking, and same-origin (CSP allows scripts from self):
+       sets the theme classes before the first paint. See public/theme-init.js. -->
+  <script src="/theme-init.js"></script>
 </head>
 <body class="clay-surface">
   <div id="app"></div>

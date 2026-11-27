@@ -23,7 +23,7 @@ import CameraCard from "@/components/home/CameraCard.vue"
 import WifiQr from "@/components/home/WifiQr.vue"
 import TemperatureCard from "@/components/home/TemperatureCard.vue"
 import WeatherScene from "@/components/home/WeatherScene.vue"
-import { animate, stagger, springs, ease } from "@/lib/motion"
+import { animate, stagger, springs, ease, isPerformanceMode, isCheapCompositor } from "@/lib/motion"
 import { syncVinyl } from "@/lib/vinyl"
 import {
   DEFAULT_LAYOUT,
@@ -474,6 +474,21 @@ const displayEvents = computed<CalendarEvent[]>(() => {
   return expandEvents(events.value, from, to)
 })
 
+/**
+ * The mini calendar only needs the visible month. Keeping it on its own window
+ * means the once-a-minute `today` tick (which `scheduleDate` depends on) does
+ * not re-expand every recurring event for all 31 days.
+ */
+const monthDisplayEvents = computed<CalendarEvent[]>(() => {
+  const monthStart = new Date(viewYear.value, viewMonth.value, 1)
+  const monthEnd   = new Date(viewYear.value, viewMonth.value + 1, 0, 23, 59, 59, 999)
+  return expandEvents(
+    events.value,
+    new Date(monthStart.getTime() - 86_400_000),
+    new Date(monthEnd.getTime() + 86_400_000),
+  )
+})
+
 function eventCoversDate(e: { startAt: string; endAt: string | null; allDay: boolean }, date: Date): boolean {
   const start = new Date(e.startAt)
   const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0)
@@ -553,7 +568,7 @@ const calendarDays = computed<MiniCalendarDay[]>(() => {
   for (let i = 0; i < firstDay; i++) days.push({ date: null, n: null, events: [] })
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d)
-    const dayEvents = displayEvents.value
+    const dayEvents = monthDisplayEvents.value
       .filter(event => eventCoversDate(event, date))
       .sort(compareEventsByStart)
     days.push({ date, n: d, events: dayEvents })
@@ -714,25 +729,114 @@ const currentPhoto = computed(() => activePhotos.value[currentPhotoIndex.value] 
 interface PhotoSlide {
   key: number
   url: string
+  /** Pre-blurred, dimmed cover for the letterbox; empty until it is ready. */
+  backdrop: string
   /** Animate in over the frame below; the first frame appears immediately. */
   dissolving: boolean
 }
 
+/**
+ * Cross-dissolving two full-card photos (plus a blurred copy of each) is a
+ * compositor effect. On a Pi/software renderer it turns every five-second photo
+ * change into a two-second stutter, so those devices swap the single frame
+ * instead. The slideshow itself is unchanged.
+ */
+const heavyPhotoEffects = isPerformanceMode() || isCheapCompositor()
+const PHOTO_DISSOLVE_MS = 2000
+
+/** The blurred cover only needs to survive being scaled up behind the photo. */
+const PHOTO_BACKDROP_SIZE = 128
+const PHOTO_BACKDROP_BLUR = 2
+
+/**
+ * Render the blurred, dimmed letterbox cover once into a small canvas.
+ *
+ * The old version put `filter: blur(28px)` on a full-card copy of every photo,
+ * so the compositor re-blurred it for the whole two-second dissolve. This pays
+ * the blur once per photo instead, and the fade only blends two plain images.
+ * Returns "" when decode/canvas is unavailable; the caller then falls back to
+ * the CSS filter.
+ */
+async function blurPhotoBackdrop(url: string): Promise<string> {
+  if (typeof document === "undefined" || typeof Image === "undefined") return ""
+  try {
+    const img = new Image()
+    img.src = url
+    if (typeof img.decode === "function") await img.decode()
+    if (!img.naturalWidth || !img.naturalHeight) return ""
+
+    const canvas = document.createElement("canvas")
+    const scale = PHOTO_BACKDROP_SIZE / Math.max(img.naturalWidth, img.naturalHeight)
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+
+    const context = canvas.getContext("2d")
+    if (!context || typeof canvas.toDataURL !== "function") return ""
+    // Without canvas filters the draw would be a full-brightness copy; fall
+    // back to the CSS blur instead of changing how the card looks.
+    if (typeof (context as CanvasRenderingContext2D).filter !== "string") return ""
+
+    // Draw a little past the canvas edges: a canvas blur fades the boundary to
+    // transparent, which would show as a light rim around the card.
+    const zoom = 1 + (6 * PHOTO_BACKDROP_BLUR) / Math.min(canvas.width, canvas.height)
+    const width = canvas.width * zoom
+    const height = canvas.height * zoom
+    context.filter = `blur(${PHOTO_BACKDROP_BLUR}px) saturate(1.15) brightness(0.55)`
+    context.drawImage(img, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
+    return canvas.toDataURL("image/jpeg", 0.85)
+  } catch {
+    return ""
+  }
+}
+
 let photoSlideSeq = 0
+let photoRequest = 0
 const photoSlides = ref<PhotoSlide[]>([])
+/** Drops the faded-out frame once the cross-dissolve has finished. */
+let photoSlideCleanup: ReturnType<typeof setTimeout> | null = null
+
+function clearPhotoSlideCleanup() {
+  if (photoSlideCleanup !== null) {
+    clearTimeout(photoSlideCleanup)
+    photoSlideCleanup = null
+  }
+}
 
 // Keep the outgoing frame on screen while the incoming one dissolves in on top
 // of it. Fading both elements at once would dip through the card background
 // halfway through and make the photo visibly flash instead of cross-dissolve.
-watch(() => currentPhoto.value?.url ?? null, (url) => {
+watch(() => currentPhoto.value?.url ?? null, async (url) => {
+  const request = ++photoRequest
+  clearPhotoSlideCleanup()
+
   if (!url) {
     photoSlides.value = []
     return
   }
+
+  if (heavyPhotoEffects) {
+    // One frame, no dissolve, and no blurred backdrop copy (see the template).
+    photoSlides.value = [{ key: ++photoSlideSeq, url, backdrop: "", dissolving: false }]
+    return
+  }
+
+  const backdrop = await blurPhotoBackdrop(url)
+  // A newer photo superseded this one while the cover was decoding.
+  if (request !== photoRequest) return
+
+  const dissolving = photoSlides.value.length > 0
   photoSlides.value = [
     ...photoSlides.value.slice(-1),
-    { key: ++photoSlideSeq, url, dissolving: photoSlides.value.length > 0 },
+    { key: ++photoSlideSeq, url, backdrop, dissolving },
   ]
+  if (dissolving) {
+    photoSlideCleanup = setTimeout(() => {
+      photoSlideCleanup = null
+      // The outgoing frame is fully transparent by now; keeping it in the DOM
+      // would leave four decoded images painted for the rest of the interval.
+      if (photoSlides.value.length > 1) photoSlides.value = photoSlides.value.slice(-1)
+    }, PHOTO_DISSOLVE_MS + 120)
+  }
 }, { immediate: true })
 
 // Warm the next couple of frames so a dissolve starts on a decoded image rather
@@ -748,6 +852,7 @@ watch([currentPhotoIndex, activePhotos], () => {
     const url = photos[(currentPhotoIndex.value + step) % photos.length]?.url
     if (!url) continue
     const img = new Image()
+    img.decoding = "async"
     img.src = url
     preloadedPhotos.push(img)
   }
@@ -945,9 +1050,10 @@ onMounted(async () => {
   prefetchAround(now.getFullYear(), now.getMonth())
   initSpotify()
 
-  // Sub-second tick keeps the time-derived index advancing on wall-clock
-  // boundaries and self-corrects drift, so clients stay in sync.
-  photoTimer = setInterval(() => { slideshowNow.value = Date.now() }, 500)
+  // A one-second tick keeps the time-derived index advancing on wall-clock
+  // boundaries and self-corrects drift, so clients stay in sync. The slideshow
+  // only changes every five seconds; a faster tick just burned wakeups.
+  photoTimer = setInterval(() => { slideshowNow.value = Date.now() }, 1000)
 
   clockTimer = setInterval(() => {
     const d = new Date()
@@ -976,6 +1082,8 @@ onUnmounted(() => {
   window.removeEventListener(HOME_LAYOUT_EVENT, onLayoutUpdated)
   clearInterval(photoTimer)
   clearInterval(clockTimer)
+  photoRequest += 1
+  clearPhotoSlideCleanup()
   clearScheduleReset()
   ro?.disconnect()
   stopDragListeners()
@@ -1315,18 +1423,26 @@ function onCanvasDoubleClick(e: MouseEvent) {
             <span class="block-title"><PhImage :size="18" /><span class="block-title-text">Photos</span></span>
           </div>
           <div v-if="activePhotos.length" class="photos-body">
-            <!-- Blurred cover copy fills the letterbox left by object-fit: contain. -->
-            <img
-              v-for="(slide, index) in photoSlides"
-              :key="`bg-${slide.key}`"
-              :src="slide.url"
-              class="photos-backdrop"
-              :class="{
-                'photos-img--dissolve': slide.dissolving,
-                'photos-img--outgoing': index < photoSlides.length - 1,
-              }"
-              aria-hidden="true"
-            />
+            <!-- Blurred cover copy fills the letterbox left by object-fit: contain.
+                 A software compositor draws it twice for no benefit, so weak
+                 displays get the plain panel tint instead. -->
+            <template v-if="!heavyPhotoEffects">
+              <img
+                v-for="(slide, index) in photoSlides"
+                :key="`bg-${slide.key}`"
+                :src="slide.backdrop || slide.url"
+                class="photos-backdrop"
+                :class="{
+                  'photos-backdrop--fallback': !slide.backdrop,
+                  'photos-img--dissolve': slide.dissolving,
+                  'photos-img--outgoing': index < photoSlides.length - 1,
+                }"
+                decoding="async"
+                draggable="false"
+                alt=""
+                aria-hidden="true"
+              />
+            </template>
             <img
               v-for="(slide, index) in photoSlides"
               :key="slide.key"
@@ -1336,6 +1452,8 @@ function onCanvasDoubleClick(e: MouseEvent) {
                 'photos-img--dissolve': slide.dissolving,
                 'photos-img--outgoing': index < photoSlides.length - 1,
               }"
+              decoding="async"
+              draggable="false"
             />
           </div>
           <UiEmptyState v-else class="widget-empty" message="No photos selected">
@@ -1857,9 +1975,14 @@ function onCanvasDoubleClick(e: MouseEvent) {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: blur(28px) saturate(1.15) brightness(0.55);
   transform: scale(1.12);
   pointer-events: none;
+}
+
+/* Fallback when the canvas cover could not be produced (old browsers, tests):
+   the CSS blur is expensive, but this path only exists on capable clients. */
+.photos-backdrop--fallback {
+  filter: blur(28px) saturate(1.15) brightness(0.55);
 }
 
 .photos-img {
@@ -1878,6 +2001,18 @@ function onCanvasDoubleClick(e: MouseEvent) {
    shorten this. */
 .photos-img--dissolve {
   animation: photo-dissolve 2s ease-in-out both;
+  /* Opacity is the one property the compositor can blend without repainting
+     the two full-card photos underneath. */
+  will-change: opacity;
+}
+
+/* Software compositors swap the frame instead; see heavyPhotoEffects. */
+:global(html.cheap-compositor) .photos-img--dissolve {
+  animation: none !important;
+}
+
+:global(html.cheap-compositor) .photos-img--outgoing {
+  display: none !important;
 }
 
 .photos-img--outgoing {

@@ -68,10 +68,12 @@ async function freshMotion() {
 beforeEach(() => {
   localStorage.clear()
   document.documentElement.classList.remove("low-power")
+  document.documentElement.classList.remove("cheap-compositor")
   document.documentElement.classList.remove("motion-on")
   setMatchMedia(false)
   stubLocation("")
   setNavigator(REAL_UA, 8)
+  delete (window.navigator as any).deviceMemory
 })
 
 afterEach(() => {
@@ -80,6 +82,7 @@ afterEach(() => {
   setNavigator(REAL_UA, REAL_CORES)
   delete (window.navigator as any).deviceMemory
   document.documentElement.classList.remove("low-power")
+  document.documentElement.classList.remove("cheap-compositor")
   document.documentElement.classList.remove("motion-on")
 })
 
@@ -123,6 +126,7 @@ describe("lib/motion — low-power detection at import time", () => {
     setNavigator("Mozilla/5.0 (X11; Linux aarch64)", 4)
     const cores = await freshMotion()
     expect(cores.isLowPower).toBe(true)
+    expect(cores.isCheapCompositor()).toBe(true)
 
     localStorage.clear()
     setNavigator("Mozilla/5.0 (X11; Linux armv7l)", 8, 2)
@@ -130,9 +134,18 @@ describe("lib/motion — low-power detection at import time", () => {
     expect(memory.isLowPower).toBe(true)
 
     localStorage.clear()
+    delete (window.navigator as any).deviceMemory
     setNavigator("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 4)
     const desktop = await freshMotion()
     expect(desktop.isLowPower).toBe(false)
+    expect(desktop.isCheapCompositor()).toBe(false)
+
+    // A small x86 mini-PC kiosk (4 cores, 4 GB in Chromium) also qualifies.
+    localStorage.clear()
+    setNavigator("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 4, 4)
+    const miniPc = await freshMotion()
+    expect(miniPc.isLowPower).toBe(true)
+    expect(miniPc.isCheapCompositor()).toBe(true)
   })
 
   it("keeps the heavy-effect budget when a weak device opts into animations", async () => {
@@ -155,5 +168,17 @@ describe("lib/motion — low-power detection at import time", () => {
     expect(motion.isLowPower).toBe(false)
     expect(motion.getAnimationEnabled()).toBe(true)
     expect(localStorage.getItem(ANIMATIONS_ENABLED_KEY)).toBe("true")
+  })
+
+  it("exposes the cheap-compositor override", async () => {
+    const motion = await freshMotion()
+
+    motion.setCheapCompositor(true)
+    expect(motion.isCheapCompositor()).toBe(true)
+    expect(document.documentElement.classList.contains("cheap-compositor")).toBe(true)
+
+    motion.setCheapCompositor(false)
+    expect(motion.isCheapCompositor()).toBe(false)
+    expect(document.documentElement.classList.contains("cheap-compositor")).toBe(false)
   })
 })

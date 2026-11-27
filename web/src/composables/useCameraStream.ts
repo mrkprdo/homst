@@ -1,5 +1,4 @@
 import { onBeforeUnmount, ref, watch, type Ref } from "vue"
-import Hls from "hls.js"
 
 export type CameraStatus =
   | "idle"
@@ -27,6 +26,35 @@ const START_TIMEOUT_MS = 15_000
 
 const RETRIEVING_MESSAGE = "retrieving stream..."
 const FAILED_RETRIEVING_MESSAGE = "failed retrieving stream"
+
+type HlsModule = typeof import("hls.js")
+
+/**
+ * hls.js is a large dependency and most households never configure a camera.
+ * Load it the first time a stream actually starts instead of shipping it in the
+ * dashboard's entry chunk. The promise is shared so repeated retries reuse it.
+ */
+let hlsModule: Promise<HlsModule> | null = null
+function loadHls(): Promise<HlsModule> {
+  hlsModule ??= import("hls.js").catch((error) => {
+    // Do not cache a failed chunk load: a later retry (slow link, server
+    // restart) should be allowed to fetch it again.
+    hlsModule = null
+    throw error
+  })
+  return hlsModule
+}
+
+/**
+ * Whether this browser has Media Source Extensions, which is what hls.js needs.
+ * Safari/iOS without MSE still take the native HLS path below — and skip the
+ * hls.js download entirely.
+ */
+function hasMediaSource(): boolean {
+  if (typeof window === "undefined") return false
+  const w = window as Window & { MediaSource?: unknown; ManagedMediaSource?: unknown }
+  return typeof w.MediaSource !== "undefined" || typeof w.ManagedMediaSource !== "undefined"
+}
 
 /** How often the watchdog checks whether a new frame arrived. */
 export const HEALTH_CHECK_INTERVAL_MS = 1_000
@@ -72,7 +100,7 @@ export function useCameraStream(
   const video = ref<HTMLVideoElement | null>(null)
   const status = ref<CameraStatus>("idle")
   const error = ref("")
-  let hls: Hls | null = null
+  let hls: InstanceType<HlsModule["default"]> | null = null
   let networkRetries = 0
   let mediaRetries = 0
   let startTimer: ReturnType<typeof setTimeout> | null = null
@@ -88,6 +116,10 @@ export function useCameraStream(
   let renderSupported = false
   let renderGen = 0
   let renderHandle = 0
+  // Incremented whenever the pipeline is torn down or replaced. An async
+  // beginPlayback() checks it after awaiting the hls.js import so a stream that
+  // was closed (or rebuilt) mid-download never attaches to a dead element.
+  let playbackGen = 0
 
   function clearStartTimer() {
     if (startTimer !== null) {
@@ -167,6 +199,7 @@ export function useCameraStream(
   }
 
   function destroy() {
+    playbackGen += 1
     clearTimers()
     teardown()
   }
@@ -276,14 +309,15 @@ export function useCameraStream(
       // stays dead still escalates to the slow reconnect cadence.
       freezeFrame()
       destroy()
-      beginPlayback()
+      void beginPlayback()
       return
     }
     recoverStream()
     startWatchdog()
   }
 
-  function beginPlayback() {
+  async function beginPlayback() {
+    const gen = ++playbackGen
     const path = streamPath.value
     const el = video.value
     if (!path || !el) {
@@ -296,13 +330,7 @@ export function useCameraStream(
       if (status.value === "loading") fail(TIMEOUT_ERROR)
     }, START_TIMEOUT_MS)
 
-    // Prefer hls.js wherever MSE is available, even when the browser claims
-    // native HLS support. Chromium on some displays advertises support and then
-    // re-fetches the playlist in a zero-delay loop — one wall display polled a
-    // 2s-target playlist ~45 times a second and pinned a core. hls.js reloads
-    // on the playlist's own cadence, so it is the safe default. Only browsers
-    // without MSE (Safari, iOS) still need the native path.
-    if (!Hls.isSupported()) {
+    const useNative = () => {
       if (!el.canPlayType("application/vnd.apple.mpegurl")) {
         clearStartTimer()
         status.value = "error"
@@ -317,6 +345,32 @@ export function useCameraStream(
       lastFrameAt = Date.now()
       startRenderWatch(el)
       startWatchdog()
+    }
+
+    // Browsers without Media Source Extensions (Safari, older iOS) cannot run
+    // hls.js at all; take the native path without downloading it.
+    if (!hasMediaSource()) {
+      useNative()
+      return
+    }
+
+    let Hls: HlsModule["default"]
+    try {
+      Hls = (await loadHls()).default
+    } catch {
+      if (gen === playbackGen) fail(STREAM_ERROR)
+      return
+    }
+    if (gen !== playbackGen) return
+
+    // Prefer hls.js wherever MSE is available, even when the browser claims
+    // native HLS support. Chromium on some displays advertises support and then
+    // re-fetches the playlist in a zero-delay loop — one wall display polled a
+    // 2s-target playlist ~45 times a second and pinned a core. hls.js reloads
+    // on the playlist's own cadence, so it is the safe default. Only browsers
+    // without MSE (Safari, iOS) still need the native path.
+    if (!Hls.isSupported()) {
+      useNative()
       return
     }
 
@@ -392,7 +446,7 @@ export function useCameraStream(
     networkRetries = 0
     mediaRetries = 0
     retrieveAttempts = 0
-    beginPlayback()
+    void beginPlayback()
   }
 
   watch([streamPath, video], start, { immediate: true })

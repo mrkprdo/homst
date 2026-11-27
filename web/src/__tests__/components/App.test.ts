@@ -60,18 +60,36 @@ describe("App", () => {
     expect(wrapper.find(".home-view").exists()).toBe(true)
   })
 
-  it("can mount with tasks as active panel", () => {
+  async function settlePanel(wrapper: ReturnType<typeof mountApp>, selector: string) {
+    // The first import of a panel SFC includes Vitest's transform step, which
+    // can take longer than a few microtasks. Poll with a real timer.
+    const deadline = Date.now() + 5000
+    while (!wrapper.find(selector).exists() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    expect(wrapper.find(selector).exists()).toBe(true)
+  }
+
+  it("can mount with tasks as active panel", async () => {
     const ui = useUi()
     ui.setPanel("tasks")
     const wrapper = mountApp()
-    expect(wrapper.find(".tasks-view").exists()).toBe(true)
+    await settlePanel(wrapper, ".tasks-view")
   })
 
-  it("can mount with settings as active panel", () => {
+  it("can mount with settings as active panel", async () => {
     const ui = useUi()
     ui.setPanel("settings")
     const wrapper = mountApp()
-    expect(wrapper.find(".settings-panel").exists()).toBe(true)
+    await settlePanel(wrapper, ".settings-panel")
+  })
+
+  it("can mount with announcements as active panel", async () => {
+    const ui = useUi()
+    ui.setPanel("announcements")
+    const wrapper = mountApp()
+    await settlePanel(wrapper, ".announcement-console")
+    wrapper.unmount()
   })
 
   it("applies dark class to html when theme is dark", async () => {
@@ -209,7 +227,7 @@ describe("App", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(false)
   })
 
-  it("all panels are mountable", () => {
+  it("all panels are mountable", async () => {
     const panels = [
       { panel: "tasks" as const, cls: "tasks-view" },
       { panel: "settings" as const, cls: "settings-panel" },
@@ -219,7 +237,8 @@ describe("App", () => {
       const ui = useUi()
       ui.setPanel(panel)
       const wrapper = mountApp()
-      expect(wrapper.find(`.${cls}`).exists()).toBe(true)
+      await settlePanel(wrapper, `.${cls}`)
+      wrapper.unmount()
     }
   })
 
