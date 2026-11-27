@@ -24,7 +24,7 @@ PROD_CSP = (
     "https://geocoding-api.open-meteo.com; media-src 'self' blob:; "
     "worker-src 'self' blob:; manifest-src 'self';"
 )
-PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=()"
+PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(self), payment=()"
 
 
 def _read(path: Path) -> str:
