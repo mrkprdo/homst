@@ -206,7 +206,49 @@ describe("SettingsPanel", () => {
       carousel: true,
       returnHome: false,
       autoHideNav: true,
+      autoRefresh: false,
+      refreshIntervalMinutes: 60,
     })
+  })
+
+  it("toggles auto refresh and saves the chosen interval", async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>
+    const settings = useSettings()
+
+    const wrapper = mount(SettingsPanel)
+    await flushPromises()
+
+    const row = (label: string) =>
+      wrapper.findAll(".setting-row").find((r) => r.text().includes(label))!
+
+    expect(settings.autoRefreshEnabled.value).toBe(false)
+    expect(wrapper.find(".refresh-interval-select").exists()).toBe(false)
+
+    await row("Auto refresh").find(".ui-toggle").trigger("click")
+    await flushPromises()
+
+    expect(settings.autoRefreshEnabled.value).toBe(true)
+    const select = wrapper.find("select.refresh-interval-select")
+    expect(select.exists()).toBe(true)
+    expect((select.element as HTMLSelectElement).value).toBe("60")
+
+    await select.setValue("120")
+    await flushPromises()
+
+    expect(settings.autoRefreshMinutes.value).toBe(120)
+    const patch = fetchMock.mock.calls.filter(c => (c[1] as RequestInit)?.method === "PATCH").at(-1)!
+    expect(JSON.parse((patch[1] as RequestInit).body as string).settings.screens).toEqual({
+      carousel: false,
+      returnHome: true,
+      autoHideNav: false,
+      autoRefresh: true,
+      refreshIntervalMinutes: 120,
+    })
+
+    await row("Auto refresh").find(".ui-toggle").trigger("click")
+    await flushPromises()
+    expect(settings.autoRefreshEnabled.value).toBe(false)
+    expect(wrapper.find(".refresh-interval-select").exists()).toBe(false)
   })
 
   it("renders the theme preset cards with Futur active", () => {

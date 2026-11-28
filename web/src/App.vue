@@ -38,6 +38,7 @@ import OfflineNotifications from "@/components/shared/OfflineNotifications.vue"
 import { panelLoaders, prefetchPanels } from "@/lib/panelPrefetch"
 import { scheduleIdle } from "@/lib/idle"
 import { loadHousehold } from "@/lib/hydrate"
+import { isClientStale, reloadClientPage, startAutoRefreshTimer } from "@/lib/autoRefresh"
 
 const PanelFallback: Component = () => h("div", { class: "panel-fallback", role: "status" }, [h(UiLoader, { size: "lg" })])
 const asyncPanel = (loader: () => Promise<Component>) =>
@@ -79,6 +80,7 @@ const IDLE_MS = 30_000
 const RETURN_HOME_MS = 15 * 60_000
 let cycleTimer: ReturnType<typeof setTimeout> | null = null
 let homeTimer: ReturnType<typeof setTimeout> | null = null
+let autoRefreshTimer: ReturnType<typeof setInterval> | null = null
 let lastInteraction = Date.now()
 let moveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -128,6 +130,23 @@ function scheduleReturnHome() {
   }, RETURN_HOME_MS)
 }
 
+function clearAutoRefresh() {
+  if (autoRefreshTimer !== null) {
+    clearInterval(autoRefreshTimer)
+    autoRefreshTimer = null
+  }
+}
+
+function scheduleAutoRefresh() {
+  clearAutoRefresh()
+  if (isMobile.value || !settings.autoRefreshEnabled.value) return
+  autoRefreshTimer = startAutoRefreshTimer(
+    settings.autoRefreshMinutes.value,
+    () => isClientStale(lastInteraction),
+    reloadClientPage,
+  )
+}
+
 function resetIdleTimer() {
   lastInteraction = Date.now()
   scheduleReturnHome()
@@ -165,6 +184,7 @@ onMounted(() => {
   if (!isMobile.value) {
     schedulePageCycle()
     scheduleReturnHome()
+    scheduleAutoRefresh()
     window.addEventListener("pointerdown", resetIdleTimer)
     window.addEventListener("keydown", resetIdleTimer)
     window.addEventListener("wheel", resetIdleTimer)
@@ -187,6 +207,7 @@ watch(serverReachable, (reachable) => {
 onUnmounted(() => {
   clearPageCycle()
   clearReturnHome()
+  clearAutoRefresh()
   if (moveTimer !== null) clearTimeout(moveTimer)
   window.removeEventListener("pointerdown", resetIdleTimer)
   window.removeEventListener("keydown", resetIdleTimer)
@@ -199,6 +220,8 @@ onUnmounted(() => {
 
 watch(() => settings.carouselEnabled.value, schedulePageCycle)
 watch(() => settings.returnHomeEnabled.value, scheduleReturnHome)
+watch(() => settings.autoRefreshEnabled.value, scheduleAutoRefresh)
+watch(() => settings.autoRefreshMinutes.value, scheduleAutoRefresh)
 
 let syncTimer: ReturnType<typeof setTimeout>
 if (!isMobile.value) {

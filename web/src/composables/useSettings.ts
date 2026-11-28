@@ -76,6 +76,8 @@ const musicCardSpin = ref(true)
 const carouselEnabled = ref(false)
 const returnHomeEnabled = ref(true)
 const navAutoHide = ref(false)
+const autoRefreshEnabled = ref(false)
+const autoRefreshMinutes = ref(60)
 const houseName = ref("")
 const widgetLayout = ref<WidgetDef[]>([])
 const address = ref("")
@@ -220,6 +222,15 @@ function updateNavAutoHide(on: boolean) {
   navAutoHide.value = on
 }
 
+function updateAutoRefreshEnabled(on: boolean) {
+  autoRefreshEnabled.value = on
+}
+
+function updateAutoRefreshMinutes(minutes: number) {
+  const value = Number.isFinite(minutes) ? Math.round(minutes) : 60
+  autoRefreshMinutes.value = Math.min(1440, Math.max(15, value))
+}
+
 function updateHouseName(name: string) {
   houseName.value = name
 }
@@ -293,6 +304,10 @@ export function applyHouseholdSettings(s: HouseholdSettings) {
       if (s.screens.carousel !== undefined) updateCarouselEnabled(s.screens.carousel !== false)
       if (s.screens.returnHome !== undefined) updateReturnHomeEnabled(s.screens.returnHome === true)
       if (s.screens.autoHideNav !== undefined) updateNavAutoHide(s.screens.autoHideNav === true)
+      if (s.screens.autoRefresh !== undefined) updateAutoRefreshEnabled(s.screens.autoRefresh === true)
+      if (s.screens.refreshIntervalMinutes !== undefined) {
+        updateAutoRefreshMinutes(Number(s.screens.refreshIntervalMinutes))
+      }
     }
     if (!accentSets[themePreset.value].includes(accentColor.value)) {
       accentColor.value = presetDefaultAccent[themePreset.value]
@@ -323,7 +338,7 @@ export function useSettings() {
     widgetLayout, address, holidayCountry, holidayProvince, lat, lon,
     lyricsEnabled, lyricsOffsetMs, musicBackground, musicBackgroundSpin, musicCardSpin,
     carouselEnabled, returnHomeEnabled,
-    navAutoHide,
+    navAutoHide, autoRefreshEnabled, autoRefreshMinutes,
     cameraUrl, cameraUsername, cameraPasswordSet, cameraRotation, cameraStreamPath,
     wifiSsid, wifiPassword, wifiEncryption, wifiHidden,
     defaultReminderMinutes,
@@ -333,7 +348,7 @@ export function useSettings() {
     updateTheme, updateThemePreset, updateAccentColor, updateFontSize, updateWarm, updateHudEnabled,
     updateLyricsEnabled, updateLyricsOffset, updateMusicBackground, updateMusicBackgroundSpin, updateMusicCardSpin,
     updateCarouselEnabled, updateReturnHomeEnabled,
-    updateNavAutoHide,
+    updateNavAutoHide, updateAutoRefreshEnabled, updateAutoRefreshMinutes,
     updateHouseName, updateDefaultReminderMinutes, applyCameraSettings,
     applyWifiSettings, updateWidgetLayout,
     applyHouseholdSettings, refreshFromServer, refreshPhotos,
@@ -358,6 +373,8 @@ export function _resetSettings() {
   carouselEnabled.value = false
   returnHomeEnabled.value = true
   navAutoHide.value = false
+  autoRefreshEnabled.value = false
+  autoRefreshMinutes.value = 60
   houseName.value = ""
   photos.value = []
   widgetLayout.value = []

@@ -353,17 +353,43 @@ function resetLyricsOffset() {
   saveMusic()
 }
 
-function onScreenToggle(key: "carousel" | "returnHome" | "autoHideNav", value: boolean) {
-  if (key === "carousel") settings.updateCarouselEnabled(!!value)
-  else if (key === "returnHome") settings.updateReturnHomeEnabled(!!value)
-  else settings.updateNavAutoHide(!!value)
+const autoRefreshOptions = [
+  { value: "15", label: "15 minutes" },
+  { value: "30", label: "30 minutes" },
+  { value: "60", label: "1 hour" },
+  { value: "120", label: "2 hours" },
+  { value: "240", label: "4 hours" },
+  { value: "480", label: "8 hours" },
+  { value: "720", label: "12 hours" },
+  { value: "1440", label: "24 hours" },
+]
+
+function saveScreens() {
   householdApi.updateSettings({
     screens: {
       carousel: settings.carouselEnabled.value,
       returnHome: settings.returnHomeEnabled.value,
       autoHideNav: settings.navAutoHide.value,
+      autoRefresh: settings.autoRefreshEnabled.value,
+      refreshIntervalMinutes: settings.autoRefreshMinutes.value,
     },
   }).catch(() => {})
+}
+
+function onScreenToggle(
+  key: "carousel" | "returnHome" | "autoHideNav" | "autoRefresh",
+  value: boolean,
+) {
+  if (key === "carousel") settings.updateCarouselEnabled(!!value)
+  else if (key === "returnHome") settings.updateReturnHomeEnabled(!!value)
+  else if (key === "autoRefresh") settings.updateAutoRefreshEnabled(!!value)
+  else settings.updateNavAutoHide(!!value)
+  saveScreens()
+}
+
+function onAutoRefreshIntervalChange(value: string) {
+  settings.updateAutoRefreshMinutes(Number(value))
+  saveScreens()
 }
 
 const cameraUrl = ref("")
@@ -1253,7 +1279,7 @@ watch(searchTokens, applySearch, { flush: "post" })
         <header class="card-header">
           <div class="card-heading">
             <h3 class="card-title">Home Screen</h3>
-            <p class="card-desc">Screen rotation and the default card arrangement</p>
+            <p class="card-desc">Display behavior, rotation, and the default card arrangement</p>
           </div>
           <UiButton size="sm" variant="ghost" :disabled="resettingLayout" @click="askToResetLayout">
             Reset layout
@@ -1281,6 +1307,35 @@ watch(searchTokens, applySearch, { flush: "post" })
               :model-value="settings.returnHomeEnabled.value"
               @update:model-value="(v: boolean) => onScreenToggle('returnHome', v)"
             />
+          </div>
+
+          <div class="setting-row">
+            <div class="row-copy">
+              <p class="row-title">Auto refresh</p>
+              <p class="row-desc">
+                Reload this screen on a schedule after 15 minutes without interaction
+              </p>
+            </div>
+            <UiToggle
+              :model-value="settings.autoRefreshEnabled.value"
+              @update:model-value="(v: boolean) => onScreenToggle('autoRefresh', v)"
+            />
+          </div>
+
+          <div v-if="settings.autoRefreshEnabled.value" class="setting-row setting-row--nested">
+            <div class="row-copy">
+              <p class="row-title">Refresh every</p>
+              <p class="row-desc">The idle screen reloads at this interval</p>
+            </div>
+            <UiSelect
+              class="refresh-interval-select"
+              :model-value="String(settings.autoRefreshMinutes.value)"
+              @update:model-value="onAutoRefreshIntervalChange"
+            >
+              <option v-for="option in autoRefreshOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </UiSelect>
           </div>
 
           <div class="setting-row">
@@ -2413,7 +2468,8 @@ watch(searchTokens, applySearch, { flush: "post" })
   color: var(--color-textPrimary);
 }
 
-.setting-row .reminder-default-select {
+.setting-row .reminder-default-select,
+.setting-row .refresh-interval-select {
   width: auto;
   max-width: 100%;
   min-width: 170px;
@@ -2427,6 +2483,12 @@ watch(searchTokens, applySearch, { flush: "post" })
   }
 
   .setting-row--stack .reminder-default-select {
+    flex: 1 0 100%;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .setting-row .refresh-interval-select {
     flex: 1 0 100%;
     width: 100%;
     min-width: 0;

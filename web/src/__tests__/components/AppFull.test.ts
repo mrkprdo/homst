@@ -193,6 +193,23 @@ describe("App — bootstrap, idle cycle and cleanup", () => {
     wrapper.unmount()
   })
 
+  it("starts auto refresh for the display and clears it on unmount", async () => {
+    vi.useFakeTimers()
+    const settings = useSettings()
+    settings.updateAutoRefreshEnabled(true)
+    settings.updateAutoRefreshMinutes(15)
+    const wrapper = mountApp()
+    await settle()
+
+    const running = vi.getTimerCount()
+    expect(running).toBeGreaterThan(0)
+
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+
+    wrapper.unmount()
+    expect(vi.getTimerCount()).toBeLessThan(running)
+  })
+
   it("restarts the return-to-home wait after an interaction", async () => {
     vi.useFakeTimers()
     const settings = useSettings()

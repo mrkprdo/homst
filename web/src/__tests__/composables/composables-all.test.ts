@@ -223,7 +223,13 @@ describe("useSettings", () => {
       houseName: "Cedar",
       notifications: { hud: false, defaultReminderMinutes: 30 },
       music: { lyrics: false, lyricsOffsetMs: -350, background: false, backgroundSpin: false, cardSpin: false },
-      screens: { carousel: true, returnHome: false, autoHideNav: true },
+      screens: {
+        carousel: true,
+        returnHome: false,
+        autoHideNav: true,
+        autoRefresh: true,
+        refreshIntervalMinutes: 120,
+      },
     })
 
     expect(s.theme.value).toBe("dark")
@@ -244,10 +250,30 @@ describe("useSettings", () => {
     expect(s.carouselEnabled.value).toBe(true)
     expect(s.returnHomeEnabled.value).toBe(false)
     expect(s.navAutoHide.value).toBe(true)
+    expect(s.autoRefreshEnabled.value).toBe(true)
+    expect(s.autoRefreshMinutes.value).toBe(120)
     expect(s.defaultReminderMinutes.value).toBe(30)
     expect(isApplyingRemoteSettings()).toBe(true)
     await nextTick()
     expect(isApplyingRemoteSettings()).toBe(false)
+  })
+
+  it("clamps the auto-refresh interval and keeps it off by default", () => {
+    const s = useSettings()
+    expect(s.autoRefreshEnabled.value).toBe(false)
+    expect(s.autoRefreshMinutes.value).toBe(60)
+
+    s.updateAutoRefreshEnabled(true)
+    expect(s.autoRefreshEnabled.value).toBe(true)
+
+    s.updateAutoRefreshMinutes(5)
+    expect(s.autoRefreshMinutes.value).toBe(15)
+
+    s.updateAutoRefreshMinutes(9999)
+    expect(s.autoRefreshMinutes.value).toBe(1440)
+
+    s.updateAutoRefreshMinutes(Number.NaN)
+    expect(s.autoRefreshMinutes.value).toBe(60)
   })
 })
 

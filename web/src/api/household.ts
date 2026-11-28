@@ -64,6 +64,8 @@ export interface ScreenPreferences {
   carousel?: boolean
   returnHome?: boolean
   autoHideNav?: boolean
+  autoRefresh?: boolean
+  refreshIntervalMinutes?: number
 }
 
 export interface NotificationPreferences {
